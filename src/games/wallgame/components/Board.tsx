@@ -42,14 +42,6 @@ export const Board: React.FC<BoardProps> = ({
     return getValidMoves(gameState);
   }, [disabled, phase, gameState]);
 
-  const validMovesMap = useMemo(() => {
-    const map = new Map<string, Position>();
-    for (const m of validMoves) {
-      map.set(`${m.x}:${m.y}`, m);
-    }
-    return map;
-  }, [validMoves]);
-
   const previewWallCandidate: Wall | null = useMemo(() => {
     if (disabled || phase !== 'ACTION' || !hoveredIntersection || activePlayer.wallsRemaining <= 0) {
       return null;
@@ -70,6 +62,7 @@ export const Board: React.FC<BoardProps> = ({
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', userSelect: 'none' }}>
       <svg
         viewBox={`0 0 ${totalSize} ${totalSize}`}
+        onMouseLeave={() => setHoveredIntersection(null)}
         style={{
           width: '100%',
           maxWidth: '600px',
@@ -93,34 +86,24 @@ export const Board: React.FC<BoardProps> = ({
           strokeWidth="1"
         />
 
-        {/* Board Tiles */}
+        {/* Base Board Tiles */}
         {Array.from({ length: gridSize }).map((_, y) =>
           Array.from({ length: gridSize }).map((_, x) => {
             const isCore = x === corePosition.x && y === corePosition.y;
-            const isMoveValid = validMovesMap.has(`${x}:${y}`);
             const px = getCellX(x);
             const py = getCellY(y);
 
             return (
-              <g
-                key={`tile-${x}-${y}`}
-                onClick={() => {
-                  if (isMoveValid && !disabled) {
-                    onSelectMove({ x, y });
-                  }
-                }}
-                style={{ cursor: isMoveValid && !disabled ? 'pointer' : 'default' }}
-              >
+              <g key={`tile-${x}-${y}`}>
                 <rect
                   x={px}
                   y={py}
                   width={cellSize}
                   height={cellSize}
                   rx={2}
-                  fill={isCore ? 'var(--core-bg)' : isMoveValid ? '#fef9c3' : 'var(--bg-tile)'}
-                  stroke={isCore ? 'var(--core-border)' : isMoveValid ? 'var(--gold)' : 'var(--line)'}
-                  strokeWidth={isCore ? 2 : isMoveValid ? 1.5 : 1}
-                  strokeDasharray={isMoveValid ? '3 2' : 'none'}
+                  fill={isCore ? 'var(--core-bg)' : 'var(--bg-tile)'}
+                  stroke={isCore ? 'var(--core-border)' : 'var(--line)'}
+                  strokeWidth={isCore ? 2 : 1}
                 />
 
                 {/* Central Golden Core emblem */}
@@ -142,17 +125,6 @@ export const Board: React.FC<BoardProps> = ({
                       fill="var(--core-border)"
                     />
                   </g>
-                )}
-
-                {/* Step indicator dot */}
-                {isMoveValid && !isCore && (
-                  <circle
-                    cx={px + cellSize / 2}
-                    cy={py + cellSize / 2}
-                    r={3.5}
-                    fill="var(--gold)"
-                    pointerEvents="none"
-                  />
                 )}
               </g>
             );
@@ -191,26 +163,32 @@ export const Board: React.FC<BoardProps> = ({
           );
         })}
 
-        {/* Wall Slots & Hover Preview */}
+        {/* Wall Slots & Hover Preview (Tightly bounded to groove so tiles remain accessible) */}
         {phase === 'ACTION' && !disabled && activePlayer.wallsRemaining > 0 && (
           <g>
             {Array.from({ length: gridSize - 1 }).map((_, wy) =>
               Array.from({ length: gridSize - 1 }).map((_, wx) => {
                 const ix = getCellX(wx) + cellSize;
                 const iy = getCellY(wy) + cellSize;
+                const isH = wallOrientation === 'H';
+                const slotX = isH ? getCellX(wx) : ix - 3;
+                const slotY = isH ? iy - 3 : getCellY(wy);
+                const slotW = isH ? cellSize * 2 + grooveThickness : grooveThickness + 6;
+                const slotH = isH ? grooveThickness + 6 : cellSize * 2 + grooveThickness;
 
                 return (
                   <rect
                     key={`slot-${wx}-${wy}`}
-                    x={ix - cellSize / 2}
-                    y={iy - cellSize / 2}
-                    width={cellSize + grooveThickness}
-                    height={cellSize + grooveThickness}
+                    x={slotX}
+                    y={slotY}
+                    width={slotW}
+                    height={slotH}
                     fill="transparent"
                     style={{ cursor: 'pointer' }}
                     onMouseEnter={() => setHoveredIntersection({ x: wx, y: wy })}
                     onMouseLeave={() => setHoveredIntersection(null)}
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.stopPropagation();
                       if (previewWallCandidate && isPreviewValid) {
                         onPlaceWall(previewWallCandidate);
                         setHoveredIntersection(null);
@@ -250,6 +228,73 @@ export const Board: React.FC<BoardProps> = ({
             )}
           </g>
         )}
+
+        {/* Interactive Move Candidate Squares (Top Layer: 100% full-area clickable) */}
+        {validMoves.map((m) => {
+          const px = getCellX(m.x);
+          const py = getCellY(m.y);
+          const isCore = m.x === corePosition.x && m.y === corePosition.y;
+
+          return (
+            <g
+              key={`candidate-${m.x}-${m.y}`}
+              className="move-candidate-group"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!disabled) {
+                  onSelectMove(m);
+                }
+              }}
+              style={{ cursor: disabled ? 'default' : 'pointer' }}
+            >
+              {/* Full tile hit area and visual indicator */}
+              <rect
+                x={px}
+                y={py}
+                width={cellSize}
+                height={cellSize}
+                rx={3}
+                className="move-candidate-tile"
+                fill={isCore ? 'var(--core-bg)' : '#fef9c3'}
+                stroke="var(--gold)"
+                strokeWidth={2}
+                strokeDasharray="4 3"
+              />
+
+              {/* Pip indicator */}
+              {!isCore && (
+                <circle
+                  cx={px + cellSize / 2}
+                  cy={py + cellSize / 2}
+                  r={4}
+                  fill="var(--gold)"
+                  pointerEvents="none"
+                />
+              )}
+
+              {/* Central Golden Core win emblem overlay */}
+              {isCore && (
+                <g pointerEvents="none">
+                  <circle
+                    cx={px + cellSize / 2}
+                    cy={py + cellSize / 2}
+                    r={14}
+                    fill="none"
+                    stroke="var(--core-border)"
+                    strokeWidth="1.5"
+                    strokeDasharray="2 2"
+                  />
+                  <circle
+                    cx={px + cellSize / 2}
+                    cy={py + cellSize / 2}
+                    r={5}
+                    fill="var(--core-border)"
+                  />
+                </g>
+              )}
+            </g>
+          );
+        })}
 
         {/* Player Pawns */}
         {players.map((p, idx) => {
