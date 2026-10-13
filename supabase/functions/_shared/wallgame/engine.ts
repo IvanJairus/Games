@@ -1,57 +1,59 @@
 /**
- * WallGo Core Game Engine (Pure TypeScript, zero DOM/Node dependencies).
- * Source of truth for both client and Supabase Edge Functions.
+ * WallGo: Race to the Golden Core Engine (Pure TypeScript, Zero DOM/Server deps).
+ * Implements Quoridor rules (Move OR Wall, 2-unit walls, Anti-Trap BFS) with a central Golden Core goal.
  */
 
 export type WallOrientation = 'H' | 'V';
-
-export interface Wall {
-  orientation: WallOrientation;
-  x: number;
-  y: number;
-}
 
 export interface Position {
   x: number;
   y: number;
 }
 
+export interface Wall {
+  orientation: WallOrientation;
+  x: number; // Intersection coordinate 0 <= x < gridSize - 1
+  y: number; // Intersection coordinate 0 <= y < gridSize - 1
+}
+
+export interface PlayerTheme {
+  name: string;
+  hex: string;
+  label: string;
+  border: string;
+  text: string;
+}
+
 export interface Player {
   id: number;
   name: string;
-  color: string;
-  borderColor: string;
+  theme: PlayerTheme;
   position: Position;
-  score: number;
-  isTrapped: boolean;
+  wallsRemaining: number;
+  distanceToCore: number;
+  movesTaken: number;
 }
 
-export type GamePhase = 'MOVE' | 'WALL' | 'GAME_OVER';
+export type GamePhase = 'ACTION' | 'GAME_OVER';
 
-export interface Territory {
-  playerId: number | null; // null if neutral (no player inside)
-  cells: Position[];
-  size: number;
+export interface GameActionLog {
+  turn: number;
+  playerId: number;
+  type: 'MOVE' | 'WALL';
+  detail: string;
 }
 
 export interface GameState {
   gridSize: number;
   playerCount: number;
+  corePosition: Position;
   players: Player[];
   walls: Wall[];
   activePlayerIndex: number;
   phase: GamePhase;
   turn: number;
-  winnerIds: number[] | 'TIE' | null;
-  territories: Territory[];
+  winnerId: number | null;
   history: GameActionLog[];
-}
-
-export interface GameActionLog {
-  turn: number;
-  playerId: number;
-  type: 'MOVE' | 'PASS_MOVE' | 'WALL';
-  detail: string;
 }
 
 export interface CreateGameOptions {
@@ -60,28 +62,29 @@ export interface CreateGameOptions {
   playerNames?: string[];
 }
 
-export const DEFAULT_PLAYER_THEMES = [
-  { name: 'Player 1', hex: '#EF4444', borderColor: '#DC2626' }, // Red
-  { name: 'Player 2', hex: '#3B82F6', borderColor: '#2563EB' }, // Blue
-  { name: 'Player 3', hex: '#10B981', borderColor: '#059669' }, // Emerald
-  { name: 'Player 4', hex: '#F59E0B', borderColor: '#D97706' }, // Amber
-  { name: 'Player 5', hex: '#8B5CF6', borderColor: '#7C3AED' }, // Purple
-  { name: 'Player 6', hex: '#06B6D4', borderColor: '#0891B2' }, // Cyan
+export const PLAYER_GOLD_THEMES: PlayerTheme[] = [
+  { name: 'Player 1', hex: '#d4af37', label: 'Emas Murni', border: '#b8860b', text: '#000000' },
+  { name: 'Player 2', hex: '#b45309', label: 'Perunggu Tua', border: '#78350f', text: '#ffffff' },
+  { name: 'Player 3', hex: '#f59e0b', label: 'Amber Terang', border: '#d97706', text: '#000000' },
+  { name: 'Player 4', hex: '#fef3c7', label: 'Gading Kuno', border: '#d1b87a', text: '#1c1917' },
+  { name: 'Player 5', hex: '#991b1b', label: 'Batu Delima', border: '#7f1d1d', text: '#ffffff' },
+  { name: 'Player 6', hex: '#78716c', label: 'Obsidian Coklat', border: '#44403c', text: '#ffffff' },
 ];
 
-/**
- * Calculates recommended grid size for a given player count.
- */
 export function getRecommendedGridSize(playerCount: number): number {
-  if (playerCount <= 2) return 7;
   if (playerCount <= 3) return 9;
-  if (playerCount <= 4) return 11;
+  if (playerCount <= 5) return 11;
   return 13;
 }
 
-/**
- * Returns balanced spawn positions for N players around perimeter.
- */
+export function getInitialWallQuota(playerCount: number): number {
+  if (playerCount <= 2) return 10;
+  if (playerCount === 3) return 7;
+  if (playerCount === 4) return 5;
+  if (playerCount === 5) return 4;
+  return 3;
+}
+
 export function getSpawnPositions(playerCount: number, gridSize: number): Position[] {
   const mid = Math.floor(gridSize / 2);
   const max = gridSize - 1;
@@ -89,194 +92,309 @@ export function getSpawnPositions(playerCount: number, gridSize: number): Positi
   switch (playerCount) {
     case 2:
       return [
-        { x: mid, y: 0 },
-        { x: mid, y: max },
+        { x: mid, y: max }, // South
+        { x: mid, y: 0 },   // North
       ];
     case 3:
       return [
-        { x: mid, y: 0 },
-        { x: 1, y: max },
-        { x: max - 1, y: max },
+        { x: mid, y: max }, // South
+        { x: 0, y: mid },   // West
+        { x: max, y: mid }, // East
       ];
     case 4:
       return [
-        { x: mid, y: 0 },
-        { x: max, y: mid },
+        { x: mid, y: max }, // South
+        { x: 0, y: mid },   // West
+        { x: mid, y: 0 },   // North
+        { x: max, y: mid }, // East
+      ];
+    case 5: {
+      const q = Math.max(1, Math.floor(gridSize / 4));
+      return [
         { x: mid, y: max },
         { x: 0, y: mid },
-      ];
-    case 5:
-      return [
-        { x: mid, y: 0 },
-        { x: max, y: 1 },
-        { x: max, y: max - 1 },
-        { x: 1, y: max },
-        { x: 0, y: mid },
-      ];
-    case 6: {
-      const q = Math.max(1, Math.floor(gridSize / 3));
-      return [
-        { x: q, y: 0 },
-        { x: max - q, y: 0 },
+        { x: mid - q, y: 0 },
+        { x: mid + q, y: 0 },
         { x: max, y: mid },
-        { x: max - q, y: max },
-        { x: q, y: max },
+      ];
+    }
+    case 6: {
+      const q = Math.max(1, Math.floor(gridSize / 4));
+      return [
+        { x: mid - q, y: max },
+        { x: mid + q, y: max },
         { x: 0, y: mid },
+        { x: mid - q, y: 0 },
+        { x: mid + q, y: 0 },
+        { x: max, y: mid },
       ];
     }
     default: {
-      // Fallback for any count
-      const positions: Position[] = [];
+      const res: Position[] = [];
       for (let i = 0; i < playerCount; i++) {
-        const x = Math.min(max, (i * 2) % gridSize);
-        const y = i % 2 === 0 ? 0 : max;
-        positions.push({ x, y });
+        res.push({ x: (i * 2) % gridSize, y: i % 2 === 0 ? 0 : max });
       }
-      return positions;
+      return res;
     }
   }
 }
 
 /**
- * Creates canonical string key for wall identification.
+ * Checks whether movement between cell c1 and c2 is blocked by any wall in wallList.
  */
-export function getWallKey(wall: Wall): string {
-  return `${wall.orientation}:${wall.x}:${wall.y}`;
-}
-
-/**
- * Checks whether an edge between cell (x1, y1) and (x2, y2) is blocked by a wall.
- */
-export function isWallBlocking(
-  c1: Position,
-  c2: Position,
-  wallSet: Set<string>
-): boolean {
+export function isPathBlockedByWall(c1: Position, c2: Position, wallList: Wall[]): boolean {
   if (c1.x === c2.x) {
-    // Vertical movement -> separated by a Horizontal wall
+    // Vertical movement between y and y+1
     const minY = Math.min(c1.y, c2.y);
-    return wallSet.has(`H:${c1.x}:${minY}`);
-  }
-  if (c1.y === c2.y) {
-    // Horizontal movement -> separated by a Vertical wall
+    const col = c1.x;
+    for (const w of wallList) {
+      if (w.orientation === 'H' && w.y === minY) {
+        if (w.x === col || w.x === col - 1) {
+          return true;
+        }
+      }
+    }
+  } else if (c1.y === c2.y) {
+    // Horizontal movement between x and x+1
     const minX = Math.min(c1.x, c2.x);
-    return wallSet.has(`V:${minX}:${c1.y}`);
+    const row = c1.y;
+    for (const w of wallList) {
+      if (w.orientation === 'V' && w.x === minX) {
+        if (w.y === row || w.y === row - 1) {
+          return true;
+        }
+      }
+    }
   }
   return false;
 }
 
 /**
- * Creates a new GameState.
+ * Breadth-First Search shortest path from start to goal.
  */
+export function getShortestPath(
+  start: Position,
+  goal: Position,
+  walls: Wall[],
+  gridSize: number
+): Position[] | null {
+  if (start.x === goal.x && start.y === goal.y) return [start];
+
+  const visited = new Set<string>();
+  const parent = new Map<string, Position>();
+  const queue: Position[] = [start];
+  visited.add(`${start.x}:${start.y}`);
+
+  let found = false;
+
+  while (queue.length > 0) {
+    const curr = queue.shift()!;
+    if (curr.x === goal.x && curr.y === goal.y) {
+      found = true;
+      break;
+    }
+
+    const neighbors: Position[] = [
+      { x: curr.x, y: curr.y - 1 },
+      { x: curr.x, y: curr.y + 1 },
+      { x: curr.x - 1, y: curr.y },
+      { x: curr.x + 1, y: curr.y },
+    ];
+
+    for (const n of neighbors) {
+      if (n.x < 0 || n.x >= gridSize || n.y < 0 || n.y >= gridSize) continue;
+      const key = `${n.x}:${n.y}`;
+      if (visited.has(key)) continue;
+
+      if (!isPathBlockedByWall(curr, n, walls)) {
+        visited.add(key);
+        parent.set(key, curr);
+        queue.push(n);
+      }
+    }
+  }
+
+  if (!found) return null;
+
+  // Reconstruct path
+  const path: Position[] = [];
+  let currKey: string | undefined = `${goal.x}:${goal.y}`;
+  while (currKey) {
+    const [px, py] = currKey.split(':').map(Number);
+    const pos = { x: px, y: py };
+    path.unshift(pos);
+    if (pos.x === start.x && pos.y === start.y) break;
+    const p = parent.get(currKey);
+    currKey = p ? `${p.x}:${p.y}` : undefined;
+  }
+
+  return path;
+}
+
 export function createGame(options: CreateGameOptions): GameState {
   const playerCount = Math.max(2, Math.min(6, options.playerCount));
   let gridSize = options.gridSize ?? getRecommendedGridSize(playerCount);
 
-  // Ensure grid size is odd and at least 5
   if (gridSize % 2 === 0) gridSize += 1;
-  gridSize = Math.max(5, Math.min(19, gridSize));
+  gridSize = Math.max(7, Math.min(19, gridSize));
+
+  const corePosition: Position = {
+    x: Math.floor(gridSize / 2),
+    y: Math.floor(gridSize / 2),
+  };
 
   const spawnPositions = getSpawnPositions(playerCount, gridSize);
+  const wallQuota = getInitialWallQuota(playerCount);
 
   const players: Player[] = [];
   for (let i = 0; i < playerCount; i++) {
-    const theme = DEFAULT_PLAYER_THEMES[i % DEFAULT_PLAYER_THEMES.length];
+    const theme = PLAYER_GOLD_THEMES[i % PLAYER_GOLD_THEMES.length];
+    const initialPos = spawnPositions[i];
+    const path = getShortestPath(initialPos, corePosition, [], gridSize);
     players.push({
       id: i,
-      name: options.playerNames?.[i]?.trim() || `Player ${i + 1}`,
-      color: theme.hex,
-      borderColor: theme.borderColor,
-      position: spawnPositions[i],
-      score: 0,
-      isTrapped: false,
+      name: options.playerNames?.[i]?.trim() || `Pemain ${i + 1}`,
+      theme,
+      position: initialPos,
+      wallsRemaining: wallQuota,
+      distanceToCore: path ? path.length - 1 : 99,
+      movesTaken: 0,
     });
   }
 
-  const state: GameState = {
+  return {
     gridSize,
     playerCount,
+    corePosition,
     players,
     walls: [],
     activePlayerIndex: 0,
-    phase: 'MOVE',
+    phase: 'ACTION',
     turn: 1,
-    winnerIds: null,
-    territories: [],
+    winnerId: null,
     history: [],
   };
-
-  // Calculate initial territories
-  state.territories = computeTerritories(state);
-  return state;
 }
 
 /**
- * Returns array of legal moves for the active player.
+ * Returns all valid moves for the active player, including jumping over opponent pawns.
  */
 export function getValidMoves(state: GameState): Position[] {
-  if (state.phase !== 'MOVE') return [];
+  if (state.phase !== 'ACTION') return [];
 
   const activePlayer = state.players[state.activePlayerIndex];
   if (!activePlayer) return [];
 
   const { x, y } = activePlayer.position;
-  const wallSet = new Set(state.walls.map(getWallKey));
-  const occupiedSet = new Set(
-    state.players.map((p) => `${p.position.x}:${p.position.y}`)
-  );
+  const occupiedMap = new Map<string, Player>();
+  for (const p of state.players) {
+    occupiedMap.set(`${p.position.x}:${p.position.y}`, p);
+  }
 
-  const candidates: Position[] = [
-    { x, y: y - 1 }, // North
-    { x, y: y + 1 }, // South
-    { x: x - 1, y }, // West
-    { x: x + 1, y }, // East
+  const validMoves: Position[] = [];
+
+  const directions = [
+    { dx: 0, dy: -1 }, // North
+    { dx: 0, dy: 1 },  // South
+    { dx: -1, dy: 0 }, // West
+    { dx: 1, dy: 0 },  // East
   ];
 
-  return candidates.filter((target) => {
-    // Bounds check
-    if (
-      target.x < 0 ||
-      target.x >= state.gridSize ||
-      target.y < 0 ||
-      target.y >= state.gridSize
-    ) {
-      return false;
-    }
+  for (const { dx, dy } of directions) {
+    const target: Position = { x: x + dx, y: y + dy };
 
-    // Occupied by another player check
-    if (occupiedSet.has(`${target.x}:${target.y}`)) {
-      return false;
+    // Bounds check
+    if (target.x < 0 || target.x >= state.gridSize || target.y < 0 || target.y >= state.gridSize) {
+      continue;
     }
 
     // Wall check
-    if (isWallBlocking(activePlayer.position, target, wallSet)) {
-      return false;
+    if (isPathBlockedByWall(activePlayer.position, target, state.walls)) {
+      continue;
     }
 
-    return true;
-  });
+    const opponent = occupiedMap.get(`${target.x}:${target.y}`);
+    if (!opponent) {
+      // Empty cell: standard move
+      validMoves.push(target);
+    } else {
+      // Opponent cell: PAWN JUMPING LOGIC
+      const jumpTarget: Position = { x: target.x + dx, y: target.y + dy };
+      const canJumpStraight =
+        jumpTarget.x >= 0 &&
+        jumpTarget.x < state.gridSize &&
+        jumpTarget.y >= 0 &&
+        jumpTarget.y < state.gridSize &&
+        !isPathBlockedByWall(target, jumpTarget, state.walls) &&
+        !occupiedMap.has(`${jumpTarget.x}:${jumpTarget.y}`);
+
+      if (canJumpStraight) {
+        validMoves.push(jumpTarget);
+      } else {
+        // Diagonal jumps when straight is blocked
+        const diagonals = dx === 0 ? [{ ddx: -1, ddy: 0 }, { ddx: 1, ddy: 0 }] : [{ ddx: 0, ddy: -1 }, { ddx: 0, ddy: 1 }];
+
+        for (const { ddx, ddy } of diagonals) {
+          const diagTarget: Position = { x: target.x + ddx, y: target.y + ddy };
+          if (
+            diagTarget.x >= 0 &&
+            diagTarget.x < state.gridSize &&
+            diagTarget.y >= 0 &&
+            diagTarget.y < state.gridSize &&
+            !isPathBlockedByWall(target, diagTarget, state.walls) &&
+            !occupiedMap.has(`${diagTarget.x}:${diagTarget.y}`)
+          ) {
+            validMoves.push(diagTarget);
+          }
+        }
+      }
+    }
+  }
+
+  return validMoves;
 }
 
 /**
- * Checks if a specific wall placement is valid.
+ * Checks if a 2-segment wall placement is legal.
  */
 export function isValidWallPlacement(state: GameState, wall: Wall): boolean {
-  if (state.phase !== 'WALL') return false;
+  if (state.phase !== 'ACTION') return false;
 
-  // Boundary check
-  if (wall.orientation === 'H') {
-    if (wall.x < 0 || wall.x >= state.gridSize) return false;
-    if (wall.y < 0 || wall.y >= state.gridSize - 1) return false;
-  } else {
-    if (wall.x < 0 || wall.x >= state.gridSize - 1) return false;
-    if (wall.y < 0 || wall.y >= state.gridSize) return false;
+  const activePlayer = state.players[state.activePlayerIndex];
+  if (!activePlayer || activePlayer.wallsRemaining <= 0) return false;
+
+  // Intersections range: 0 to gridSize - 2
+  const maxSlot = state.gridSize - 2;
+  if (wall.x < 0 || wall.x > maxSlot || wall.y < 0 || wall.y > maxSlot) {
+    return false;
   }
 
-  // Duplicate check
-  const wallKey = getWallKey(wall);
+  // Overlap and cross collision checks
   for (const existing of state.walls) {
-    if (getWallKey(existing) === wallKey) {
-      return false;
+    if (existing.orientation === wall.orientation) {
+      if (wall.orientation === 'H') {
+        if (existing.y === wall.y && Math.abs(existing.x - wall.x) <= 1) {
+          return false; // Direct overlap or adjacent overlap on row
+        }
+      } else {
+        if (existing.x === wall.x && Math.abs(existing.y - wall.y) <= 1) {
+          return false; // Direct overlap or adjacent overlap on column
+        }
+      }
+    } else {
+      // Crossing check at the exact same intersection
+      if (existing.x === wall.x && existing.y === wall.y) {
+        return false;
+      }
+    }
+  }
+
+  // Fair Rule: BFS Anti-Trap Verification
+  const simulatedWalls = [...state.walls, wall];
+  for (const p of state.players) {
+    const path = getShortestPath(p.position, state.corePosition, simulatedWalls, state.gridSize);
+    if (!path) {
+      return false; // Wall would completely trap player from reaching the Core!
     }
   }
 
@@ -284,132 +402,10 @@ export function isValidWallPlacement(state: GameState, wall: Wall): boolean {
 }
 
 /**
- * Analyzes connected components on the board.
- */
-export function computeTerritories(state: GameState): Territory[] {
-  const { gridSize, walls, players } = state;
-  const wallSet = new Set(walls.map(getWallKey));
-  const visited = new Set<string>();
-  const territories: Territory[] = [];
-
-  const playerPositions = new Map<string, number>();
-  for (const p of players) {
-    playerPositions.set(`${p.position.x}:${p.position.y}`, p.id);
-  }
-
-  for (let y = 0; y < gridSize; y++) {
-    for (let x = 0; x < gridSize; x++) {
-      const key = `${x}:${y}`;
-      if (visited.has(key)) continue;
-
-      // BFS to find connected component
-      const queue: Position[] = [{ x, y }];
-      visited.add(key);
-      const cells: Position[] = [];
-      const playersInComponent: number[] = [];
-
-      while (queue.length > 0) {
-        const curr = queue.shift()!;
-        cells.push(curr);
-
-        const occupant = playerPositions.get(`${curr.x}:${curr.y}`);
-        if (occupant !== undefined) {
-          playersInComponent.push(occupant);
-        }
-
-        const neighbors: Position[] = [
-          { x: curr.x, y: curr.y - 1 },
-          { x: curr.x, y: curr.y + 1 },
-          { x: curr.x - 1, y: curr.y },
-          { x: curr.x + 1, y: curr.y },
-        ];
-
-        for (const next of neighbors) {
-          if (
-            next.x < 0 ||
-            next.x >= gridSize ||
-            next.y < 0 ||
-            next.y >= gridSize
-          ) {
-            continue;
-          }
-          const nextKey = `${next.x}:${next.y}`;
-          if (visited.has(nextKey)) continue;
-
-          if (!isWallBlocking(curr, next, wallSet)) {
-            visited.add(nextKey);
-            queue.push(next);
-          }
-        }
-      }
-
-      const playerId = playersInComponent.length === 1 ? playersInComponent[0] : null;
-
-      territories.push({
-        playerId,
-        cells,
-        size: cells.length,
-      });
-    }
-  }
-
-  return territories;
-}
-
-/**
- * Checks whether the game has reached the end condition.
- * Game ends when EVERY player is isolated in their own component (no two players share a component),
- * OR when no legal wall placement remains.
- */
-export function evaluateEndGame(
-  territories: Territory[],
-  playerCount: number
-): { isOver: boolean; winnerIds: number[] | 'TIE' | null; scores: Map<number, number> } {
-  const scores = new Map<number, number>();
-  for (let i = 0; i < playerCount; i++) {
-    scores.set(i, 0);
-  }
-
-  // Count players in shared territories
-  let isolatedCount = 0;
-
-  for (const t of territories) {
-    if (t.playerId !== null) {
-      scores.set(t.playerId, (scores.get(t.playerId) || 0) + t.size);
-      isolatedCount += 1;
-    }
-  }
-
-  const isOver = isolatedCount === playerCount;
-
-  if (!isOver) {
-    return { isOver: false, winnerIds: null, scores };
-  }
-
-  // Find winner(s)
-  let maxScore = -1;
-  const winners: number[] = [];
-
-  for (let i = 0; i < playerCount; i++) {
-    const s = scores.get(i) || 0;
-    if (s > maxScore) {
-      maxScore = s;
-      winners.length = 0;
-      winners.push(i);
-    } else if (s === maxScore) {
-      winners.push(i);
-    }
-  }
-
-  const winnerResult = winners.length === playerCount ? 'TIE' : winners;
-  return { isOver: true, winnerIds: winnerResult, scores };
-}
-
-/**
- * Moves active player to target position.
+ * Applies a move action to the game state.
  */
 export function applyMove(state: GameState, target: Position): GameState {
-  if (state.phase !== 'MOVE') {
+  if (state.phase !== 'ACTION') {
     throw new Error(`Cannot move during phase ${state.phase}`);
   }
 
@@ -420,117 +416,91 @@ export function applyMove(state: GameState, target: Position): GameState {
   }
 
   const activePlayer = state.players[state.activePlayerIndex];
-  const newPlayers = state.players.map((p, idx) =>
-    idx === state.activePlayerIndex ? { ...p, position: target } : p
-  );
+  const isWin = target.x === state.corePosition.x && target.y === state.corePosition.y;
+
+  const updatedPlayers = state.players.map((p, idx) => {
+    if (idx === state.activePlayerIndex) {
+      const path = getShortestPath(target, state.corePosition, state.walls, state.gridSize);
+      return {
+        ...p,
+        position: target,
+        distanceToCore: path ? path.length - 1 : 0,
+        movesTaken: p.movesTaken + 1,
+      };
+    }
+    const path = getShortestPath(p.position, state.corePosition, state.walls, state.gridSize);
+    return {
+      ...p,
+      distanceToCore: path ? path.length - 1 : p.distanceToCore,
+    };
+  });
 
   const actionLog: GameActionLog = {
     turn: state.turn,
     playerId: activePlayer.id,
     type: 'MOVE',
-    detail: `Moved to (${target.x}, ${target.y})`,
+    detail: isWin ? 'Mencapai Golden Core! Menang!' : `Melangkah ke (${target.x}, ${target.y})`,
   };
 
+  if (isWin) {
+    return {
+      ...state,
+      players: updatedPlayers,
+      phase: 'GAME_OVER',
+      winnerId: activePlayer.id,
+      history: [...state.history, actionLog],
+    };
+  }
+
+  const nextPlayerIndex = (state.activePlayerIndex + 1) % state.playerCount;
   return {
     ...state,
-    players: newPlayers,
-    phase: 'WALL',
+    players: updatedPlayers,
+    activePlayerIndex: nextPlayerIndex,
+    turn: state.turn + 1,
     history: [...state.history, actionLog],
   };
 }
 
 /**
- * Passes move phase if active player has no legal moves.
- */
-export function passMove(state: GameState): GameState {
-  if (state.phase !== 'MOVE') {
-    throw new Error(`Cannot pass move during phase ${state.phase}`);
-  }
-
-  const validMoves = getValidMoves(state);
-  if (validMoves.length > 0) {
-    throw new Error('Cannot pass move when valid moves are available');
-  }
-
-  const activePlayer = state.players[state.activePlayerIndex];
-  const newPlayers = state.players.map((p, idx) =>
-    idx === state.activePlayerIndex ? { ...p, isTrapped: true } : p
-  );
-
-  const actionLog: GameActionLog = {
-    turn: state.turn,
-    playerId: activePlayer.id,
-    type: 'PASS_MOVE',
-    detail: 'Passed move (trapped)',
-  };
-
-  return {
-    ...state,
-    players: newPlayers,
-    phase: 'WALL',
-    history: [...state.history, actionLog],
-  };
-}
-
-/**
- * Places a wall on the board.
+ * Applies a wall placement action to the game state.
  */
 export function applyWall(state: GameState, wall: Wall): GameState {
-  if (state.phase !== 'WALL') {
+  if (state.phase !== 'ACTION') {
     throw new Error(`Cannot place wall during phase ${state.phase}`);
   }
 
   if (!isValidWallPlacement(state, wall)) {
-    throw new Error(`Invalid wall placement at ${wall.orientation}:${wall.x}:${wall.y}`);
+    throw new Error(`Invalid or illegal wall placement at ${wall.orientation}:${wall.x}:${wall.y}`);
   }
 
-  const newWalls = [...state.walls, wall];
   const activePlayer = state.players[state.activePlayerIndex];
+  const newWalls = [...state.walls, wall];
+
+  const updatedPlayers = state.players.map((p, idx) => {
+    const wallsRemaining = idx === state.activePlayerIndex ? p.wallsRemaining - 1 : p.wallsRemaining;
+    const path = getShortestPath(p.position, state.corePosition, newWalls, state.gridSize);
+    return {
+      ...p,
+      wallsRemaining,
+      distanceToCore: path ? path.length - 1 : p.distanceToCore,
+    };
+  });
 
   const actionLog: GameActionLog = {
     turn: state.turn,
     playerId: activePlayer.id,
     type: 'WALL',
-    detail: `Placed wall at ${wall.orientation}(${wall.x}, ${wall.y})`,
+    detail: `Memasang dinding ${wall.orientation === 'H' ? 'Horizontal' : 'Vertikal'} di (${wall.x}, ${wall.y})`,
   };
 
-  // Recompute territories
-  const tempState = { ...state, walls: newWalls };
-  const territories = computeTerritories(tempState);
-
-  // Evaluate end game
-  const { isOver, winnerIds, scores } = evaluateEndGame(territories, state.playerCount);
-
-  // Update players score
-  const updatedPlayers = state.players.map((p) => ({
-    ...p,
-    score: scores.get(p.id) || 0,
-  }));
-
-  if (isOver) {
-    return {
-      ...state,
-      walls: newWalls,
-      players: updatedPlayers,
-      territories,
-      phase: 'GAME_OVER',
-      winnerIds,
-      history: [...state.history, actionLog],
-    };
-  }
-
-  // Advance turn to next player
   const nextPlayerIndex = (state.activePlayerIndex + 1) % state.playerCount;
-  const nextTurn = state.turn + 1;
-
   return {
     ...state,
     walls: newWalls,
     players: updatedPlayers,
-    territories,
     activePlayerIndex: nextPlayerIndex,
-    phase: 'MOVE',
-    turn: nextTurn,
+    turn: state.turn + 1,
     history: [...state.history, actionLog],
   };
 }

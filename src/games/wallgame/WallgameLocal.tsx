@@ -4,32 +4,33 @@ import {
   GameState,
   Position,
   Wall,
+  WallOrientation,
   createGame,
   applyMove,
-  passMove,
   applyWall,
-  getValidMoves,
   getRecommendedGridSize,
 } from '../../../supabase/functions/_shared/wallgame/engine';
 import { Board } from './components/Board';
-import { Trophy, RefreshCw, ArrowLeft, HelpCircle } from 'lucide-react';
+import { Trophy, RotateCw, ArrowLeft, HelpCircle } from 'lucide-react';
 
 export const WallgameLocal: React.FC = () => {
-  // Setup state
+  // Setup configuration state
   const [playerCount, setPlayerCount] = useState<number>(2);
   const [gridSizeOption, setGridSizeOption] = useState<string>('auto');
   const [playerNames, setPlayerNames] = useState<string[]>([
-    'Player 1',
-    'Player 2',
-    'Player 3',
-    'Player 4',
-    'Player 5',
-    'Player 6',
+    'Pemain 1',
+    'Pemain 2',
+    'Pemain 3',
+    'Pemain 4',
+    'Pemain 5',
+    'Pemain 6',
   ]);
   const [showRules, setShowRules] = useState<boolean>(false);
 
   // In-game state
   const [game, setGame] = useState<GameState | null>(null);
+  const [wallOrientation, setWallOrientation] = useState<WallOrientation>('H');
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const effectiveGridSize =
     gridSizeOption === 'auto'
@@ -43,103 +44,134 @@ export const WallgameLocal: React.FC = () => {
       playerNames: playerNames.slice(0, playerCount),
     });
     setGame(newGame);
+    setActionError(null);
   };
 
   const handleResetGame = () => {
-    if (window.confirm('Mulai ulang permainan baru? Permainan saat ini akan direset.')) {
+    if (window.confirm('Mulai ulang permainan baru?')) {
       handleStartGame();
     }
   };
 
   const handleExitToSetup = () => {
-    if (window.confirm('Keluar ke menu setup?')) {
+    if (window.confirm('Kembali ke menu konfigurasi?')) {
       setGame(null);
     }
   };
 
   const handleSelectMove = (target: Position) => {
-    if (!game || game.phase !== 'MOVE') return;
+    if (!game || game.phase !== 'ACTION') return;
     try {
+      setActionError(null);
       const nextState = applyMove(game, target);
       setGame(nextState);
     } catch (err: unknown) {
-      console.error(err);
-    }
-  };
-
-  const handlePassMove = () => {
-    if (!game || game.phase !== 'MOVE') return;
-    try {
-      const nextState = passMove(game);
-      setGame(nextState);
-    } catch (err: unknown) {
-      alert((err as Error).message);
+      setActionError((err as Error).message);
     }
   };
 
   const handlePlaceWall = (wall: Wall) => {
-    if (!game || game.phase !== 'WALL') return;
+    if (!game || game.phase !== 'ACTION') return;
     try {
+      setActionError(null);
       const nextState = applyWall(game, wall);
       setGame(nextState);
     } catch (err: unknown) {
-      console.error(err);
+      setActionError((err as Error).message);
     }
   };
 
-  // SETUP SCREEN
+  // Keyboard shortcut: Space / R to toggle wall orientation
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === ' ' || e.key === 'r' || e.key === 'R') {
+        if (game && game.phase === 'ACTION') {
+          e.preventDefault();
+          setWallOrientation((prev) => (prev === 'H' ? 'V' : 'H'));
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [game]);
+
+  // SETUP VIEW
   if (!game) {
     return (
-      <div style={{ maxWidth: '680px', margin: '40px auto', padding: '0 20px' }}>
-        <div style={{ marginBottom: '24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ position: 'relative', zIndex: 1, maxWidth: '840px', margin: '40px auto', padding: '0 24px' }}>
+        <div className="paper-bg" />
+
+        {/* Top Header */}
+        <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '28px', borderBottom: '1px solid var(--line)', paddingBottom: '14px' }}>
           <Link
             to="/wallgame"
             style={{
               display: 'inline-flex',
               alignItems: 'center',
               gap: '8px',
-              color: 'var(--text-secondary)',
-              fontSize: '0.9rem',
+              font: '12px/1 var(--mono)',
+              color: 'var(--ink-dim)',
+              letterSpacing: '.05em',
             }}
           >
-            <ArrowLeft size={16} /> Kembali ke Lobby
+            <ArrowLeft size={14} /> /games/wallgame/
           </Link>
-          <button
-            onClick={() => setShowRules(true)}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: 'var(--accent-cyan)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              fontSize: '0.9rem',
-            }}
-          >
-            <HelpCircle size={16} /> Cara Bermain
-          </button>
-        </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            <span
+              style={{
+                font: '10.5px/1 var(--mono)',
+                letterSpacing: '.1em',
+                textTransform: 'uppercase',
+                color: 'var(--gold)',
+                border: '1px solid var(--line-strong)',
+                borderRadius: '999px',
+                padding: '5px 10px',
+                background: 'var(--gold-tint)',
+              }}
+            >
+              Mode: Hotseat Lokal
+            </span>
+            <button
+              onClick={() => setShowRules(true)}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'var(--ink-dim)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                font: '12px/1 var(--mono)',
+                cursor: 'pointer',
+              }}
+            >
+              <HelpCircle size={14} /> Aturan
+            </button>
+          </div>
+        </header>
 
+        {/* Setup Box */}
         <div
           style={{
-            background: 'var(--bg-secondary)',
-            border: '1px solid var(--border-color)',
-            borderRadius: 'var(--radius-lg)',
-            padding: '32px',
-            boxShadow: '0 10px 15px -3px rgba(0,0,0,0.4)',
+            background: 'var(--bg-stage)',
+            border: '1px solid var(--line-strong)',
+            borderRadius: 'var(--r4)',
+            padding: '36px',
+            boxShadow: '0 12px 24px -6px rgba(0,0,0,0.6)',
           }}
         >
-          <h1 style={{ fontSize: '1.8rem', fontWeight: 800, marginBottom: '8px' }}>
-            WallGo <span style={{ color: 'var(--accent-cyan)' }}>Hotseat Lokal</span>
-          </h1>
-          <p style={{ color: 'var(--text-secondary)', marginBottom: '28px', fontSize: '0.95rem' }}>
-            Mainkan bersama 2 hingga 6 teman pada satu layar gawai secara bergantian.
-          </p>
+          <div style={{ borderLeft: '3px solid var(--gold)', paddingLeft: '14px', marginBottom: '24px' }}>
+            <h1 style={{ fontSize: '24px', letterSpacing: '-0.02em', margin: '0 0 6px', fontWeight: 700 }}>
+              WallGo · <span style={{ color: 'var(--gold)' }}>Race to the Golden Core</span>
+            </h1>
+            <p style={{ margin: 0, color: 'var(--ink-dim)', fontSize: '14px', maxWidth: '64ch' }}>
+              Balapan menuju petak pusat emas sebelum lawan mengurung atau memutarbalikkan langkahmu dengan dinding 2-petak.
+            </p>
+          </div>
 
-          {/* Number of Players */}
-          <div style={{ marginBottom: '24px' }}>
-            <label style={{ display: 'block', fontWeight: 600, marginBottom: '10px' }}>
-              Jumlah Pemain (2 - 6)
+          {/* Player Count */}
+          <div style={{ marginBottom: '28px' }}>
+            <label style={{ display: 'block', font: '11px/1 var(--mono)', letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: '10px' }}>
+              Jumlah Pemain (2 s/d 6 Orang)
             </label>
             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
               {[2, 3, 4, 5, 6].map((num) => (
@@ -149,14 +181,14 @@ export const WallgameLocal: React.FC = () => {
                   onClick={() => setPlayerCount(num)}
                   style={{
                     flex: '1',
-                    minWidth: '50px',
-                    padding: '12px 0',
-                    background: playerCount === num ? 'var(--accent-blue)' : 'var(--bg-card)',
-                    border: `1px solid ${playerCount === num ? 'var(--accent-blue)' : 'var(--border-color)'}`,
-                    borderRadius: 'var(--radius-md)',
-                    color: '#ffffff',
+                    minWidth: '60px',
+                    padding: '10px 0',
+                    background: playerCount === num ? 'var(--gold)' : 'var(--bg-tile)',
+                    border: `1px solid ${playerCount === num ? 'var(--gold)' : 'var(--line)'}`,
+                    borderRadius: 'var(--r2)',
+                    color: playerCount === num ? '#000000' : 'var(--ink)',
+                    font: '13px/1 var(--mono)',
                     fontWeight: 700,
-                    fontSize: '1.1rem',
                   }}
                 >
                   {num}P
@@ -165,10 +197,10 @@ export const WallgameLocal: React.FC = () => {
             </div>
           </div>
 
-          {/* Grid Size Selection */}
-          <div style={{ marginBottom: '24px' }}>
-            <label style={{ display: 'block', fontWeight: 600, marginBottom: '10px' }}>
-              Ukuran Papan Permainan
+          {/* Grid Size */}
+          <div style={{ marginBottom: '28px' }}>
+            <label style={{ display: 'block', font: '11px/1 var(--mono)', letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: '10px' }}>
+              Dimensi Grid Papan
             </label>
             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
               <button
@@ -177,16 +209,17 @@ export const WallgameLocal: React.FC = () => {
                 style={{
                   flex: '2',
                   padding: '10px 14px',
-                  background: gridSizeOption === 'auto' ? 'var(--accent-cyan)' : 'var(--bg-card)',
-                  border: `1px solid ${gridSizeOption === 'auto' ? 'var(--accent-cyan)' : 'var(--border-color)'}`,
-                  color: gridSizeOption === 'auto' ? '#000000' : 'var(--text-primary)',
-                  borderRadius: 'var(--radius-md)',
+                  background: gridSizeOption === 'auto' ? 'var(--gold-tint)' : 'var(--bg-tile)',
+                  border: `1px solid ${gridSizeOption === 'auto' ? 'var(--gold)' : 'var(--line)'}`,
+                  color: gridSizeOption === 'auto' ? 'var(--gold)' : 'var(--ink-dim)',
+                  borderRadius: 'var(--r2)',
+                  font: '12.5px/1 var(--mono)',
                   fontWeight: 600,
                 }}
               >
-                Otomatis ({getRecommendedGridSize(playerCount)}x{getRecommendedGridSize(playerCount)})
+                Rekomendasi Otomatis ({getRecommendedGridSize(playerCount)} × {getRecommendedGridSize(playerCount)})
               </button>
-              {[7, 9, 11, 13].map((size) => (
+              {[9, 11, 13].map((size) => (
                 <button
                   key={`grid-${size}`}
                   type="button"
@@ -194,27 +227,48 @@ export const WallgameLocal: React.FC = () => {
                   style={{
                     flex: '1',
                     padding: '10px',
-                    background: gridSizeOption === String(size) ? 'var(--accent-cyan)' : 'var(--bg-card)',
-                    border: `1px solid ${gridSizeOption === String(size) ? 'var(--accent-cyan)' : 'var(--border-color)'}`,
-                    color: gridSizeOption === String(size) ? '#000000' : 'var(--text-primary)',
-                    borderRadius: 'var(--radius-md)',
+                    background: gridSizeOption === String(size) ? 'var(--gold-tint)' : 'var(--bg-tile)',
+                    border: `1px solid ${gridSizeOption === String(size) ? 'var(--gold)' : 'var(--line)'}`,
+                    color: gridSizeOption === String(size) ? 'var(--gold)' : 'var(--ink-dim)',
+                    borderRadius: 'var(--r2)',
+                    font: '12.5px/1 var(--mono)',
                     fontWeight: 600,
                   }}
                 >
-                  {size}x{size}
+                  {size} × {size}
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Player Names Input */}
-          <div style={{ marginBottom: '32px' }}>
-            <label style={{ display: 'block', fontWeight: 600, marginBottom: '10px' }}>
-              Nama Pemain
+          {/* Player Names */}
+          <div style={{ marginBottom: '36px' }}>
+            <label style={{ display: 'block', font: '11px/1 var(--mono)', letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: '10px' }}>
+              Identitas Pemain
             </label>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
               {Array.from({ length: playerCount }).map((_, idx) => (
-                <div key={`input-p-${idx}`}>
+                <div
+                  key={`input-p-${idx}`}
+                  style={{
+                    background: 'var(--bg-tile)',
+                    border: '1px solid var(--line)',
+                    borderRadius: 'var(--r2)',
+                    padding: '8px 12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                  }}
+                >
+                  <span
+                    style={{
+                      font: '11px/1 var(--mono)',
+                      color: 'var(--gold)',
+                      fontWeight: 700,
+                    }}
+                  >
+                    P{idx + 1}
+                  </span>
                   <input
                     type="text"
                     value={playerNames[idx]}
@@ -224,14 +278,12 @@ export const WallgameLocal: React.FC = () => {
                       updated[idx] = e.target.value;
                       setPlayerNames(updated);
                     }}
-                    placeholder={`Player ${idx + 1}`}
                     style={{
                       width: '100%',
-                      padding: '10px 14px',
-                      background: 'var(--bg-card)',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: 'var(--radius-md)',
-                      color: 'var(--text-primary)',
+                      background: 'none',
+                      border: 'none',
+                      color: 'var(--ink)',
+                      font: '13px/1 var(--sans)',
                       outline: 'none',
                     }}
                   />
@@ -240,23 +292,26 @@ export const WallgameLocal: React.FC = () => {
             </div>
           </div>
 
-          {/* Submit Button */}
+          {/* Start Button */}
           <button
             type="button"
             onClick={handleStartGame}
             style={{
               width: '100%',
               padding: '14px',
-              backgroundColor: 'var(--accent-blue)',
-              color: '#ffffff',
-              borderRadius: 'var(--radius-md)',
+              backgroundColor: 'var(--gold)',
+              color: '#000000',
+              borderRadius: 'var(--r2)',
               border: 'none',
+              font: '13px/1 var(--mono)',
+              letterSpacing: '.06em',
               fontWeight: 700,
-              fontSize: '1.1rem',
-              boxShadow: '0 4px 6px -1px rgba(59, 130, 246, 0.4)',
+              textTransform: 'uppercase',
+              cursor: 'pointer',
+              transition: 'background 0.15s ease',
             }}
           >
-            Mulai Permainan ({playerCount} Pemain - {effectiveGridSize}x{effectiveGridSize})
+            Mulai Permainan · {playerCount} Pemain ({effectiveGridSize} × {effectiveGridSize})
           </button>
         </div>
 
@@ -265,11 +320,8 @@ export const WallgameLocal: React.FC = () => {
           <div
             style={{
               position: 'fixed',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              background: 'rgba(0,0,0,0.7)',
+              inset: 0,
+              background: 'rgba(0,0,0,0.8)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -279,25 +331,23 @@ export const WallgameLocal: React.FC = () => {
           >
             <div
               style={{
-                background: 'var(--bg-secondary)',
-                border: '1px solid var(--border-color)',
-                borderRadius: 'var(--radius-lg)',
-                maxWidth: '540px',
+                background: 'var(--bg-stage)',
+                border: '1px solid var(--line-strong)',
+                borderRadius: 'var(--r4)',
+                maxWidth: '560px',
                 width: '100%',
-                padding: '24px',
-                maxHeight: '90vh',
-                overflowY: 'auto',
+                padding: '28px',
               }}
             >
-              <h2 style={{ fontSize: '1.4rem', fontWeight: 700, marginBottom: '14px', color: 'var(--accent-cyan)' }}>
-                Aturan Permainan WallGo
+              <h2 style={{ fontSize: '18px', fontWeight: 700, color: 'var(--gold)', marginBottom: '14px', font: '16px/1.2 var(--mono)' }}>
+                ATURAN PERMAINAN
               </h2>
-              <ul style={{ paddingLeft: '20px', color: 'var(--text-secondary)', lineHeight: 1.7, marginBottom: '20px' }}>
-                <li>Setiap giliran terdiri dari 2 fase: <strong>Gerakkan Bidak</strong> lalu <strong>Pasang 1 Dinding</strong>.</li>
-                <li>Bidak bergerak 1 langkah ortogonal (atas, bawah, kiri, kanan) dan tidak boleh menembus dinding atau petak lawan.</li>
-                <li>Dinding dipasang pada garis pemisah petak untuk menyekat ruang dan membatasi lawan.</li>
-                <li>Permainan selesai saat <strong>semua pemain terisolasi</strong> ke dalam wilayah tertutup masing-masing.</li>
-                <li>Skor dihitung dari jumlah petak di wilayah terisolasi pemain. Pemilik wilayah terluas adalah pemenangnya!</li>
+              <ul style={{ paddingLeft: '20px', color: 'var(--ink-dim)', lineHeight: 1.7, fontSize: '13.5px', marginBottom: '24px' }}>
+                <li><strong>Tujuan</strong>: Pemain pertama yang mencapai petak pusat <strong>The Golden Core</strong> menang seketika.</li>
+                <li><strong>Ekonomi Giliran</strong>: Pilih <em>SATU</em>: Melangkah 1 petak <strong>ATAU</strong> memasang 1 dinding 2-petak.</li>
+                <li><strong>Lompat Bidak</strong>: Jika berhadapan langsung dengan lawan, bidak dapat melompat lurus (atau diagonal jika terhalang dinding).</li>
+                <li><strong>BFS Anti-Trap Rule</strong>: Dinding dilarang keras menutup total seluruh jalur pemain ke inti.</li>
+                <li><strong>Ganti Orientasi</strong>: Tekan tombol <code>[H/V]</code> atau tombol <code>Spasi / R</code> pada keyboard untuk memutar dinding.</li>
               </ul>
               <button
                 type="button"
@@ -305,11 +355,12 @@ export const WallgameLocal: React.FC = () => {
                 style={{
                   width: '100%',
                   padding: '10px',
-                  background: 'var(--bg-card)',
-                  border: '1px solid var(--border-color)',
-                  color: '#ffffff',
-                  borderRadius: 'var(--radius-md)',
-                  fontWeight: 600,
+                  background: 'var(--bg-tile)',
+                  border: '1px solid var(--line-strong)',
+                  color: 'var(--ink)',
+                  borderRadius: 'var(--r2)',
+                  font: '12px/1 var(--mono)',
+                  cursor: 'pointer',
                 }}
               >
                 Tutup
@@ -321,38 +372,67 @@ export const WallgameLocal: React.FC = () => {
     );
   }
 
-  // IN-GAME SCREEN
+  // IN-GAME VIEW
   const activePlayer = game.players[game.activePlayerIndex];
-  const validMoves = getValidMoves(game);
-  const canPassMove = game.phase === 'MOVE' && validMoves.length === 0;
+  const winner = game.winnerId !== null ? game.players[game.winnerId] : null;
 
   return (
-    <div style={{ maxWidth: '1000px', margin: '20px auto', padding: '0 16px' }}>
-      {/* Top Navbar */}
-      <div
+    <div style={{ position: 'relative', zIndex: 1, maxWidth: '1040px', margin: '24px auto', padding: '0 20px' }}>
+      <div className="paper-bg" />
+
+      {/* Top Telemetry Header */}
+      <header
         style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           marginBottom: '16px',
+          borderBottom: '1px solid var(--line)',
+          paddingBottom: '12px',
         }}
       >
-        <button
-          onClick={handleExitToSetup}
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '6px',
-            background: 'none',
-            border: 'none',
-            color: 'var(--text-secondary)',
-            fontSize: '0.9rem',
-          }}
-        >
-          <ArrowLeft size={16} /> Setup
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <button
+            onClick={handleExitToSetup}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              background: 'none',
+              border: 'none',
+              color: 'var(--ink-dim)',
+              font: '12px/1 var(--mono)',
+              cursor: 'pointer',
+            }}
+          >
+            <ArrowLeft size={14} /> Konfigurasi
+          </button>
+          <span style={{ color: 'var(--line-strong)' }}>|</span>
+          <span style={{ font: '11px/1 var(--mono)', color: 'var(--ink-faint)', letterSpacing: '.06em', textTransform: 'uppercase' }}>
+            Grid: {game.gridSize}×{game.gridSize} · Putaran: {game.turn}
+          </span>
+        </div>
 
-        <div style={{ display: 'flex', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          {/* Wall Orientation Toggle */}
+          <button
+            onClick={() => setWallOrientation((prev) => (prev === 'H' ? 'V' : 'H'))}
+            style={{
+              padding: '6px 12px',
+              background: 'var(--bg-tile)',
+              border: '1px solid var(--gold)',
+              color: 'var(--gold)',
+              borderRadius: 'var(--r2)',
+              font: '11px/1 var(--mono)',
+              letterSpacing: '.08em',
+              fontWeight: 700,
+              cursor: 'pointer',
+            }}
+            title="Klik atau tekan Spasi / R untuk memutar"
+          >
+            Orientasi: {wallOrientation === 'H' ? '═ Horizontal' : '║ Vertikal'} [R]
+          </button>
+
           <button
             onClick={handleResetGame}
             style={{
@@ -360,170 +440,153 @@ export const WallgameLocal: React.FC = () => {
               alignItems: 'center',
               gap: '6px',
               padding: '6px 12px',
-              background: 'var(--bg-card)',
-              border: '1px solid var(--border-color)',
-              color: 'var(--text-primary)',
-              borderRadius: 'var(--radius-sm)',
-              fontSize: '0.85rem',
+              background: 'var(--bg-tile)',
+              border: '1px solid var(--line)',
+              color: 'var(--ink-dim)',
+              borderRadius: 'var(--r2)',
+              font: '11px/1 var(--mono)',
+              cursor: 'pointer',
             }}
           >
-            <RefreshCw size={14} /> Restart
+            <RotateCw size={12} /> Reset
           </button>
         </div>
-      </div>
+      </header>
 
-      {/* Main Game Layout */}
+      {/* Main Board & HUD Layout */}
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'minmax(320px, 1fr) 260px',
+          gridTemplateColumns: 'minmax(340px, 1fr) 280px',
           gap: '24px',
           alignItems: 'start',
         }}
       >
-        {/* Left: Interactive Board & Turn Banner */}
+        {/* Left: Turn Banner & Interactive Board */}
         <div>
-          {/* Turn Banner */}
+          {/* Active Turn Banner */}
           <div
             style={{
-              padding: '14px 20px',
-              borderRadius: 'var(--radius-md)',
-              background: 'var(--bg-secondary)',
-              border: `1px solid ${game.phase === 'GAME_OVER' ? 'var(--accent-emerald)' : activePlayer.color}`,
+              padding: '12px 18px',
+              borderRadius: 'var(--r2)',
+              background: 'var(--bg-stage)',
+              border: `1px solid ${game.phase === 'GAME_OVER' ? 'var(--gold)' : 'var(--line-strong)'}`,
               marginBottom: '16px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
             }}
           >
-            <div>
-              {game.phase === 'GAME_OVER' ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Trophy size={20} color="var(--accent-amber)" />
-                  <span style={{ fontWeight: 700, fontSize: '1.1rem', color: 'var(--accent-emerald)' }}>
-                    Permainan Selesai!
-                  </span>
+            {game.phase === 'GAME_OVER' && winner ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <Trophy size={18} color="var(--gold)" />
+                <span style={{ font: '13px/1 var(--mono)', fontWeight: 700, color: 'var(--gold)', letterSpacing: '.05em' }}>
+                  PEMENANG: {winner.name} ({winner.theme.label})!
+                </span>
+              </div>
+            ) : (
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                  <span
+                    style={{
+                      display: 'inline-block',
+                      width: '8px',
+                      height: '8px',
+                      borderRadius: '50%',
+                      background: activePlayer.theme.hex,
+                    }}
+                  />
+                  <strong style={{ font: '13px/1 var(--mono)', letterSpacing: '.04em' }}>{activePlayer.name}</strong>
+                  <span style={{ color: 'var(--ink-faint)', font: '11px/1 var(--mono)' }}>({activePlayer.theme.label})</span>
                 </div>
-              ) : (
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
-                    <span
-                      style={{
-                        display: 'inline-block',
-                        width: '12px',
-                        height: '12px',
-                        borderRadius: '50%',
-                        background: activePlayer.color,
-                      }}
-                    />
-                    <strong style={{ fontSize: '1.05rem' }}>{activePlayer.name}</strong>
-                    <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>(P{activePlayer.id + 1})</span>
-                  </div>
-                  <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-                    {game.phase === 'MOVE' ? (
-                      <span>Langkah 1/2: Klik petak terdekat untuk memindahkan bidak.</span>
-                    ) : (
-                      <span>Langkah 2/2: Klik celah antar-petak untuk memasang dinding.</span>
-                    )}
-                  </div>
+                <div style={{ font: '11.5px/1.4 var(--sans)', color: 'var(--ink-dim)' }}>
+                  Pilih: Klik petak bertanda untuk melangkah, atau klik celah untuk pasang dinding 2-petak.
                 </div>
-              )}
-            </div>
+              </div>
+            )}
 
-            {/* Pass Move Button if Trapped */}
-            {canPassMove && (
-              <button
-                onClick={handlePassMove}
-                style={{
-                  padding: '8px 14px',
-                  background: 'var(--accent-amber)',
-                  color: '#000000',
-                  border: 'none',
-                  borderRadius: 'var(--radius-sm)',
-                  fontWeight: 700,
-                  fontSize: '0.85rem',
-                }}
-              >
-                Lewati Gerak (Terjebak)
-              </button>
+            {/* Error badge if move was rejected */}
+            {actionError && (
+              <span style={{ font: '10.5px/1 var(--mono)', color: '#ef4444', padding: '4px 8px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid #ef4444', borderRadius: 'var(--r2)' }}>
+                {actionError}
+              </span>
             )}
           </div>
 
           {/* SVG Board */}
           <Board
             gameState={game}
+            wallOrientation={wallOrientation}
             onSelectMove={handleSelectMove}
             onPlaceWall={handlePlaceWall}
             disabled={game.phase === 'GAME_OVER'}
           />
         </div>
 
-        {/* Right Sidebar: Scoreboard & Player List */}
+        {/* Right Sidebar: Status & Telemetry */}
         <div
           style={{
-            background: 'var(--bg-secondary)',
-            border: '1px solid var(--border-color)',
-            borderRadius: 'var(--radius-md)',
+            background: 'var(--bg-stage)',
+            border: '1px solid var(--line-strong)',
+            borderRadius: 'var(--r2)',
             padding: '20px',
           }}
         >
-          <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '14px', color: 'var(--text-secondary)' }}>
-            PAPAN SKOR (WILAYAH)
-          </h3>
+          <div style={{ font: '11px/1 var(--mono)', letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: '14px', borderBottom: '1px solid var(--line)', paddingBottom: '8px' }}>
+            STATUS BALAPAN
+          </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {game.players.map((p, idx) => {
               const isActive = idx === game.activePlayerIndex && game.phase !== 'GAME_OVER';
-              const isWinner = Array.isArray(game.winnerIds) && game.winnerIds.includes(p.id);
+              const isWinner = game.winnerId === p.id;
 
               return (
                 <div
                   key={`score-p-${p.id}`}
                   style={{
-                    padding: '12px',
-                    borderRadius: 'var(--radius-sm)',
-                    background: isActive ? 'var(--bg-card-hover)' : 'var(--bg-card)',
-                    border: `1px solid ${isActive ? p.color : 'transparent'}`,
+                    padding: '10px 12px',
+                    borderRadius: 'var(--r2)',
+                    background: isActive ? 'var(--gold-tint)' : 'var(--bg-tile)',
+                    border: `1px solid ${isWinner ? 'var(--gold)' : isActive ? 'var(--line-gold)' : 'var(--line)'}`,
                     display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
+                    flexDirection: 'column',
+                    gap: '6px',
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <div
-                      style={{
-                        width: '26px',
-                        height: '26px',
-                        borderRadius: '50%',
-                        background: p.color,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: '0.8rem',
-                        fontWeight: 'bold',
-                        color: '#ffffff',
-                      }}
-                    >
-                      {p.id + 1}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div
+                        style={{
+                          width: '18px',
+                          height: '18px',
+                          borderRadius: '50%',
+                          background: p.theme.hex,
+                          color: p.theme.text,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          font: '10px/1 var(--mono)',
+                          fontWeight: 700,
+                        }}
+                      >
+                        {p.id + 1}
+                      </div>
+                      <span style={{ font: '12.5px/1 var(--mono)', fontWeight: isActive ? 700 : 500 }}>
+                        {p.name}
+                      </span>
                     </div>
-                    <div>
-                      <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{p.name}</div>
-                      {p.isTrapped && (
-                        <div style={{ fontSize: '0.75rem', color: 'var(--accent-amber)' }}>Terjebak</div>
-                      )}
-                    </div>
+
+                    {isWinner && (
+                      <span style={{ font: '10px/1 var(--mono)', color: 'var(--gold)', fontWeight: 700 }}>
+                        JUARA
+                      </span>
+                    )}
                   </div>
 
-                  <div style={{ textAlign: 'right' }}>
-                    <span style={{ fontSize: '1.2rem', fontWeight: 800 }}>{p.score}</span>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: '4px' }}>petak</span>
-                    {isWinner && (
-                      <div>
-                        <span style={{ fontSize: '0.75rem', color: 'var(--accent-emerald)', fontWeight: 700 }}>
-                          JUARA!
-                        </span>
-                      </div>
-                    )}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', font: '11px/1 var(--mono)', color: 'var(--ink-dim)' }}>
+                    <span>Sisa Dinding: <strong style={{ color: p.wallsRemaining > 0 ? 'var(--gold)' : 'var(--ink-faint)' }}>{p.wallsRemaining}</strong></span>
+                    <span>Jarak: <strong style={{ color: 'var(--ink)' }}>{p.distanceToCore} langkah</strong></span>
                   </div>
                 </div>
               );
@@ -533,18 +596,15 @@ export const WallgameLocal: React.FC = () => {
           <div
             style={{
               marginTop: '20px',
-              paddingTop: '16px',
-              borderTop: '1px solid var(--border-color)',
-              fontSize: '0.8rem',
-              color: 'var(--text-muted)',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '6px',
+              paddingTop: '14px',
+              borderTop: '1px solid var(--line)',
+              font: '11px/1.6 var(--mono)',
+              color: 'var(--ink-faint)',
             }}
           >
-            <div>Grid: {game.gridSize} x {game.gridSize}</div>
-            <div>Total Dinding Terpasang: {game.walls.length}</div>
-            <div>Putaran: {game.turn}</div>
+            <div>Pusat: The Golden Core</div>
+            <div>Dinding terpasang: {game.walls.length}</div>
+            <div>Aturan: Move OR Wall</div>
           </div>
         </div>
       </div>

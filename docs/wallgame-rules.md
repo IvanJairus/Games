@@ -1,105 +1,78 @@
-# Spesifikasi Aturan Main: WallGo (Wall Game)
+# Spesifikasi Aturan Resmi: WallGo — Race to the Golden Core
 
-Dokumen ini mendefinisikan aturan permainan resmi untuk **WallGo**, game strategi berbasis giliran (*turn-based*) di mana pemain bergerak dan membangun dinding pembatas untuk mengklaim wilayah teritorial.
+Dokumen ini mendefinisikan aturan resmi untuk **WallGo: Race to the Golden Core**, sebuah adaptasi strategi berbasis giliran (*turn-based tactical board game*) terinspirasi dari mekanika **Walls.gg / Quoridor** yang dirancang secara simetris untuk **2 hingga 6 pemain**.
 
 ---
 
 ## 1. Ikhtisar & Tujuan Permainan
 
-WallGo dimainkan di atas grid kotak berukuran $N \times N$ oleh **2 hingga 6 pemain**. 
+Permainan berlangsung di atas grid berukuran ganjil ($G \times G$). Di titik pusat papan $(\lfloor G/2 \rfloor, \lfloor G/2 \rfloor)$ terdapat zona target yang disebut **The Golden Core**.
 
-Tujuan setiap pemain adalah **mengisolasi bidaknya ke dalam wilayah (*territory*) tertutup terbesar** sambil membatasi ruang gerak lawan. Permainan selesai ketika semua pemain telah terpisah ke dalam wilayah tertutup masing-masing (tidak ada dua pemain yang dapat saling menjangkau), dan pemenang ditentukan oleh **luas wilayah (jumlah petak) terbanyak**.
-
----
-
-## 2. Penskalaan Grid & Jumlah Pemain Dinamis
-
-Ukuran grid dapat ditentukan otomatis berdasarkan jumlah pemain atau disesuaikan oleh pembuat room:
-
-| Jumlah Pemain | Rekomendasi Grid | Minimum Grid | Maksimum Grid |
-|---|---|---|---|
-| **2 Pemain** | $7 \times 7$ / $9 \times 9$ | $7 \times 7$ | $15 \times 15$ |
-| **3 Pemain** | $9 \times 9$ | $9 \times 9$ | $15 \times 15$ |
-| **4 Pemain** | $11 \times 11$ | $9 \times 9$ | $15 \times 15$ |
-| **5 Pemain** | $11 \times 11$ / $13 \times 13$ | $11 \times 11$ | $15 \times 15$ |
-| **6 Pemain** | $13 \times 13$ | $11 \times 11$ | $15 \times 15$ |
-
-*Catatan: Dimensi grid selalu ganjil ($G \times G$) agar memiliki titik tengah simetris.*
-
-### Posisi Awal Bidak (*Spawn Points*)
-Pemain ditempatkan secara simetris di sekitar tepi luar grid untuk menjamin keadilan:
-- **2 Pemain**: Sisi Utara tengah $( \lfloor G/2 \rfloor, 0 )$ dan Sisi Selatan tengah $( \lfloor G/2 \rfloor, G-1 )$.
-- **3 Pemain**: Posisi segitiga simetris (Utara tengah, Barat Daya, Tenggara).
-- **4 Pemain**: 4 titik mata angin (Utara, Timur, Selatan, Barat).
-- **5 & 6 Pemain**: Distribusi sudut dan sisi simetris teratur di perimeter grid.
-
-Setiap pemain memiliki identitas visual:
-1. Player 1: Merah (`#EF4444`)
-2. Player 2: Biru (`#3B82F6`)
-3. Player 3: Hijau (`#10B981`)
-4. Player 4: Kuning/Emas (`#F59E0B`)
-5. Player 5: Ungu (`#8B5CF6`)
-6. Player 6: Cyan (`#06B6D4`)
+**Tujuan**: Menjadi pemain pertama yang berhasil menggerakkan bidaknya menginjak **The Golden Core**.
 
 ---
 
-## 3. Alur Giliran (*Turn Cycle*)
+## 2. Papan & Penskalaan Jumlah Pemain (2 s/d 6 Pemain)
 
-Giliran berjalan melingkar:
-$$\text{Player 1} \to \text{Player 2} \to \dots \to \text{Player } K \to \text{Player 1}$$
+Grid selalu berdimensi ganjil agar memiliki 1 petak pusat tunggal yang tepat:
+- **2–3 Pemain**: Grid $9 \times 9$ (81 petak, 8×8 titik dinding).
+- **4–5 Pemain**: Grid $11 \times 11$ (121 petak, 10×10 titik dinding).
+- **6 Pemain**: Grid $13 \times 13$ (169 petak, 12×12 titik dinding).
 
-Pada setiap giliran, seorang pemain aktif wajib melakukan **2 fase tindakan**:
+### Posisi Awal Simetris (*Spawn Points*)
+Seluruh pemain ditempatkan di perimeter tepi terluar papan sedemikian rupa sehingga **jarak tempuh langkah awal (shortest path distance) ke The Golden Core adalah PERSIS SAMA** untuk setiap pemain.
+- Jarak awal di grid $9 \times 9$: tepat 4 langkah lurus dari tepi ke pusat.
+- Jarak awal di grid $11 \times 11$: tepat 5 langkah lurus.
+- Jarak awal di grid $13 \times 13$: tepat 6 langkah lurus.
 
-### Fase 1: Pergerakan Bidak (*Move Pawn*)
-1. Pemain menggerakkan bidak 1 langkah secara ortogonal (Atas, Bawah, Kiri, atau Kanan).
-2. **Batasan**:
-   - Tidak boleh menembus dinding yang telah terpasang.
-   - Tidak boleh keluar dari batas grid permainan.
-   - Tidak boleh menempati petak yang sedang ditempati oleh bidak pemain lain.
-   - Jika pemain terjebak (*no legal move*), fase gerak dilewati (*pass move*) dan pemain langsung melanjutkan ke Fase 2.
-
-### Fase 2: Pemasangan Dinding (*Place Wall*)
-1. Setelah menggerakkan bidak, pemain wajib memasang **1 segmen dinding** pada salah satu garis batas (*edge*) di antara dua petak yang berdekatan.
-2. Dinding dapat berorientasi:
-   - **Horizontal**: Memisahkan petak $(x, y)$ dan $(x, y+1)$.
-   - **Vertical**: Memisahkan petak $(x, y)$ dan $(x+1, y)$.
-3. **Batasan Pemasangan Dinding**:
-   - Dinding tidak boleh menimpa dinding yang sudah ada sebelumnya.
-   - Dinding tidak boleh dipasang di tepi luar grid (karena tepi luar sudah otomatis menjadi batas permanen).
-   - **Aturan Ruang Hidup**: Pemasangan dinding tidak boleh langsung membuat petak bidak aktif terisolasi dengan ukuran 0 petak.
+### Kuota Dinding Awal (*Wall Quota*)
+Total dinding yang beredar di papan dibatasi agar papan tidak terlalu penuh:
+- **2 Pemain**: 10 dinding per pemain (Total 20)
+- **3 Pemain**: 7 dinding per pemain (Total 21)
+- **4 Pemain**: 5 dinding per pemain (Total 20)
+- **5 Pemain**: 4 dinding per pemain (Total 20)
+- **6 Pemain**: 3 dinding per pemain (Total 18)
 
 ---
 
-## 4. Deteksi Akhir Permainan (*End Game Condition*)
+## 3. Ekonomi Giliran (*Turn Choice: EITHER / OR*)
 
-Permainan dievaluasi pada setiap akhir giliran menggunakan algoritma pencarian graf (*Breadth-First Search / Flood Fill*):
+Pada setiap giliran, seorang pemain aktif **HANYA MEMILIH SALAH SATU** dari dua tindakan berikut:
 
-1. **Komponen Terhubung (*Connected Components / Territory*)**:
-   - Seluruh petak dianalisis untuk mengelompokkan sel-sel yang saling terhubung tanpa terhalang dinding.
-2. **Kondisi Selesai**:
-   - Permainan **SELESAI SEGERA** jika:
-     a. **Semua pemain telah terisolasi**: Setiap bidak pemain berada di dalam wilayah terpisah masing-masing (tidak ada 2 bidak yang berbagi satu wilayah terhubung).
-     b. **Atau tidak ada langkah/dinding valid lagi** yang dapat dipasang.
+### Opsi A: Melangkah 1 Petak (*Step / Jump*)
+1. **Langkah Standar**: Melangkah 1 petak secara ortogonal (Atas, Bawah, Kiri, atau Kanan).
+   - Tidak boleh menembus dinding atau keluar dari batas papan.
+   - Tidak boleh melangkah ke petak yang sedang ditempati pemain lain jika ada jalan biasa.
+2. **Mekanik Melompat Lawan (*Pawn Jumping*)**:
+   - Jika berhadapan langsung (*face-to-face*) dengan bidak lawan tanpa dinding pemisah:
+     - **Lompat Lurus**: Bidak dapat melompati lawan lurus ke depan (maju 2 petak langsung).
+     - **Lompat Diagonal**: Jika petak di belakang lawan terhalang oleh dinding atau tepi papan, bidak dapat melompat serong ke petak kiri atau kanan lawan.
+
+### Opsi B: Memasang 1 Dinding (*Place a Wall*)
+1. Pemain dapat memasang 1 dinding selama masih memiliki kuota dinding tersisa.
+2. **Dimensi Dinding**: Setiap dinding membentang sepanjang **2 petak penuh** (*two-segment barrier*), baik secara Horizontal maupun Vertikal di alur celah antar-petak.
+3. **Larangan Penempatan**:
+   - Tidak boleh menimpa (*overlap*) dinding yang sudah ada.
+   - Tidak boleh memotong bersilangan (*cross*) dinding lain pada titik persimpangan yang sama.
+   - Tidak boleh melebihi batas terluar papan.
+4. **Aturan Keadilan (Fair Rule / BFS Anti-Trap)**:
+   - Dinding **TIDAK BOLEH** memutus total akses pemain mana pun menuju The Golden Core.
+   - Engine mengevaluasi *Breadth-First Search (BFS)* secara real-time. Jika sebuah penempatan dinding menyebabkan satu pemain kehilangan seluruh akses jalan ke pusat, dinding tersebut **ilegal** dan ditolak.
 
 ---
 
-## 5. Sistem Penilaian & Pemenang (*Scoring*)
+## 4. Penentuan Kemenangan (*Victory Condition*)
 
-Ketika permainan selesai:
-1. **Skor Wilayah**:
-   - Jika suatu wilayah hanya berisi tepat 1 bidak pemain, pemain tersebut memperoleh **1 poin per petak** di dalam wilayah tersebut.
-2. **Wilayah Netral (*Neutral Enclosures*)**:
-   - Petak-petak yang tertutup dinding tanpa ada bidak di dalamnya dianggap sebagai wilayah netral (0 poin untuk semua orang).
-3. **Pemenang**:
-   - Pemain dengan total skor (wilayah terluas) dinyatakan sebagai **Juara**.
-   - Jika ada skor yang sama (*tie*), peringkat ditentukan bersama atau status seri.
+1. Pemain pertama yang bidaknya mendarat di petak **The Golden Core** langsung dinyatakan sebagai **Pemenang Tunggal**.
+2. Jika seorang pemain kehabisan kuota dinding, pemain tersebut hanya dapat memilih Opsi A (Melangkah) pada sisa gilirannya.
 
 ---
 
-## 6. Mode Permainan yang Didukung
+## 5. Sistem Desain Visual & Estetika
 
-- **Hotseat Lokal** (`/games/wallgame/local`):
-  - 2 hingga 6 pemain bergantian bermain pada satu perangkat / layar yang sama.
-  - Konfigurasi ukuran grid ($7 \times 7$ s/d $15 \times 15$) dan kustomisasi nama pemain.
-- **Online Multiplayer** (`/games/wallgame/m/:code`):
-  - Sinkronisasi realtime melalui Supabase Realtime & validasi langkah server-authoritative di Edge Function.
+Menyelaraskan tema arsitektural dari `gateway-B2.html` dan `ivanjairus.xyz`:
+- **Kanvas**: Dark Espresso (`#12100e`) dengan grid kertas arsitektur halus (`.paper`).
+- **Aksen Utama**: Coklat tua, perunggu, dan emas (*Gold / Brass / Amber*).
+- **The Golden Core**: Petak tengah berlapis aksen emas murni berukir lambang inti dengan pendaran cahaya lembut.
+- **Dinding**: Bilah kuningan / kayu jati bersepuh emas (*polished golden brass*).
+- **Tipografi**: Monospaced editorial (*tabular numbers*) untuk telemetri langkah, sisa dinding, dan jarak BFS ke inti.

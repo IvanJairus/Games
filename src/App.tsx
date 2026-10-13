@@ -12,15 +12,24 @@ const Layout: React.FC = () => {
       </main>
       <footer
         style={{
-          padding: '24px',
-          textAlign: 'center',
-          color: 'var(--text-muted)',
-          fontSize: '0.85rem',
-          borderTop: '1px solid var(--border-color)',
-          marginTop: '40px',
+          borderTop: '1px solid var(--line)',
+          marginTop: '44px',
+          padding: '20px clamp(20px, 4.6vw, 46px)',
+          font: '11px/1.8 var(--mono)',
+          color: 'var(--ink-faint)',
+          display: 'flex',
+          gap: '16px',
+          flexWrap: 'wrap',
+          justifyContent: 'center',
+          position: 'relative',
+          zIndex: 1,
         }}
       >
-        <p>© {new Date().getFullYear()} Ivan Jairus. Powered by ij-gateway.</p>
+        <span>ivanjairus.xyz/games/</span>
+        <span>·</span>
+        <span>papan strategi Quoridor · Race to Golden Core</span>
+        <span>·</span>
+        <span>dilayani oleh ij-gateway</span>
       </footer>
     </div>
   );
