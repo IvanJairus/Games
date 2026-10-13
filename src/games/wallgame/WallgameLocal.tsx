@@ -11,7 +11,7 @@ import {
   getRecommendedGridSize,
 } from '../../../supabase/functions/_shared/wallgame/engine';
 import { Board } from './components/Board';
-import { RotateCw, ArrowLeft, HelpCircle } from 'lucide-react';
+import { RotateCw, ArrowLeft, HelpCircle, Trophy, Home } from 'lucide-react';
 
 export const WallgameLocal: React.FC = () => {
   const [playerCount, setPlayerCount] = useState<number>(2);
@@ -30,6 +30,14 @@ export const WallgameLocal: React.FC = () => {
   const [actionError, setActionError] = useState<string | null>(null);
 
   const rulesDialogRef = useRef<HTMLDialogElement>(null);
+  const victoryDialogRef = useRef<HTMLDialogElement>(null);
+
+  // Automatically pop up victory modal upon reaching The Golden Core
+  useEffect(() => {
+    if (game?.phase === 'GAME_OVER' && game.winnerId !== null) {
+      victoryDialogRef.current?.showModal();
+    }
+  }, [game?.phase, game?.winnerId]);
 
   const effectiveGridSize =
     gridSizeOption === 'auto'
@@ -428,9 +436,29 @@ export const WallgameLocal: React.FC = () => {
             }}
           >
             {game.phase === 'GAME_OVER' && winner ? (
-              <span style={{ font: '13px/1 var(--mono)', fontWeight: 700, color: 'var(--gold)' }}>
-                PEMENANG: {winner.name} ({winner.theme.label})!
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                <span style={{ font: '13px/1 var(--mono)', fontWeight: 700, color: 'var(--gold)' }}>
+                  PEMENANG: {winner.name} ({winner.theme.label})!
+                </span>
+                <button
+                  type="button"
+                  onClick={() => victoryDialogRef.current?.showModal()}
+                  style={{
+                    background: 'var(--gold-tint)',
+                    border: '1px solid var(--gold-border)',
+                    color: 'var(--gold)',
+                    borderRadius: 'var(--r2)',
+                    padding: '4px 10px',
+                    font: '11px/1 var(--mono)',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    letterSpacing: '.04em',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  Lihat Hasil Juara
+                </button>
+              </div>
             ) : (
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
@@ -554,6 +582,215 @@ export const WallgameLocal: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Victory Announcement Modal (Modern Web Guidance & antislop-ui) */}
+      <dialog
+        ref={victoryDialogRef}
+        aria-labelledby="victory-title"
+        style={{
+          maxWidth: '460px',
+          width: '90%',
+          padding: '28px 24px',
+          textAlign: 'center',
+          borderRadius: 'var(--r4)',
+          border: '1px solid var(--gold)',
+          background: '#ffffff',
+          boxShadow: '0 12px 36px rgba(180, 83, 9, 0.18)',
+        }}
+      >
+        {winner && (
+          <div>
+            <div
+              style={{
+                width: '52px',
+                height: '52px',
+                borderRadius: '50%',
+                background: 'var(--gold-tint)',
+                border: '1px solid var(--gold-border)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'var(--gold)',
+                marginBottom: '14px',
+              }}
+            >
+              <Trophy size={26} />
+            </div>
+
+            <div
+              style={{
+                font: '10.5px/1 var(--mono)',
+                letterSpacing: '.12em',
+                textTransform: 'uppercase',
+                color: 'var(--gold)',
+                marginBottom: '6px',
+                fontWeight: 700,
+              }}
+            >
+              KEMENANGAN TELAH DIRAIH · THE GOLDEN CORE
+            </div>
+
+            <h2
+              id="victory-title"
+              style={{
+                fontSize: '24px',
+                fontWeight: 700,
+                color: 'var(--ink)',
+                margin: '0 0 8px',
+                letterSpacing: '-0.02em',
+              }}
+            >
+              {winner.name} Menang!
+            </h2>
+
+            <div
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '4px 10px',
+                borderRadius: 'var(--r2)',
+                background: 'var(--bg-stage)',
+                border: '1px solid var(--line)',
+                marginBottom: '18px',
+              }}
+            >
+              <span
+                style={{
+                  display: 'inline-block',
+                  width: '10px',
+                  height: '10px',
+                  borderRadius: '50%',
+                  background: winner.theme.hex,
+                }}
+              />
+              <span style={{ font: '12px/1 var(--mono)', color: 'var(--ink-dim)' }}>
+                Bidak #{winner.id + 1} · {winner.theme.label}
+              </span>
+            </div>
+
+            {/* Match Telemetry Recap */}
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(3, 1fr)',
+                gap: '8px',
+                background: 'var(--bg-stage)',
+                border: '1px solid var(--line)',
+                borderRadius: 'var(--r2)',
+                padding: '12px 8px',
+                marginBottom: '22px',
+                font: 'var(--mono)',
+              }}
+            >
+              <div>
+                <div style={{ fontSize: '10px', color: 'var(--ink-faint)', textTransform: 'uppercase' }}>Putaran</div>
+                <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--ink)' }}>{game.turn}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: '10px', color: 'var(--ink-faint)', textTransform: 'uppercase' }}>Sisa Dinding</div>
+                <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--gold)' }}>{winner.wallsRemaining}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: '10px', color: 'var(--ink-faint)', textTransform: 'uppercase' }}>Grid</div>
+                <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--ink)' }}>{game.gridSize}×{game.gridSize}</div>
+              </div>
+            </div>
+
+            {/* Quick Actions */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  victoryDialogRef.current?.close();
+                  handleStartGame();
+                }}
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  background: 'var(--gold)',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: 'var(--r2)',
+                  font: '12px/1 var(--mono)',
+                  fontWeight: 700,
+                  letterSpacing: '.06em',
+                  textTransform: 'uppercase',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  cursor: 'pointer',
+                }}
+              >
+                <RotateCw size={14} /> Main Lagi (Restart)
+              </button>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    victoryDialogRef.current?.close();
+                    setGame(null);
+                  }}
+                  style={{
+                    padding: '10px',
+                    background: 'var(--bg-stage)',
+                    border: '1px solid var(--line-strong)',
+                    color: 'var(--ink)',
+                    borderRadius: 'var(--r2)',
+                    font: '11px/1 var(--mono)',
+                    letterSpacing: '.04em',
+                    textTransform: 'uppercase',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Konfigurasi Baru
+                </button>
+
+                <Link
+                  to="/"
+                  onClick={() => victoryDialogRef.current?.close()}
+                  style={{
+                    padding: '10px',
+                    background: 'var(--bg-stage)',
+                    border: '1px solid var(--line-strong)',
+                    color: 'var(--ink)',
+                    borderRadius: 'var(--r2)',
+                    font: '11px/1 var(--mono)',
+                    letterSpacing: '.04em',
+                    textTransform: 'uppercase',
+                    textDecoration: 'none',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                  }}
+                >
+                  <Home size={12} /> Menu Utama
+                </Link>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => victoryDialogRef.current?.close()}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--ink-faint)',
+                  font: '11px/1 var(--mono)',
+                  marginTop: '6px',
+                  cursor: 'pointer',
+                  textDecoration: 'underline',
+                }}
+              >
+                Lihat Papan Akhir
+              </button>
+            </div>
+          </div>
+        )}
+      </dialog>
     </div>
+
   );
 };
