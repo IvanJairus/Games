@@ -63,12 +63,12 @@ export interface CreateGameOptions {
 }
 
 export const PLAYER_GOLD_THEMES: PlayerTheme[] = [
-  { name: 'Player 1', hex: '#d4af37', label: 'Emas Murni', border: '#b8860b', text: '#000000' },
-  { name: 'Player 2', hex: '#b45309', label: 'Perunggu Tua', border: '#78350f', text: '#ffffff' },
-  { name: 'Player 3', hex: '#f59e0b', label: 'Amber Terang', border: '#d97706', text: '#000000' },
-  { name: 'Player 4', hex: '#fef3c7', label: 'Gading Kuno', border: '#d1b87a', text: '#1c1917' },
-  { name: 'Player 5', hex: '#991b1b', label: 'Batu Delima', border: '#7f1d1d', text: '#ffffff' },
-  { name: 'Player 6', hex: '#78716c', label: 'Obsidian Coklat', border: '#44403c', text: '#ffffff' },
+  { name: 'Player 1', hex: '#b45309', label: 'Emas Kuningan', border: '#78350f', text: '#ffffff' },
+  { name: 'Player 2', hex: '#451a03', label: 'Coklat Tua', border: '#1c1917', text: '#ffffff' },
+  { name: 'Player 3', hex: '#991b1b', label: 'Terracotta', border: '#7f1d1d', text: '#ffffff' },
+  { name: 'Player 4', hex: '#166534', label: 'Zaitun Tua', border: '#14532d', text: '#ffffff' },
+  { name: 'Player 5', hex: '#1e3a8a', label: 'Safir Klasik', border: '#172554', text: '#ffffff' },
+  { name: 'Player 6', hex: '#292524', label: 'Arang Gelap', border: '#0c0a09', text: '#ffffff' },
 ];
 
 export function getRecommendedGridSize(playerCount: number): number {

@@ -1,32 +1,30 @@
 :root {
-  --bg: #12100e;
-  --bg-stage: #181512;
-  --bg-tile: #221c17;
-  --bg-tile-hover: #2e2620;
-  --ink: #faf7f2;
-  --ink-dim: #a89f91;
-  --ink-faint: #6e6456;
-  --line: rgba(217, 163, 94, 0.16);
-  --line-strong: rgba(217, 163, 94, 0.36);
-  --line-gold: rgba(212, 175, 55, 0.6);
+  --bg: #ffffff;
+  --bg-paper: #faf7f2;
+  --bg-stage: #f6f5f3;
+  --bg-tile: #f5f2eb;
+  --bg-tile-hover: #eae4d7;
+  --ink: #1c1917;
+  --ink-dim: #5c5348;
+  --ink-faint: #766b5f;
+  --line: rgba(28, 25, 23, 0.12);
+  --line-strong: rgba(28, 25, 23, 0.24);
   
-  /* Gold, Bronze, Copper Accents */
-  --gold: #d4af37;
-  --gold-bright: #f59e0b;
-  --gold-tint: rgba(212, 175, 55, 0.08);
-  --bronze: #b45309;
-  --bronze-deep: #78350f;
+  /* Gold & Brown Accents (WCAG compliant >= 4.5:1 on light surfaces) */
+  --gold: #b45309;
+  --gold-deep: #78350f;
+  --gold-tint: rgba(180, 83, 9, 0.07);
+  --gold-border: rgba(180, 83, 9, 0.32);
   
   /* Core Goal */
-  --core: #d4af37;
-  --core-glow: rgba(212, 175, 55, 0.5);
+  --core-bg: #fef3c7;
+  --core-border: #b45309;
 
   --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
   
   --r2: 2px;
   --r4: 4px;
-  --r8: 8px;
 }
 
 * {
@@ -43,40 +41,51 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   min-height: 100vh;
-  position: relative;
 }
 
 .mono {
   font-family: var(--mono);
 }
 
-/* Paper Grid Background matching ivanjairus.xyz and gateway-B2 */
+/* Accessible Focus Indicators (Modern Web Guidance) */
+:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+/* Subtle Architectural Paper Grid Texture matching gateway-B2 */
 .paper-bg {
   position: fixed;
   inset: 0;
   pointer-events: none;
-  opacity: 0.16;
+  opacity: 0.35;
   background-image: 
     linear-gradient(var(--line) 1px, transparent 1px),
     linear-gradient(90deg, var(--line) 1px, transparent 1px);
-  background-size: 56px 56px;
+  background-size: 64px 64px;
   -webkit-mask-image: radial-gradient(130% 90% at 50% 10%, #000 0%, transparent 80%);
   mask-image: radial-gradient(130% 90% at 50% 10%, #000 0%, transparent 80%);
   z-index: 0;
 }
 
-/* Custom Scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-::-webkit-scrollbar-track {
+/* Native dialog styling (Modern Web Guidance) */
+dialog {
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r4);
   background: var(--bg);
+  color: var(--ink);
+  padding: 24px;
+  box-shadow: 0 16px 32px rgba(28, 25, 23, 0.15);
 }
-::-webkit-scrollbar-thumb {
-  background: var(--line-strong);
-  border-radius: var(--r2);
-}
-::-webkit-scrollbar-thumb:hover {
-  background: var(--gold);
+
+dialog::backdrop {
+  background: rgba(28, 25, 23, 0.4);
+  backdrop-filter: blur(2px);
 }

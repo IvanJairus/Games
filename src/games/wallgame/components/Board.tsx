@@ -28,7 +28,6 @@ export const Board: React.FC<BoardProps> = ({
 
   const [hoveredIntersection, setHoveredIntersection] = useState<{ x: number; y: number } | null>(null);
 
-  // Board dimensions
   const cellSize = 50;
   const grooveThickness = 10;
   const padding = 20;
@@ -38,7 +37,6 @@ export const Board: React.FC<BoardProps> = ({
   const getCellX = (x: number) => padding + x * (cellSize + grooveThickness);
   const getCellY = (y: number) => padding + y * (cellSize + grooveThickness);
 
-  // Valid moves for active player
   const validMoves = useMemo(() => {
     if (disabled || phase !== 'ACTION') return [];
     return getValidMoves(gameState);
@@ -52,17 +50,15 @@ export const Board: React.FC<BoardProps> = ({
     return map;
   }, [validMoves]);
 
-  // Preview Wall Candidate
   const previewWallCandidate: Wall | null = useMemo(() => {
     if (disabled || phase !== 'ACTION' || !hoveredIntersection || activePlayer.wallsRemaining <= 0) {
       return null;
     }
-    const candidate: Wall = {
+    return {
       orientation: wallOrientation,
       x: hoveredIntersection.x,
       y: hoveredIntersection.y,
     };
-    return candidate;
   }, [disabled, phase, hoveredIntersection, wallOrientation, activePlayer.wallsRemaining]);
 
   const isPreviewValid = useMemo(() => {
@@ -76,23 +72,17 @@ export const Board: React.FC<BoardProps> = ({
         viewBox={`0 0 ${totalSize} ${totalSize}`}
         style={{
           width: '100%',
-          maxWidth: '620px',
+          maxWidth: '600px',
           height: 'auto',
-          background: 'var(--bg-stage)',
+          background: 'var(--bg-paper)',
           borderRadius: 'var(--r4)',
           border: '1px solid var(--line-strong)',
-          boxShadow: '0 24px 38px -10px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(217, 163, 94, 0.1)',
+          boxShadow: '0 4px 12px rgba(28, 25, 23, 0.06)',
         }}
+        role="region"
+        aria-label="Papan permainan WallGo"
       >
-        <defs>
-          {/* Subtle gold glow filter */}
-          <filter id="goldGlow" x="-20%" y="-20%" width="140%" height="140%">
-            <feGaussianBlur stdDeviation="3" result="blur" />
-            <feComposite in="SourceGraphic" in2="blur" operator="over" />
-          </filter>
-        </defs>
-
-        {/* Board Background Border Texture */}
+        {/* Outer border guide */}
         <rect
           x={padding - 6}
           y={padding - 6}
@@ -103,7 +93,7 @@ export const Board: React.FC<BoardProps> = ({
           strokeWidth="1"
         />
 
-        {/* Tiles / Grid Cells */}
+        {/* Board Tiles */}
         {Array.from({ length: gridSize }).map((_, y) =>
           Array.from({ length: gridSize }).map((_, x) => {
             const isCore = x === corePosition.x && y === corePosition.y;
@@ -121,20 +111,19 @@ export const Board: React.FC<BoardProps> = ({
                 }}
                 style={{ cursor: isMoveValid && !disabled ? 'pointer' : 'default' }}
               >
-                {/* Tile Base */}
                 <rect
                   x={px}
                   y={py}
                   width={cellSize}
                   height={cellSize}
-                  rx={3}
-                  fill={isCore ? 'rgba(212, 175, 55, 0.12)' : isMoveValid ? 'rgba(212, 175, 55, 0.08)' : 'var(--bg-tile)'}
-                  stroke={isCore ? 'var(--gold)' : isMoveValid ? 'var(--gold-bright)' : 'rgba(217, 163, 94, 0.1)'}
+                  rx={2}
+                  fill={isCore ? 'var(--core-bg)' : isMoveValid ? '#fef9c3' : 'var(--bg-tile)'}
+                  stroke={isCore ? 'var(--core-border)' : isMoveValid ? 'var(--gold)' : 'var(--line)'}
                   strokeWidth={isCore ? 2 : isMoveValid ? 1.5 : 1}
-                  strokeDasharray={isMoveValid ? '4 2' : 'none'}
+                  strokeDasharray={isMoveValid ? '3 2' : 'none'}
                 />
 
-                {/* Golden Core Emblem in the center */}
+                {/* Central Golden Core emblem */}
                 {isCore && (
                   <g pointerEvents="none">
                     <circle
@@ -142,38 +131,26 @@ export const Board: React.FC<BoardProps> = ({
                       cy={py + cellSize / 2}
                       r={14}
                       fill="none"
-                      stroke="var(--gold)"
+                      stroke="var(--core-border)"
                       strokeWidth="1.2"
-                      strokeDasharray="3 2"
+                      strokeDasharray="2 2"
                     />
                     <circle
                       cx={px + cellSize / 2}
                       cy={py + cellSize / 2}
-                      r={6}
-                      fill="var(--gold)"
-                      opacity={0.85}
-                    />
-                    {/* Concentric Golden Ring */}
-                    <circle
-                      cx={px + cellSize / 2}
-                      cy={py + cellSize / 2}
-                      r={cellSize * 0.45}
-                      fill="none"
-                      stroke="var(--gold)"
-                      strokeWidth="0.8"
-                      opacity={0.35}
+                      r={5}
+                      fill="var(--core-border)"
                     />
                   </g>
                 )}
 
-                {/* Valid Move Indicator Dot */}
+                {/* Step indicator dot */}
                 {isMoveValid && !isCore && (
                   <circle
                     cx={px + cellSize / 2}
                     cy={py + cellSize / 2}
-                    r={4}
+                    r={3.5}
                     fill="var(--gold)"
-                    opacity={0.8}
                     pointerEvents="none"
                   />
                 )}
@@ -182,7 +159,7 @@ export const Board: React.FC<BoardProps> = ({
           })
         )}
 
-        {/* Existing Placed 2-Segment Walls */}
+        {/* Placed 2-Segment Walls */}
         {walls.map((wall, index) => {
           const isH = wall.orientation === 'H';
           const wx = isH ? getCellX(wall.x) : getCellX(wall.x) + cellSize;
@@ -192,23 +169,21 @@ export const Board: React.FC<BoardProps> = ({
 
           return (
             <g key={`wall-${index}`}>
-              {/* Drop Shadow */}
               <rect
                 x={wx + 1}
                 y={wy + 1}
                 width={wWidth}
                 height={wHeight}
-                rx={2}
-                fill="rgba(0,0,0,0.7)"
+                rx={1}
+                fill="rgba(28, 25, 23, 0.15)"
               />
-              {/* Polished Brass / Wood Wall Bar */}
               <rect
                 x={wx}
                 y={wy}
                 width={wWidth}
                 height={wHeight}
-                rx={2}
-                fill="url(#wallBrassGradient)"
+                rx={1}
+                fill="var(--gold-deep)"
                 stroke="var(--gold)"
                 strokeWidth="1"
               />
@@ -216,16 +191,7 @@ export const Board: React.FC<BoardProps> = ({
           );
         })}
 
-        {/* Wall Gradient */}
-        <defs>
-          <linearGradient id="wallBrassGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#d4af37" />
-            <stop offset="50%" stopColor="#b45309" />
-            <stop offset="100%" stopColor="#78350f" />
-          </linearGradient>
-        </defs>
-
-        {/* Interactive Wall Placement Intersections (0 <= wx, wy < gridSize - 1) */}
+        {/* Wall Slots & Hover Preview */}
         {phase === 'ACTION' && !disabled && activePlayer.wallsRemaining > 0 && (
           <g>
             {Array.from({ length: gridSize - 1 }).map((_, wy) =>
@@ -233,7 +199,6 @@ export const Board: React.FC<BoardProps> = ({
                 const ix = getCellX(wx) + cellSize;
                 const iy = getCellY(wy) + cellSize;
 
-                // Interactive target area around intersection
                 return (
                   <rect
                     key={`slot-${wx}-${wy}`}
@@ -256,7 +221,7 @@ export const Board: React.FC<BoardProps> = ({
               })
             )}
 
-            {/* Ghost / Preview Wall Bar */}
+            {/* Ghost Wall Bar */}
             {previewWallCandidate && (
               <g pointerEvents="none">
                 {(() => {
@@ -272,10 +237,10 @@ export const Board: React.FC<BoardProps> = ({
                       y={wy}
                       width={wWidth}
                       height={wHeight}
-                      rx={2}
+                      rx={1}
                       fill={isPreviewValid ? 'var(--gold)' : '#b42318'}
-                      opacity={isPreviewValid ? 0.75 : 0.65}
-                      stroke={isPreviewValid ? '#fff' : '#ef4444'}
+                      opacity={0.5}
+                      stroke={isPreviewValid ? 'var(--gold-deep)' : '#8f1d14'}
                       strokeWidth={1}
                       strokeDasharray={isPreviewValid ? 'none' : '3 2'}
                     />
@@ -286,45 +251,27 @@ export const Board: React.FC<BoardProps> = ({
           </g>
         )}
 
-        {/* Players Seals / Pawns */}
+        {/* Player Pawns */}
         {players.map((p, idx) => {
           const isActive = idx === activePlayerIndex && phase !== 'GAME_OVER';
           const px = getCellX(p.position.x) + cellSize / 2;
           const py = getCellY(p.position.y) + cellSize / 2;
-          const radius = cellSize * 0.35;
+          const radius = cellSize * 0.34;
 
           return (
             <g key={`pawn-${p.id}`} pointerEvents="none">
-              {/* Active Player Breathing Aura */}
+              {/* Static ring indicator on active pawn */}
               {isActive && (
                 <circle
                   cx={px}
                   cy={py}
-                  r={radius + 7}
+                  r={radius + 4}
                   fill="none"
                   stroke="var(--gold)"
-                  strokeWidth={1.5}
-                  strokeDasharray="4 3"
-                  opacity={0.8}
-                >
-                  <animateTransform
-                    attributeName="transform"
-                    type="rotate"
-                    from={`0 ${px} ${py}`}
-                    to={`360 ${px} ${py}`}
-                    dur="12s"
-                    repeatCount="indefinite"
-                  />
-                </circle>
+                  strokeWidth="1.5"
+                  strokeDasharray="3 2"
+                />
               )}
-
-              {/* Shadow */}
-              <circle
-                cx={px}
-                cy={py + 3}
-                r={radius}
-                fill="rgba(0,0,0,0.6)"
-              />
 
               {/* Pawn Base */}
               <circle
@@ -332,14 +279,14 @@ export const Board: React.FC<BoardProps> = ({
                 cy={py}
                 r={radius}
                 fill={p.theme.hex}
-                stroke={isActive ? '#ffffff' : p.theme.border}
-                strokeWidth={isActive ? 2 : 1.5}
+                stroke={p.theme.border}
+                strokeWidth={1.5}
               />
 
-              {/* Number Monogram */}
+              {/* Number Label */}
               <text
                 x={px}
-                y={py + 4}
+                y={py + 3.5}
                 textAnchor="middle"
                 fontSize={cellSize * 0.28}
                 fontFamily="var(--mono)"
