@@ -145,3 +145,15 @@ dialog::backdrop {
     gap: 16px;
   }
 }
+
+/* Hub header responsive navigation */
+.hub-back-btn:hover {
+  border-color: var(--line-strong) !important;
+  color: var(--ink) !important;
+}
+
+@media (max-width: 520px) {
+  .hub-back-label {
+    display: none;
+  }
+}

@@ -4,6 +4,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { WallgameLocal } from '@/games/wall-game/pages/WallgameLocal';
 import { VictoryModal } from '@/games/wall-game/components/VictoryModal';
 import { ComponentErrorBoundary } from '@/components/ErrorBoundary';
+import { Hub } from '@/pages/Hub';
 
 describe('Mobile Viewport Automation Suite (375px)', () => {
   beforeEach(() => {
@@ -152,5 +153,20 @@ describe('Mobile Viewport Automation Suite (375px)', () => {
     expect(screen.getByText(/Coba Render Ulang/)).toBeInTheDocument();
 
     console.error = originalError;
+  });
+
+  it('renders Hub header with responsive root navigation cleanly on mobile', () => {
+    render(
+      <MemoryRouter>
+        <Hub />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByText('ivanjairus.xyz')).toBeInTheDocument();
+    expect(screen.getByText('games')).toBeInTheDocument();
+    const backBtn = screen.getByRole('link', { name: /Kembali ke root/i });
+    expect(backBtn).toBeInTheDocument();
+    expect(backBtn).toHaveAttribute('href', '/');
+    expect(backBtn).toHaveClass('hub-back-btn');
   });
 });

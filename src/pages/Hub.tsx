@@ -4,54 +4,68 @@ import { GAMES_REGISTRY } from '../games/registry';
 
 export const Hub: React.FC = () => {
   return (
-    <div style={{ maxWidth: '1000px', margin: '36px auto', padding: '0 24px' }}>
+    <div style={{ maxWidth: '1000px', margin: 'clamp(20px, 4vw, 36px) auto', padding: '0 clamp(16px, 4.5vw, 24px)' }}>
       <header
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: '10px',
+          justifyContent: 'space-between',
+          gap: '8px',
           font: '12px/1 var(--mono)',
           color: 'var(--ink-dim)',
           letterSpacing: '.04em',
           borderBottom: '1px solid var(--line)',
-          paddingBottom: '16px',
+          paddingBottom: '14px',
           marginBottom: '32px',
         }}
       >
-        <span
-          aria-hidden="true"
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', minWidth: 0, flexWrap: 'nowrap' }}>
+          <span
+            aria-hidden="true"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '24px',
+              height: '24px',
+              flexShrink: 0,
+              border: '1px solid var(--red)',
+              borderRadius: 'var(--r2)',
+              color: 'var(--red)',
+              font: '11px/1 var(--mono)',
+              fontWeight: 700,
+            }}
+          >
+            IJ
+          </span>
+          <span style={{ whiteSpace: 'nowrap' }}>ivanjairus.xyz</span>
+          <span style={{ color: 'var(--line-strong)' }}>/</span>
+          <span style={{ color: 'var(--red)', whiteSpace: 'nowrap' }}>games</span>
+        </div>
+
+        <a
+          href="/"
+          className="hub-back-btn"
           style={{
             display: 'inline-flex',
             alignItems: 'center',
-            justifyContent: 'center',
-            width: '24px',
-            height: '24px',
-            border: '1px solid var(--red)',
+            gap: '4px',
+            whiteSpace: 'nowrap',
+            flexShrink: 0,
+            color: 'var(--ink-dim)',
+            textDecoration: 'none',
+            padding: '5px 9px',
+            border: '1px solid var(--line)',
             borderRadius: 'var(--r2)',
-            color: 'var(--red)',
-            font: '11px/1 var(--mono)',
-            fontWeight: 700,
+            fontSize: '11px',
+            lineHeight: 1,
+            transition: 'border-color 0.15s, color 0.15s',
           }}
+          aria-label="Kembali ke root ivanjairus.xyz"
         >
-          IJ
-        </span>
-        <span>ivanjairus.xyz</span>
-        <span style={{ color: 'var(--line-strong)' }}>/</span>
-        <span style={{ color: 'var(--red)' }}>games</span>
-        <span style={{ marginLeft: 'auto' }}>
-          <a
-            href="/"
-            style={{
-              color: 'var(--ink-dim)',
-              textDecoration: 'none',
-              padding: '4px 8px',
-              border: '1px solid var(--line)',
-              borderRadius: 'var(--r2)',
-            }}
-          >
-            ← kembali ke root
-          </a>
-        </span>
+          <span aria-hidden="true">←</span>
+          <span className="hub-back-label">kembali ke </span>root
+        </a>
       </header>
 
       <div style={{ marginBottom: '36px' }}>
