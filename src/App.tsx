@@ -1,5 +1,7 @@
 import React from 'react';
 import { createBrowserRouter, RouterProvider, Outlet } from 'react-router-dom';
+import { Analytics } from '@vercel/analytics/react';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 import { Hub } from './pages/Hub';
 import { NotFound } from './pages/NotFound';
 import { allGameRoutes } from './games/registry';
@@ -32,6 +34,8 @@ const Layout: React.FC = () => {
         <span>·</span>
         <span>dilayani oleh ij-gateway</span>
       </footer>
+      <Analytics />
+      <SpeedInsights />
     </div>
   );
 };
