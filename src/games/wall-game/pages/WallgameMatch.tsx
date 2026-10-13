@@ -9,6 +9,9 @@ import {
   Share2,
   Clock,
   AlertCircle,
+  HelpCircle,
+  Trophy,
+  Home,
 } from 'lucide-react';
 import {
   GameState,
@@ -27,6 +30,7 @@ import {
   submitOnlineMove,
   startOnlineMatch,
   joinOnlineRoom,
+  leaveOnlineMatch,
   MatchSyncData,
 } from '../../common/multiplayer';
 import {
@@ -48,10 +52,12 @@ export const WallgameMatch: React.FC = () => {
   const [copied, setCopied] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isVictoryModalDismissed, setIsVictoryModalDismissed] = useState(false);
+  const [opponentLeftNotice, setOpponentLeftNotice] = useState<string | null>(null);
 
+  const rulesDialogRef = useRef<HTMLDialogElement>(null);
   const channelRef = useRef<any>(null);
 
-  // Attempt to join room on mount
+  // Join room on mount
   useEffect(() => {
     if (!roomCode || !isSupabaseConfigured()) return;
 
@@ -81,9 +87,16 @@ export const WallgameMatch: React.FC = () => {
       roomCode,
       (data) => {
         setSyncData(data);
+        if (data.match.status === 'abandoned' && data.match.game_state?.abandonedReason) {
+          setOpponentLeftNotice(data.match.game_state.abandonedReason);
+        }
       },
       () => {
-        // Quick broadcast sync
+        // Quick move broadcast
+      },
+      (leavePayload) => {
+        // Opponent leave broadcast
+        setOpponentLeftNotice(`${leavePayload?.playerName || 'Lawan'} telah keluar dari pertandingan.`);
       }
     );
     channelRef.current = sub.channel;
@@ -99,6 +112,33 @@ export const WallgameMatch: React.FC = () => {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleExitRoom = async () => {
+    if (!syncData) {
+      navigate('/wall-game');
+      return;
+    }
+
+    if (syncData.match.status === 'playing') {
+      const confirmLeave = window.confirm(
+        'Apakah Anda yakin ingin keluar dari room? Pertandingan akan dihentikan dan kemenangan diberikan kepada lawan.'
+      );
+      if (!confirmLeave) return;
+    }
+
+    try {
+      await leaveOnlineMatch({
+        matchId: syncData.match.id,
+        roomCode,
+        playerIndex: syncData.myPlayerIndex,
+        playerName,
+      });
+    } catch {
+      // Ignore network errors on exit
+    } finally {
+      navigate('/wall-game');
+    }
+  };
+
   const handleStartGame = async () => {
     if (!syncData || !syncData.isHost) return;
     setIsSubmitting(true);
@@ -112,6 +152,7 @@ export const WallgameMatch: React.FC = () => {
 
       await startOnlineMatch(syncData.match.id, initialGame);
       setIsVictoryModalDismissed(false);
+      setOpponentLeftNotice(null);
     } catch (err: any) {
       setActionError(err.message);
     } finally {
@@ -197,6 +238,7 @@ export const WallgameMatch: React.FC = () => {
 
       await startOnlineMatch(syncData.match.id, initialGame);
       setIsVictoryModalDismissed(false);
+      setOpponentLeftNotice(null);
     } catch (err: any) {
       setActionError(err.message);
     } finally {
@@ -211,7 +253,7 @@ export const WallgameMatch: React.FC = () => {
           <AlertCircle size={40} color="var(--gold)" style={{ margin: '0 auto 16px' }} />
           <h2 style={{ fontSize: '20px', fontWeight: 700, margin: '0 0 10px' }}>Supabase Belum Dikonfigurasi</h2>
           <p style={{ color: 'var(--ink-dim)', fontSize: '14px', lineHeight: 1.6, marginBottom: '24px' }}>
-            Kredensial API Supabase belum terdeteksi. Silakan periksa file konfigurasi environment (.env.local).
+            Kredensial API Supabase belum terdeteksi. Silakan periksa file .env.local.
           </p>
           <Link
             to="/wall-game"
@@ -273,13 +315,17 @@ export const WallgameMatch: React.FC = () => {
 
   const { match, players, myPlayerIndex, isHost } = syncData;
   const game = match.game_state as GameState;
+  const activePlayer = game?.players?.[game.activePlayerIndex];
   const isMyTurn = match.status === 'playing' && game && game.activePlayerIndex === myPlayerIndex;
   const isGameOver = (match.status === 'completed' || game?.phase === 'GAME_OVER') && !isVictoryModalDismissed;
   const winnerPlayer = game && game.winnerId !== null ? game.players[game.winnerId] : null;
 
+  const isAbandoned = match.status === 'abandoned';
+  const didIWinByAbandon = isAbandoned && match.winner_index === myPlayerIndex;
+
   return (
-    <div style={{ maxWidth: '840px', margin: '32px auto', padding: '0 20px' }}>
-      {/* Editorial Header */}
+    <div style={{ maxWidth: '640px', margin: '24px auto', padding: '0 16px' }}>
+      {/* Editorial Header (Consistent with Local Hotseat) */}
       <header
         style={{
           display: 'flex',
@@ -291,8 +337,9 @@ export const WallgameMatch: React.FC = () => {
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <Link
-            to="/wall-game"
+          <button
+            type="button"
+            onClick={handleExitRoom}
             style={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -303,43 +350,130 @@ export const WallgameMatch: React.FC = () => {
               border: '1px solid var(--line-strong)',
               background: '#ffffff',
               color: 'var(--ink)',
-              textDecoration: 'none',
+              cursor: 'pointer',
             }}
             aria-label="Kembali ke Lobby"
           >
             <ArrowLeft size={16} />
-          </Link>
+          </button>
           <div>
-            <h1 style={{ fontSize: '18px', fontWeight: 700, margin: 0, letterSpacing: '-0.01em' }}>
-              WallGo <span style={{ color: 'var(--gold)', fontWeight: 400 }}>· Match Online</span>
+            <h1
+              style={{
+                fontSize: '18px',
+                fontWeight: 700,
+                letterSpacing: '-0.015em',
+                margin: 0,
+                color: 'var(--ink)',
+              }}
+            >
+              WallGo · Mode Online
             </h1>
-            <div style={{ font: '11px/1 var(--mono)', color: 'var(--ink-dim)', marginTop: '4px' }}>
-              Room: <span style={{ fontWeight: 700, letterSpacing: '.08em', color: 'var(--ink)' }}>{roomCode}</span>
+            <div style={{ font: '11px/1 var(--mono)', color: 'var(--ink-faint)', marginTop: '2px' }}>
+              Papan Catur Halang Rintang · {game ? `${game.playerCount} Pemain` : `${players.length} Pemain`} · Room: <span style={{ color: 'var(--ink)', fontWeight: 700 }}>{roomCode}</span>
             </div>
           </div>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <button
+            type="button"
+            onClick={() => rulesDialogRef.current?.showModal()}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 12px',
+              border: '1px solid var(--line-strong)',
+              borderRadius: 'var(--r2)',
+              background: '#ffffff',
+              color: 'var(--ink-dim)',
+              font: '11px/1 var(--mono)',
+              cursor: 'pointer',
+            }}
+          >
+            <HelpCircle size={14} /> Aturan
+          </button>
+
+          <button
+            type="button"
             onClick={handleCopyLink}
             style={{
               display: 'inline-flex',
               alignItems: 'center',
               gap: '6px',
               padding: '6px 12px',
-              background: '#ffffff',
-              border: '1px solid var(--line-strong)',
+              border: `1px solid ${copied ? 'var(--gold)' : 'var(--gold-border)'}`,
               borderRadius: 'var(--r2)',
+              background: copied ? 'var(--gold)' : 'var(--gold-tint)',
+              color: copied ? '#ffffff' : 'var(--gold)',
               font: '11px/1 var(--mono)',
-              color: 'var(--ink)',
               cursor: 'pointer',
+              fontWeight: 700,
             }}
           >
-            {copied ? <Check size={13} color="var(--gold)" /> : <Share2 size={13} />}
-            {copied ? 'Tersalin!' : 'Bagikan Link'}
+            {copied ? <Check size={13} /> : <Share2 size={13} />}
+            {copied ? 'Tersalin' : 'Bagikan'}
           </button>
         </div>
       </header>
+
+      {/* Opponent Left / Abandoned Alert */}
+      {isAbandoned && (
+        <div
+          style={{
+            background: didIWinByAbandon ? 'var(--gold-tint)' : '#fef2f2',
+            border: `1.5px solid ${didIWinByAbandon ? 'var(--gold)' : '#fecaca'}`,
+            borderRadius: 'var(--r3)',
+            padding: '24px 20px',
+            textAlign: 'center',
+            marginBottom: '24px',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.06)',
+          }}
+        >
+          <div
+            style={{
+              width: '48px',
+              height: '48px',
+              borderRadius: '50%',
+              background: didIWinByAbandon ? '#ffffff' : '#fee2e2',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 12px',
+              color: didIWinByAbandon ? 'var(--gold)' : '#991b1b',
+            }}
+          >
+            {didIWinByAbandon ? <Trophy size={24} /> : <AlertCircle size={24} />}
+          </div>
+          <h2 style={{ fontSize: '18px', fontWeight: 800, margin: '0 0 6px', color: 'var(--ink)' }}>
+            {didIWinByAbandon ? 'Selamat! Anda Menang (Lawan Menyerah)' : 'Pertandingan Dibatalkan'}
+          </h2>
+          <p style={{ fontSize: '13.5px', color: 'var(--ink-dim)', margin: '0 0 20px', lineHeight: 1.5 }}>
+            {opponentLeftNotice || 'Pemain lawan telah keluar dari room pertandingan.'}
+          </p>
+          <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+            <button
+              type="button"
+              onClick={() => navigate('/wall-game')}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '10px 18px',
+                background: 'var(--ink)',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: 'var(--r2)',
+                font: '12px/1 var(--mono)',
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              <Home size={13} /> Kembali ke Lobby
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Waiting Lobby State */}
       {match.status === 'waiting' && (
@@ -348,7 +482,7 @@ export const WallgameMatch: React.FC = () => {
             background: '#ffffff',
             border: '1px solid var(--line-strong)',
             borderRadius: 'var(--r4)',
-            padding: '36px 28px',
+            padding: '36px 24px',
             boxShadow: '0 4px 16px rgba(28, 25, 23, 0.05)',
             textAlign: 'center',
           }}
@@ -487,88 +621,146 @@ export const WallgameMatch: React.FC = () => {
         </div>
       )}
 
-      {/* Active Game State */}
-      {(match.status === 'playing' || match.status === 'completed') && game && (
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px' }}>
-          {/* Turn Banner */}
+      {/* Active Game State (Exact Layout Matching Local Hotseat) */}
+      {(match.status === 'playing' || match.status === 'completed') && game && activePlayer && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', width: '100%' }}>
+          {/* Turn Banner with Active Pawn Indicator & Telemetry */}
           <div
+            data-testid="turn-banner"
             style={{
-              width: '100%',
-              maxWidth: '680px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              padding: '12px 20px',
-              background: isMyTurn ? 'var(--gold-tint)' : '#ffffff',
-              border: `1px solid ${isMyTurn ? 'var(--gold)' : 'var(--line)'}`,
+              padding: '12px 16px',
               borderRadius: 'var(--r3)',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
+              background: '#ffffff',
+              border: `1.5px solid ${isMyTurn ? 'var(--gold)' : activePlayer.theme.hex}`,
+              boxShadow: isMyTurn ? '0 0 0 3px rgba(180, 83, 9, 0.15)' : '0 2px 8px rgba(28, 25, 23, 0.04)',
+              flexWrap: 'wrap',
+              gap: '10px',
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <div
                 style={{
-                  width: '12px',
-                  height: '12px',
+                  width: '32px',
+                  height: '32px',
                   borderRadius: '50%',
-                  background: isMyTurn ? 'var(--gold)' : 'var(--ink-faint)',
-                  boxShadow: isMyTurn ? '0 0 0 3px rgba(180, 83, 9, 0.2)' : 'none',
+                  background: activePlayer.theme.hex,
+                  border: `2px solid ${activePlayer.theme.border}`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: activePlayer.theme.text,
+                  fontWeight: 700,
+                  font: '13px/1 var(--mono)',
                 }}
-              />
+              >
+                {activePlayer.id + 1}
+              </div>
               <div>
-                <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--ink)' }}>
-                  {isMyTurn ? 'Giliran Anda!' : `Menunggu ${players[game.activePlayerIndex]?.name || 'Lawan'}...`}
+                <div style={{ font: '10px/1 var(--mono)', color: isMyTurn ? 'var(--gold)' : 'var(--ink-faint)', letterSpacing: '.08em', textTransform: 'uppercase' }}>
+                  {isMyTurn ? 'GILIRAN ANDA!' : `Giliran Aktif · Putaran #${game.turn}`}
                 </div>
-                <div style={{ font: '11px/1 var(--mono)', color: 'var(--ink-dim)', marginTop: '3px' }}>
-                  Pemain Aktif: {players[game.activePlayerIndex]?.name || `Pemain ${game.activePlayerIndex + 1}`} · Bidak #{game.activePlayerIndex + 1}
+                <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--ink)' }}>
+                  {activePlayer.name} {game.activePlayerIndex === myPlayerIndex && '(Anda)'}
                 </div>
               </div>
             </div>
 
-            {/* Wall Controls for Active Player */}
-            {isMyTurn && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <button
-                  onClick={() => setWallOrientation((prev) => (prev === 'H' ? 'V' : 'H'))}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    padding: '6px 12px',
-                    background: '#ffffff',
-                    border: '1px solid var(--gold-border)',
-                    borderRadius: 'var(--r2)',
-                    font: '11px/1 var(--mono)',
-                    color: 'var(--gold)',
-                    cursor: 'pointer',
-                    fontWeight: 700,
-                  }}
-                >
-                  <RotateCw size={13} /> Dinding {wallOrientation === 'H' ? 'Horizontal (H)' : 'Vertikal (V)'}
-                </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', font: 'var(--mono)', fontSize: '12px' }}>
+              <div>
+                <span style={{ color: 'var(--ink-faint)' }}>Jarak ke Inti: </span>
+                <span style={{ fontWeight: 700, color: 'var(--ink)' }}>{activePlayer.distanceToCore} langkah</span>
               </div>
-            )}
+              <div>
+                <span style={{ color: 'var(--ink-faint)' }}>Sisa Dinding: </span>
+                <span style={{ fontWeight: 700, color: 'var(--gold)' }}>{activePlayer.wallsRemaining} balok</span>
+              </div>
+            </div>
           </div>
 
+          {/* Quick Wall Mode Selector & Orientation Toggle */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              background: '#ffffff',
+              padding: '8px 14px',
+              borderRadius: 'var(--r2)',
+              border: '1px solid var(--line-strong)',
+              fontSize: '12px',
+              flexWrap: 'wrap',
+              gap: '8px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ font: '11px/1 var(--mono)', color: 'var(--ink-dim)', textTransform: 'uppercase' }}>
+                Orientasi Dinding:
+              </span>
+              <button
+                type="button"
+                data-testid="orientation-toggle"
+                onClick={() => setWallOrientation((prev) => (prev === 'H' ? 'V' : 'H'))}
+                disabled={!isMyTurn || activePlayer.wallsRemaining <= 0 || isSubmitting}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '6px 10px',
+                  background: 'var(--bg-stage)',
+                  border: '1px solid var(--gold)',
+                  borderRadius: 'var(--r2)',
+                  color: 'var(--gold)',
+                  font: '11px/1 var(--mono)',
+                  fontWeight: 700,
+                  cursor: isMyTurn && activePlayer.wallsRemaining > 0 ? 'pointer' : 'not-allowed',
+                  opacity: isMyTurn && activePlayer.wallsRemaining > 0 ? 1 : 0.5,
+                }}
+              >
+                <RotateCw size={12} /> {wallOrientation === 'H' ? 'Horizontal (―)' : 'Vertikal (|)'}
+              </button>
+              <span style={{ font: '10px/1 var(--mono)', color: 'var(--ink-faint)' }}>
+                (Tekan Spasi/R atau sentuh celah)
+              </span>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleExitRoom}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'var(--ink-faint)',
+                font: '11px/1 var(--mono)',
+                cursor: 'pointer',
+                textDecoration: 'underline',
+              }}
+            >
+              Keluar Room
+            </button>
+          </div>
+
+          {/* Action Error Flash */}
           {actionError && (
             <div
               style={{
-                width: '100%',
-                maxWidth: '680px',
-                padding: '10px 16px',
+                padding: '8px 12px',
+                borderRadius: 'var(--r2)',
                 background: '#fef2f2',
                 border: '1px solid #fecaca',
-                borderRadius: 'var(--r2)',
                 color: '#991b1b',
-                fontSize: '13px',
+                fontSize: '12px',
+                fontFamily: 'var(--mono)',
               }}
             >
               {actionError}
             </div>
           )}
 
-          {/* Interactive SVG Board */}
-          <div style={{ overflowX: 'auto', maxWidth: '100%', padding: '8px 0' }}>
+          {/* Main Interactive Board */}
+          <div style={{ width: '100%', display: 'flex', justifyContent: 'center' }}>
             <Board
               gameState={game}
               wallOrientation={wallOrientation}
@@ -577,6 +769,53 @@ export const WallgameMatch: React.FC = () => {
               onOrientationChange={setWallOrientation}
               disabled={!isMyTurn || isSubmitting}
             />
+          </div>
+
+          {/* Player Roster Status Cards */}
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: `repeat(${game.playerCount}, 1fr)`,
+              gap: '8px',
+              marginTop: '4px',
+            }}
+          >
+            {game.players.map((p, idx) => {
+              const isTurn = idx === game.activePlayerIndex;
+              const isMe = idx === myPlayerIndex;
+              return (
+                <div
+                  key={p.id}
+                  style={{
+                    padding: '8px 10px',
+                    borderRadius: 'var(--r2)',
+                    background: '#ffffff',
+                    border: isTurn ? `1.5px solid ${p.theme.hex}` : '1px solid var(--line)',
+                    opacity: isTurn ? 1 : 0.75,
+                    font: 'var(--mono)',
+                    fontSize: '11px',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                    <span
+                      style={{
+                        display: 'inline-block',
+                        width: '8px',
+                        height: '8px',
+                        borderRadius: '50%',
+                        background: p.theme.hex,
+                      }}
+                    />
+                    <strong style={{ color: 'var(--ink)', fontSize: '11px' }}>
+                      {p.name} {isMe && '(Anda)'}
+                    </strong>
+                  </div>
+                  <div style={{ color: 'var(--ink-faint)', fontSize: '10px' }}>
+                    Sisa: <span style={{ color: 'var(--gold)', fontWeight: 700 }}>{p.wallsRemaining} dinding</span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
           {/* Victory Modal */}
@@ -591,12 +830,79 @@ export const WallgameMatch: React.FC = () => {
                   handleRestartMatch();
                 }
               }}
-              onNewSetup={() => navigate('/wall-game')}
+              onNewSetup={handleExitRoom}
               onClose={() => setIsVictoryModalDismissed(true)}
             />
           )}
         </div>
       )}
+
+      {/* Rules Dialog (Identical to Local Hotseat) */}
+      <dialog
+        ref={rulesDialogRef}
+        aria-labelledby="rules-title"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) {
+            const rect = e.currentTarget.getBoundingClientRect();
+            const inContent =
+              rect.top <= e.clientY &&
+              e.clientY <= rect.top + rect.height &&
+              rect.left <= e.clientX &&
+              e.clientX <= rect.left + rect.width;
+            if (!inContent) {
+              rulesDialogRef.current?.close();
+            }
+          }
+        }}
+        style={{
+          position: 'fixed',
+          inset: 0,
+          margin: 'auto',
+          border: '1px solid var(--line-strong)',
+          borderRadius: 'var(--r4)',
+          padding: '24px',
+          background: '#ffffff',
+          boxShadow: '0 12px 32px rgba(28, 25, 23, 0.12)',
+          maxWidth: '520px',
+          width: 'calc(100% - 32px)',
+          color: 'var(--ink)',
+        }}
+      >
+        <h2 id="rules-title" style={{ fontSize: '18px', fontWeight: 700, margin: '0 0 12px', color: 'var(--ink)' }}>
+          Aturan WallGo (Quoridor Core)
+        </h2>
+        <ul style={{ fontSize: '13px', lineHeight: 1.6, paddingLeft: '18px', color: 'var(--ink-dim)', margin: '0 0 18px' }}>
+          <li>
+            <strong>Tujuan:</strong> Bidak pertama yang mencapai <em>The Golden Core</em> (petak tengah berlingkaran emas) langsung memenangkan pertandingan.
+          </li>
+          <li>
+            <strong>Tindakan Giliran:</strong> Setiap giliran, pemain memilih <em>melangkah 1 petak</em> (ke atas, bawah, kiri, kanan) ATAU <em>memasang 1 balok dinding</em> (panjang 2 petak).
+          </li>
+          <li>
+            <strong>Melompati Lawan:</strong> Jika berhadapan langsung dengan bidak lawan tanpa terhalang dinding, Anda dapat melompati bidak tersebut.
+          </li>
+          <li>
+            <strong>Aturan Keadilan (Fair Rule):</strong> Pemasangan dinding yang mengunci total jalan pemain mana pun menuju The Golden Core adalah pelanggaran dan dilarang (diverifikasi oleh BFS pathfinder).
+          </li>
+        </ul>
+        <div style={{ textAlign: 'right' }}>
+          <button
+            type="button"
+            onClick={() => rulesDialogRef.current?.close()}
+            style={{
+              padding: '8px 16px',
+              borderRadius: 'var(--r2)',
+              border: '1px solid var(--line-strong)',
+              background: 'var(--bg-stage)',
+              color: 'var(--ink)',
+              font: '12px/1 var(--mono)',
+              cursor: 'pointer',
+            }}
+          >
+            Tutup
+          </button>
+        </div>
+      </dialog>
     </div>
   );
 };

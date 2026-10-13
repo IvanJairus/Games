@@ -58,13 +58,13 @@ export const WallgameLobby: React.FC = () => {
   };
 
   return (
-    <div style={{ maxWidth: '820px', margin: '40px auto', padding: '0 24px' }}>
+    <div style={{ maxWidth: '820px', margin: '28px auto', padding: '0 16px' }}>
       <header
         style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          marginBottom: '28px',
+          marginBottom: '24px',
           borderBottom: '1px solid var(--line)',
           paddingBottom: '14px',
         }}
@@ -123,7 +123,7 @@ export const WallgameLobby: React.FC = () => {
           background: '#ffffff',
           border: '1px solid var(--line-strong)',
           borderRadius: 'var(--r4)',
-          padding: '36px',
+          padding: 'clamp(20px, 4vw, 36px)',
           boxShadow: '0 4px 16px rgba(28, 25, 23, 0.05)',
         }}
       >
@@ -343,7 +343,16 @@ export const WallgameLobby: React.FC = () => {
               </div>
 
               {/* Join Room Form */}
-              <form onSubmit={handleJoinOnline} style={{ display: 'flex', gap: '6px' }}>
+              <form
+                onSubmit={handleJoinOnline}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'minmax(0, 1fr) auto',
+                  gap: '8px',
+                  width: '100%',
+                  boxSizing: 'border-box',
+                }}
+              >
                 <input
                   type="text"
                   placeholder="KODE ROOM"
@@ -351,7 +360,9 @@ export const WallgameLobby: React.FC = () => {
                   onChange={(e) => setRoomCode(e.target.value)}
                   maxLength={6}
                   style={{
-                    flex: 1,
+                    width: '100%',
+                    minWidth: 0,
+                    boxSizing: 'border-box',
                     padding: '8px 10px',
                     background: '#ffffff',
                     border: '1px solid var(--line-strong)',
@@ -368,6 +379,8 @@ export const WallgameLobby: React.FC = () => {
                   type="submit"
                   disabled={!roomCode.trim()}
                   style={{
+                    flexShrink: 0,
+                    whiteSpace: 'nowrap',
                     display: 'inline-flex',
                     alignItems: 'center',
                     gap: '4px',

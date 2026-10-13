@@ -86,7 +86,7 @@ export const Board: React.FC<BoardProps> = ({
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', userSelect: 'none' }}>
+    <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', userSelect: 'none' }}>
       <svg
         viewBox={`0 0 ${totalSize} ${totalSize}`}
         onMouseLeave={() => setHoveredWall(null)}

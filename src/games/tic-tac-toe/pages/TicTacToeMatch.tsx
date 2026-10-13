@@ -22,6 +22,7 @@ import {
   subscribeToMatch,
   submitOnlineMove,
   joinOnlineRoom,
+  leaveOnlineMatch,
   MatchSyncData,
 } from '../../common/multiplayer';
 import {
@@ -40,6 +41,7 @@ export const TicTacToeMatch: React.FC = () => {
   const [joinError, setJoinError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [opponentLeftNotice, setOpponentLeftNotice] = useState<string | null>(null);
 
   const victoryDialogRef = useRef<HTMLDialogElement>(null);
   const channelRef = useRef<any>(null);
@@ -74,9 +76,15 @@ export const TicTacToeMatch: React.FC = () => {
       roomCode,
       (data) => {
         setSyncData(data);
+        if (data.match.status === 'abandoned' && data.match.game_state?.abandonedReason) {
+          setOpponentLeftNotice(data.match.game_state.abandonedReason);
+        }
       },
       () => {
         // Quick broadcast sync
+      },
+      (leavePayload) => {
+        setOpponentLeftNotice(`${leavePayload?.playerName || 'Lawan'} telah keluar dari pertandingan.`);
       }
     );
     channelRef.current = sub.channel;
@@ -100,6 +108,28 @@ export const TicTacToeMatch: React.FC = () => {
     navigator.clipboard.writeText(window.location.href);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleExitRoom = async () => {
+    if (!syncData) {
+      navigate('/tic-tac-toe');
+      return;
+    }
+    if (syncData.match.status === 'playing') {
+      const confirmLeave = window.confirm(
+        'Apakah Anda yakin ingin keluar dari room? Pertandingan akan dihentikan dan kemenangan diberikan kepada lawan.'
+      );
+      if (!confirmLeave) return;
+    }
+    try {
+      await leaveOnlineMatch({
+        matchId: syncData.match.id,
+        roomCode,
+        playerIndex: syncData.myPlayerIndex,
+        playerName,
+      });
+    } catch {}
+    navigate('/tic-tac-toe');
   };
 
   const handleCellClick = async (cellIndex: number) => {
@@ -240,8 +270,11 @@ export const TicTacToeMatch: React.FC = () => {
   const p1 = players.find((p) => p.player_index === 0);
   const p2 = players.find((p) => p.player_index === 1);
 
+  const isAbandoned = match.status === 'abandoned';
+  const didIWinByAbandon = isAbandoned && match.winner_index === myPlayerIndex;
+
   return (
-    <div style={{ maxWidth: '640px', margin: '32px auto', padding: '0 20px' }}>
+    <div style={{ maxWidth: '640px', margin: '24px auto', padding: '0 16px' }}>
       {/* Header */}
       <header
         style={{
@@ -254,8 +287,9 @@ export const TicTacToeMatch: React.FC = () => {
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <Link
-            to="/tic-tac-toe"
+          <button
+            type="button"
+            onClick={handleExitRoom}
             style={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -266,12 +300,12 @@ export const TicTacToeMatch: React.FC = () => {
               border: '1px solid var(--line-strong)',
               background: '#ffffff',
               color: 'var(--ink)',
-              textDecoration: 'none',
+              cursor: 'pointer',
             }}
-            aria-label="Kembali"
+            aria-label="Kembali ke Menu"
           >
             <ArrowLeft size={16} />
-          </Link>
+          </button>
           <div>
             <h1 style={{ fontSize: '18px', fontWeight: 700, margin: 0, letterSpacing: '-0.015em' }}>
               Tic Tac Toe · <span style={{ color: 'var(--gold)', fontWeight: 400 }}>Online No-Draw</span>
@@ -289,18 +323,77 @@ export const TicTacToeMatch: React.FC = () => {
             alignItems: 'center',
             gap: '6px',
             padding: '6px 12px',
-            background: '#ffffff',
-            border: '1px solid var(--line-strong)',
+            background: copied ? 'var(--gold)' : '#ffffff',
+            border: `1px solid ${copied ? 'var(--gold)' : 'var(--line-strong)'}`,
             borderRadius: 'var(--r2)',
             font: '11px/1 var(--mono)',
-            color: 'var(--ink)',
+            color: copied ? '#ffffff' : 'var(--ink)',
             cursor: 'pointer',
+            fontWeight: 700,
           }}
         >
-          {copied ? <Check size={13} color="var(--gold)" /> : <Share2 size={13} />}
-          {copied ? 'Tersalin!' : 'Bagikan Link'}
+          {copied ? <Check size={13} /> : <Share2 size={13} />}
+          {copied ? 'Tersalin' : 'Bagikan Link'}
         </button>
       </header>
+
+      {/* Opponent Left / Abandoned Alert */}
+      {isAbandoned && (
+        <div
+          style={{
+            background: didIWinByAbandon ? 'var(--gold-tint)' : '#fef2f2',
+            border: `1.5px solid ${didIWinByAbandon ? 'var(--gold)' : '#fecaca'}`,
+            borderRadius: 'var(--r3)',
+            padding: '24px 20px',
+            textAlign: 'center',
+            marginBottom: '24px',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.06)',
+          }}
+        >
+          <div
+            style={{
+              width: '48px',
+              height: '48px',
+              borderRadius: '50%',
+              background: didIWinByAbandon ? '#ffffff' : '#fee2e2',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 12px',
+              color: didIWinByAbandon ? 'var(--gold)' : '#991b1b',
+            }}
+          >
+            {didIWinByAbandon ? <Trophy size={24} /> : <AlertCircle size={24} />}
+          </div>
+          <h2 style={{ fontSize: '18px', fontWeight: 800, margin: '0 0 6px', color: 'var(--ink)' }}>
+            {didIWinByAbandon ? 'Selamat! Anda Menang (Lawan Keluar)' : 'Pertandingan Berakhir'}
+          </h2>
+          <p style={{ fontSize: '13.5px', color: 'var(--ink-dim)', margin: '0 0 20px', lineHeight: 1.5 }}>
+            {opponentLeftNotice || 'Pemain lawan telah keluar dari room pertandingan.'}
+          </p>
+          <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+            <button
+              type="button"
+              onClick={() => navigate('/tic-tac-toe')}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '10px 18px',
+                background: 'var(--ink)',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: 'var(--r2)',
+                font: '12px/1 var(--mono)',
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              <Home size={13} /> Kembali ke Menu
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Waiting for opponent banner */}
       {players.length < 2 && (

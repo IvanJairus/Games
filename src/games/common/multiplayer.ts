@@ -213,10 +213,80 @@ export async function startOnlineMatch(matchId: string, initialState?: any): Pro
   await supabase.from('matches').update(updates).eq('id', matchId);
 }
 
+export async function leaveOnlineMatch(params: {
+  matchId: string;
+  roomCode: string;
+  playerIndex: number;
+  playerName: string;
+}): Promise<void> {
+  const supabase = getSupabase();
+  if (!supabase) return;
+
+  const sessionId = getPlayerSessionId();
+
+  // Fetch current match to decide outcome
+  const { data: match } = await supabase
+    .from('matches')
+    .select('*')
+    .eq('id', params.matchId)
+    .single();
+
+  if (!match) return;
+
+  // Remove player from roster
+  await supabase
+    .from('match_players')
+    .delete()
+    .eq('match_id', params.matchId)
+    .eq('session_id', sessionId);
+
+  // If match was active, award forfeit win to remaining player or mark abandoned
+  if (match.status === 'playing') {
+    const remainingWinner = match.max_players === 2 ? (params.playerIndex === 0 ? 1 : 0) : null;
+    await supabase
+      .from('matches')
+      .update({
+        status: 'abandoned',
+        winner_index: remainingWinner,
+        game_state: {
+          ...(match.game_state || {}),
+          abandonedBy: params.playerName,
+          abandonedReason: `${params.playerName} telah keluar dari pertandingan`,
+        },
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', params.matchId);
+  } else if (match.status === 'waiting' && params.playerIndex === 0) {
+    await supabase
+      .from('matches')
+      .update({
+        status: 'abandoned',
+        game_state: {
+          ...(match.game_state || {}),
+          abandonedReason: 'Host telah menutup room ini',
+        },
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', params.matchId);
+  }
+
+  // Broadcast leave event
+  const channel = supabase.channel(`room:${params.roomCode}`);
+  channel.send({
+    type: 'broadcast',
+    event: 'player_left',
+    payload: {
+      playerIndex: params.playerIndex,
+      playerName: params.playerName,
+    },
+  });
+}
+
 export function subscribeToMatch(
   roomCode: string,
   onSync: (sync: MatchSyncData) => void,
-  onBroadcastMove?: (payload: any) => void
+  onBroadcastMove?: (payload: any) => void,
+  onBroadcastLeave?: (payload: any) => void
 ): { unsubscribe: () => void; channel: RealtimeChannel | null } {
   const supabase = getSupabase();
   if (!supabase) {
@@ -262,6 +332,12 @@ export function subscribeToMatch(
     .on('broadcast', { event: 'game_move' }, (event) => {
       if (onBroadcastMove) {
         onBroadcastMove(event.payload);
+      }
+      fetchFullState();
+    })
+    .on('broadcast', { event: 'player_left' }, (event) => {
+      if (onBroadcastLeave) {
+        onBroadcastLeave(event.payload);
       }
       fetchFullState();
     })
