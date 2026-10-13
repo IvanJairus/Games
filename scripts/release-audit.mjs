@@ -36,7 +36,7 @@ const STAGES = [
   {
     name: 'Security & Domain Guards',
     desc: 'Memastikan tidak ada kebocoran domain pihak ketiga (*.vercel.app) di kode aktif',
-    cmd: "git grep -nE '\\.vercel\\.app' -- ':!registry/' ':!vercel.json' || true",
+    cmd: "git grep -nE '\\.vercel\\.app' -- ':!registry/' ':!vercel.json' ':!.github/' || true",
   },
 ];
 

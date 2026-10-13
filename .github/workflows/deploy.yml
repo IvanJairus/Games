@@ -1,0 +1,88 @@
+name: CI & Auto-Deploy to Vercel
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  deployments: write
+  pull-requests: write
+
+jobs:
+  audit-and-test:
+    name: Security & Quality Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js (v22 LTS)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: TypeScript Typecheck
+        run: npx tsc -b
+
+      - name: Run Game Engine Unit Tests
+        run: npm run test:unit
+
+      - name: Run Viewport UI Automation (Desktop & Mobile)
+        run: npm run test:ui
+
+      - name: Run Release Readiness Audit
+        run: npm run release:check
+
+      - name: Security & Domain Guard Check
+        run: npm run guard:check
+
+  deploy-to-vercel:
+    name: Deploy to Vercel
+    needs: audit-and-test
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js (v22 LTS)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Pull Vercel Environment Information
+        run: npx vercel pull --yes --environment=production --token=$VERCEL_TOKEN
+
+      - name: Build Project Artifacts
+        run: npx vercel build --prod --token=$VERCEL_TOKEN
+
+      - name: Deploy to Vercel (Production)
+        id: deploy
+        run: |
+          DEPLOY_URL=$(npx vercel deploy --prebuilt --prod --token=$VERCEL_TOKEN)
+          echo "DEPLOY_URL=$DEPLOY_URL" >> $GITHUB_OUTPUT
+          echo "### 🚀 Vercel Production Deployment Success!" >> $GITHUB_STEP_SUMMARY
+          echo "- **Production URL:** $DEPLOY_URL" >> $GITHUB_STEP_SUMMARY
+          echo "- **Games Hub:** $DEPLOY_URL/games/" >> $GITHUB_STEP_SUMMARY
