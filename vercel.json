@@ -1,0 +1,22 @@
+{
+  "rewrites": [
+    { "source": "/games/:path*", "destination": "/games/index.html" }
+  ],
+  "headers": [
+    {
+      "source": "/games/assets/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+      ]
+    },
+    {
+      "source": "/games/(.*)",
+      "headers": [
+        {
+          "key": "Content-Security-Policy",
+          "value": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://<ref>.supabase.co wss://<ref>.supabase.co https://vitals.vercel-insights.com; frame-ancestors 'none'; base-uri 'none'"
+        }
+      ]
+    }
+  ]
+}
