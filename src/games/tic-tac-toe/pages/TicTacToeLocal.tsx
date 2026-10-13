@@ -246,7 +246,7 @@ export const TicTacToeLocal: React.FC = () => {
                   display: 'inline-block',
                 }}
               >
-                ⚡ Perhatian: Bidak tertua di petak #{activeOldestPiece.cellIndex + 1} akan lenyap saat Anda melangkah!
+                <span style={{ fontWeight: 600 }}>Perhatian:</span> Bidak tertua di petak #{activeOldestPiece.cellIndex + 1} akan lenyap saat Anda melangkah.
               </div>
             )}
           </div>
@@ -293,15 +293,27 @@ export const TicTacToeLocal: React.FC = () => {
               boxShadow: '0 2px 6px rgba(180, 83, 9, 0.2)',
             }}
           >
-            <RotateCw size={14} /> Ronde Berikutnya →
+            <RotateCw size={14} /> Ronde Berikutnya
           </button>
         </div>
       )}
 
-      {/* Rules Dialog */}
       <dialog
         ref={rulesDialogRef}
         aria-labelledby="tictactoe-rules-title"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) {
+            const rect = e.currentTarget.getBoundingClientRect();
+            const inContent =
+              rect.top <= e.clientY &&
+              e.clientY <= rect.top + rect.height &&
+              rect.left <= e.clientX &&
+              e.clientX <= rect.left + rect.width;
+            if (!inContent) {
+              rulesDialogRef.current?.close();
+            }
+          }
+        }}
         style={{
           position: 'fixed',
           inset: 0,
@@ -352,11 +364,23 @@ export const TicTacToeLocal: React.FC = () => {
         </div>
       </dialog>
 
-      {/* Centered Rematch & Victory Modal */}
       <dialog
         ref={victoryDialogRef}
         aria-labelledby="tictactoe-victory-title"
         data-testid="tictactoe-victory-modal"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) {
+            const rect = e.currentTarget.getBoundingClientRect();
+            const inContent =
+              rect.top <= e.clientY &&
+              e.clientY <= rect.top + rect.height &&
+              rect.left <= e.clientX &&
+              e.clientX <= rect.left + rect.width;
+            if (!inContent) {
+              victoryDialogRef.current?.close();
+            }
+          }
+        }}
         style={{
           position: 'fixed',
           inset: 0,
@@ -483,7 +507,7 @@ export const TicTacToeLocal: React.FC = () => {
                 cursor: 'pointer',
               }}
             >
-              <RotateCw size={14} /> Ronde Berikutnya →
+              <RotateCw size={14} /> Ronde Berikutnya
             </button>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>

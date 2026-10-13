@@ -86,13 +86,17 @@ dialog {
   box-shadow: 0 16px 32px rgba(28, 25, 23, 0.15);
 }
 
-dialog[open] {
+dialog[open],
+dialog:modal {
   position: fixed;
   inset: 0;
   margin: auto;
+  overscroll-behavior: contain;
 }
 
 dialog::backdrop {
+  overflow: hidden;
+  overscroll-behavior: contain;
   background: rgba(28, 25, 23, 0.4);
   backdrop-filter: blur(2px);
 }

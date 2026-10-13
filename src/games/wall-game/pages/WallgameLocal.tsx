@@ -591,6 +591,19 @@ export const WallgameLocal: React.FC = () => {
       <dialog
         ref={rulesDialogRef}
         aria-labelledby="rules-title"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) {
+            const rect = e.currentTarget.getBoundingClientRect();
+            const inContent =
+              rect.top <= e.clientY &&
+              e.clientY <= rect.top + rect.height &&
+              rect.left <= e.clientX &&
+              e.clientX <= rect.left + rect.width;
+            if (!inContent) {
+              rulesDialogRef.current?.close();
+            }
+          }
+        }}
         style={{
           position: 'fixed',
           inset: 0,

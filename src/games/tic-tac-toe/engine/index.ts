@@ -85,15 +85,13 @@ export function applyMove(state: TicTacToeState, index: number): TicTacToeState 
 
   const playerPieces = getPlayerPieces(state.pieces, state.currentTurn);
 
-  // NO-DRAW 3-PIECES FIFO MECHANIC:
-  // If the active player already has 3 pieces, their oldest piece vanishes!
+  // FIFO eviction: placing a 4th piece clears the player's oldest active mark.
   if (playerPieces.length >= MAX_PIECES_PER_PLAYER) {
     const oldest = playerPieces[0];
     nextBoard[oldest.cellIndex] = null;
     nextPieces = nextPieces.filter((p) => p.id !== oldest.id);
   }
 
-  // Place the new piece
   const newOrder = state.moveCount + 1;
   const newPiece: Piece = {
     id: newOrder,
@@ -126,7 +124,6 @@ export function applyMove(state: TicTacToeState, index: number): TicTacToeState 
     };
   }
 
-  // Turn alternates to the other player
   const nextTurn: PlayerSymbol = state.currentTurn === 'X' ? 'O' : 'X';
   return {
     ...state,

@@ -61,6 +61,19 @@ export const VictoryModal: React.FC<VictoryModalProps> = ({
       ref={dialogRef}
       aria-labelledby="victory-title"
       data-testid="victory-modal"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          const rect = e.currentTarget.getBoundingClientRect();
+          const inContent =
+            rect.top <= e.clientY &&
+            e.clientY <= rect.top + rect.height &&
+            rect.left <= e.clientX &&
+            e.clientX <= rect.left + rect.width;
+          if (!inContent) {
+            handleClose();
+          }
+        }
+      }}
       style={{
         position: 'fixed',
         inset: 0,
