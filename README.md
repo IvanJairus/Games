@@ -1,40 +1,64 @@
-# ij-games / WallGo
+# ij-games · Mini-Games & Arena Strategi
 
-Koleksi mini game strategi di portal `ivanjairus.xyz/games/`, diawali dengan game utama **WallGo** (Wall Game).
+[![CI & Auto-Deploy to Vercel](https://github.com/IvanJairus/Games/actions/workflows/deploy.yml/badge.svg)](https://github.com/IvanJairus/Games/actions/workflows/deploy.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-## Fitur Utama
+Koleksi mini game taktis dan strategi web modern di portal `ivanjairus.xyz/games/` dan [ij-games.vercel.app](https://ij-games.vercel.app/games/).
 
-- **Aturan Terstandarisasi**: Dokumentasi resmi di [docs/wallgame-rules.md](file:///Users/70572/Documents/Games/Wall-Game/docs/wallgame-rules.md).
-- **Core Engine Murni**: Logika TypeScript agnostik lingkungan di [engine.ts](file:///Users/70572/Documents/Games/Wall-Game/supabase/functions/_shared/wallgame/engine.ts) dengan cakupan uji unit > 90%.
-- **Dukungan N-Player Dinamis**: Mendukung 2 hingga 6 pemain secara dinamis dengan ukuran grid adaptif ($7 \times 7$ s/d $15 \times 15$).
-- **Papan Interaktif SVG**: Render responsif petak, dinding, token pemain, dan pewarnaan wilayah terisolasi.
-- **Mode Hotseat Lokal**: Mainkan bergantian di satu perangkat via rute `/games/wallgame/local`.
-- **Integrasi Gateway**: Base path `/games/` dengan output nested di `dist/games/`, siap diintegrasikan dengan `ij-gateway`.
+---
 
-## Menjalankan di Lokal
+## 🎮 Daftar Permainan
+
+1. **WallGo: Race to the Golden Core**
+   - Game strategi penempatan dinding taktis (2-6 pemain).
+   - Validasi jalur anti-jebakan menggunakan pathfinder BFS murni.
+   - Papan SVG interaktif dengan kontrol *touch-drag* (geser dinding) dan penempatan aman *two-step preview*.
+   - Mode Hotseat Lokal dan Online Multiplayer (Supabase Realtime).
+
+2. **Tic Tac Toe: No-Draw Edition**
+   - Aturan anti-seri berbasis FIFO 3-bidak aktif per pemain.
+   - Papan dinamis dengan indikator bidak tertua yang akan memudar.
+   - Mode Hotseat Lokal dan Online Multiplayer.
+
+---
+
+## 🚀 Menjalankan di Lokal
 
 ```bash
-# Install dependensi
+# 1. Install dependensi
 npm install
 
-# Menjalankan dev server
+# 2. Menjalankan development server
 npm run dev
 
-# Menjalankan unit tests
+# 3. Menjalankan unit & UI automated test suite
 npm run test
 
-# Menjalankan test coverage
-npm run test:coverage
+# 4. Menjalankan release readiness audit (Desktop & Mobile)
+npm run release:check
 
-# Build untuk produksi (output ke dist/games/)
+# 5. Build produksi (output ke dist/games/)
 npm run build
 ```
 
-## Arsitektur Deployment (Vercel)
+---
 
-- **Framework**: Vite
-- **Root Directory**: `./`
-- **Build Command**: `npm run build`
-- **Output Directory**: `dist`
-- **Base Path**: `/games/`
-- **Deployment Protection (Vercel Authentication)**: Disabled (agar dapat di-rewrite oleh `ij-gateway`).
+## 🛡️ Arsitektur CI/CD & Keamanan (Vercel)
+
+- **Otomasi**: GitHub Actions (`deploy.yml`) menguji *TypeScript*, *Game Engines*, dan *Viewport UI Automation* (Desktop 1024px & Mobile 375px) sebelum auto-deploy ke Vercel pada branch `main`.
+- **Keamanan Web Game**:
+  - *Content-Security-Policy (CSP)* ketat dengan izin terkunci hanya ke Supabase.
+  - *X-Frame-Options: DENY* (Anti-Clickjacking).
+  - *X-Content-Type-Options: nosniff*.
+  - *Permissions-Policy* menonaktifkan kamera, mikrofon, dan sensor perangkat yang tidak digunakan.
+
+---
+
+## 📜 Lisensi & Atribusi (License & Acknowledgements)
+
+Proyek ini dilisensikan di bawah **[MIT License](LICENSE)** © 2026 **Ivan Jairus**.
+
+### Atribusi & Catatan Hak Cipta:
+* **WallGo** adalah implementasi kode digital orisinal yang terinspirasi dari permainan papan strategi penempatan dinding klasik (*abstract strategy wall-placement board games*).
+* **Tic Tac Toe No-Draw** merupakan variasi matematis orisinal berbasis aturan grid 3×3 klasik.
+* Seluruh kode TypeScript, engine permainan, arsitektur multiplayer, dan aset SVG di repositori ini ditulis secara independen dan dilindungi oleh lisensi MIT.
