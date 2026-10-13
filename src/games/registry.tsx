@@ -41,9 +41,9 @@ export const GAMES_REGISTRY: GameMetadata[] = [
   },
   {
     id: 'tic-tac-toe',
-    title: 'Tic Tac Toe · Duel 3×3',
-    subtitle: 'Klasik Garis 3 Berurutan',
-    description: 'Adu kecerdasan taktis cepat dalam papan 3x3. Pasang simbol X atau O untuk menyusun baris kemenangan.',
+    title: 'Tic Tac Toe · Mode No-Draw',
+    subtitle: 'Maksimal 3 Bidak (Anti-Seri)',
+    description: 'Setiap pemain maksimal memiliki 3 bidak di papan. Bidak ke-4 otomatis melenyapkan bidak tertua. Mustahil seri!',
     playerRange: '2 Pemain',
     statusLabel: 'Lokal Siap',
     route: '/tic-tac-toe',

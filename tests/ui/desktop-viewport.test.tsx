@@ -24,7 +24,7 @@ describe('Desktop Viewport Automation Suite (1024px)', () => {
     expect(screen.getByTestId('game-card-wall-game')).toBeInTheDocument();
     expect(screen.getByTestId('game-card-tic-tac-toe')).toBeInTheDocument();
     expect(screen.getByText(/WallGo · Race to the Golden Core/)).toBeInTheDocument();
-    expect(screen.getByText(/Tic Tac Toe · Duel 3×3/)).toBeInTheDocument();
+    expect(screen.getByText(/Tic Tac Toe · Mode No-Draw/)).toBeInTheDocument();
   });
 
   it('starts a Wall Game on desktop and interacts with tiles and wall placement', () => {
@@ -104,6 +104,34 @@ describe('Desktop Viewport Automation Suite (1024px)', () => {
     // Advance to next round
     fireEvent.click(screen.getByTestId('tictactoe-next-round-btn'));
     expect(screen.getByTestId('cell-0')).toHaveTextContent('');
-    expect(screen.getByText('Giliran Aktif:')).toBeInTheDocument();
+    expect(screen.getByTestId('tictactoe-status-banner')).toHaveTextContent(/Giliran Aktif/);
+  });
+
+  it('demonstrates vanishing piece mechanic when 4th piece is played in Tic Tac Toe', () => {
+    render(
+      <MemoryRouter>
+        <TicTacToeLocal />
+      </MemoryRouter>
+    );
+
+    // X: 0, O: 3, X: 1, O: 4, X: 8, O: 7
+    fireEvent.click(screen.getByTestId('cell-0')); // X at 0
+    fireEvent.click(screen.getByTestId('cell-3')); // O at 3
+    fireEvent.click(screen.getByTestId('cell-1')); // X at 1
+    fireEvent.click(screen.getByTestId('cell-4')); // O at 4
+    fireEvent.click(screen.getByTestId('cell-8')); // X at 8
+    fireEvent.click(screen.getByTestId('cell-7')); // O at 7
+
+    // Now X has 3 pieces (at 0, 1, 8). Cell 0 is the oldest and marked as expiring
+    expect(screen.getByTestId('expiring-indicator-0')).toBeInTheDocument();
+    expect(screen.getByText(/Bidak tertua di petak #1 akan lenyap/)).toBeInTheDocument();
+
+    // X places 4th piece at cell 6
+    fireEvent.click(screen.getByTestId('cell-6'));
+
+    // Cell 0 must now be empty (vanished)!
+    expect(screen.getByTestId('cell-0')).toHaveTextContent('');
+    // Cell 6 has X
+    expect(screen.getByTestId('cell-6')).toHaveTextContent('X');
   });
 });

@@ -2,11 +2,14 @@ import {
   PlayerSymbol,
   CellValue,
   WinLine,
+  Piece,
   TicTacToeState,
   ScoreBoard,
 } from './types';
 
 export * from './types';
+
+export const MAX_PIECES_PER_PLAYER = 3;
 
 export const WINNING_LINES: WinLine[] = [
   // Rows
@@ -23,12 +26,13 @@ export const WINNING_LINES: WinLine[] = [
 ];
 
 export function createInitialScore(): ScoreBoard {
-  return { X: 0, O: 0, draws: 0 };
+  return { X: 0, O: 0 };
 }
 
 export function createTicTacToeGame(initialScore?: ScoreBoard): TicTacToeState {
   return {
     board: Array(9).fill(null),
+    pieces: [],
     currentTurn: 'X',
     status: 'IN_PROGRESS',
     winner: null,
@@ -36,6 +40,18 @@ export function createTicTacToeGame(initialScore?: ScoreBoard): TicTacToeState {
     moveCount: 0,
     score: initialScore ? { ...initialScore } : createInitialScore(),
   };
+}
+
+export function getPlayerPieces(pieces: Piece[], player: PlayerSymbol): Piece[] {
+  return pieces.filter((p) => p.player === player).sort((a, b) => a.order - b.order);
+}
+
+export function getOldestPiece(pieces: Piece[], player: PlayerSymbol): Piece | null {
+  const playerPieces = getPlayerPieces(pieces, player);
+  if (playerPieces.length >= MAX_PIECES_PER_PLAYER) {
+    return playerPieces[0];
+  }
+  return null;
 }
 
 export function checkWinner(
@@ -59,12 +75,35 @@ export function applyMove(state: TicTacToeState, index: number): TicTacToeState 
     throw new Error(`Invalid board index: ${index}`);
   }
 
+  // The clicked square must currently be empty
   if (state.board[index] !== null) {
     throw new Error(`Cell ${index} is already occupied`);
   }
 
   const nextBoard = [...state.board];
+  let nextPieces = [...state.pieces];
+
+  const playerPieces = getPlayerPieces(state.pieces, state.currentTurn);
+
+  // NO-DRAW 3-PIECES FIFO MECHANIC:
+  // If the active player already has 3 pieces, their oldest piece vanishes!
+  if (playerPieces.length >= MAX_PIECES_PER_PLAYER) {
+    const oldest = playerPieces[0];
+    nextBoard[oldest.cellIndex] = null;
+    nextPieces = nextPieces.filter((p) => p.id !== oldest.id);
+  }
+
+  // Place the new piece
+  const newOrder = state.moveCount + 1;
+  const newPiece: Piece = {
+    id: newOrder,
+    player: state.currentTurn,
+    cellIndex: index,
+    order: newOrder,
+  };
+
   nextBoard[index] = state.currentTurn;
+  nextPieces.push(newPiece);
 
   const winResult = checkWinner(nextBoard);
   const nextMoveCount = state.moveCount + 1;
@@ -78,6 +117,7 @@ export function applyMove(state: TicTacToeState, index: number): TicTacToeState 
     return {
       ...state,
       board: nextBoard,
+      pieces: nextPieces,
       status: 'WIN',
       winner: winResult.winner,
       winningLine: winResult.line,
@@ -86,27 +126,12 @@ export function applyMove(state: TicTacToeState, index: number): TicTacToeState 
     };
   }
 
-  if (nextMoveCount === 9) {
-    // Board is completely full with no winner -> Draw
-    return {
-      ...state,
-      board: nextBoard,
-      status: 'DRAW',
-      winner: null,
-      winningLine: null,
-      moveCount: nextMoveCount,
-      score: {
-        ...state.score,
-        draws: state.score.draws + 1,
-      },
-    };
-  }
-
   // Turn alternates to the other player
   const nextTurn: PlayerSymbol = state.currentTurn === 'X' ? 'O' : 'X';
   return {
     ...state,
     board: nextBoard,
+    pieces: nextPieces,
     currentTurn: nextTurn,
     moveCount: nextMoveCount,
   };
@@ -115,6 +140,7 @@ export function applyMove(state: TicTacToeState, index: number): TicTacToeState 
 export function resetRound(state: TicTacToeState): TicTacToeState {
   return {
     board: Array(9).fill(null),
+    pieces: [],
     currentTurn: 'X',
     status: 'IN_PROGRESS',
     winner: null,
