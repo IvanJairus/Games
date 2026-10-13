@@ -8,11 +8,10 @@ import {
   createGame,
   applyMove,
   applyWall,
-  isValidWallPlacement,
   getRecommendedGridSize,
 } from '../../../supabase/functions/_shared/wallgame/engine';
 import { Board } from './components/Board';
-import { RotateCw, ArrowLeft, HelpCircle, Check, X } from 'lucide-react';
+import { RotateCw, ArrowLeft, HelpCircle } from 'lucide-react';
 
 export const WallgameLocal: React.FC = () => {
   const [playerCount, setPlayerCount] = useState<number>(2);
@@ -28,7 +27,6 @@ export const WallgameLocal: React.FC = () => {
 
   const [game, setGame] = useState<GameState | null>(null);
   const [wallOrientation, setWallOrientation] = useState<WallOrientation>('H');
-  const [selectedWallCandidate, setSelectedWallCandidate] = useState<Wall | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
   const rulesDialogRef = useRef<HTMLDialogElement>(null);
@@ -64,7 +62,6 @@ export const WallgameLocal: React.FC = () => {
     if (!game || game.phase !== 'ACTION') return;
     try {
       setActionError(null);
-      setSelectedWallCandidate(null);
       const nextState = applyMove(game, target);
       setGame(nextState);
     } catch (err: unknown) {
@@ -76,32 +73,11 @@ export const WallgameLocal: React.FC = () => {
     if (!game || game.phase !== 'ACTION') return;
     try {
       setActionError(null);
-      setSelectedWallCandidate(null);
       const nextState = applyWall(game, wall);
       setGame(nextState);
     } catch (err: unknown) {
       setActionError((err as Error).message);
     }
-  };
-
-  const isSelectedWallValid = selectedWallCandidate && game
-    ? isValidWallPlacement(game, selectedWallCandidate)
-    : false;
-
-  const handleToggleCandidateOrientation = () => {
-    if (!selectedWallCandidate) return;
-    const nextOri: WallOrientation = selectedWallCandidate.orientation === 'H' ? 'V' : 'H';
-    setSelectedWallCandidate({ ...selectedWallCandidate, orientation: nextOri });
-    setWallOrientation(nextOri);
-  };
-
-  const handleConfirmCandidateWall = () => {
-    if (!selectedWallCandidate) return;
-    handlePlaceWall(selectedWallCandidate);
-  };
-
-  const handleCancelCandidate = () => {
-    setSelectedWallCandidate(null);
   };
 
   // Keyboard shortcut: Space or R toggles wall orientation
@@ -110,19 +86,13 @@ export const WallgameLocal: React.FC = () => {
       if (e.key === ' ' || e.key === 'r' || e.key === 'R') {
         if (game && game.phase === 'ACTION') {
           e.preventDefault();
-          setWallOrientation((prev) => {
-            const nextOri = prev === 'H' ? 'V' : 'H';
-            if (selectedWallCandidate) {
-              setSelectedWallCandidate((cur) => (cur ? { ...cur, orientation: nextOri } : null));
-            }
-            return nextOri;
-          });
+          setWallOrientation((prev) => (prev === 'H' ? 'V' : 'H'));
         }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [game, selectedWallCandidate]);
+  }, [game]);
 
   // SETUP VIEW
   if (!game) {
@@ -406,13 +376,7 @@ export const WallgameLocal: React.FC = () => {
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <button
-            onClick={() => {
-              const nextOri = wallOrientation === 'H' ? 'V' : 'H';
-              setWallOrientation(nextOri);
-              if (selectedWallCandidate) {
-                setSelectedWallCandidate({ ...selectedWallCandidate, orientation: nextOri });
-              }
-            }}
+            onClick={() => setWallOrientation((prev) => (prev === 'H' ? 'V' : 'H'))}
             style={{
               padding: '6px 10px',
               background: 'var(--bg-stage)',
@@ -499,51 +463,10 @@ export const WallgameLocal: React.FC = () => {
             gameState={game}
             wallOrientation={wallOrientation}
             onOrientationChange={setWallOrientation}
-            selectedWallCandidate={selectedWallCandidate}
-            onSelectWallCandidate={setSelectedWallCandidate}
             onSelectMove={handleSelectMove}
             onPlaceWall={handlePlaceWall}
             disabled={game.phase === 'GAME_OVER'}
           />
-
-          {/* Mobile & Touch Wall Placement Confirmation Drawer */}
-          {selectedWallCandidate && game.phase === 'ACTION' && activePlayer.wallsRemaining > 0 && (
-            <div className="mobile-wall-drawer">
-              <div className="mobile-wall-info">
-                <span className="mobile-wall-tag">
-                  {selectedWallCandidate.orientation === 'H' ? '═ HORIZONTAL' : '║ VERTIKAL'}
-                </span>
-                <span>Posisi Celah: Kolom {selectedWallCandidate.x + 1}, Baris {selectedWallCandidate.y + 1}</span>
-                {!isSelectedWallValid && (
-                  <span className="mobile-wall-invalid">⚠ Tidak valid (menabrak atau memutus jalan)</span>
-                )}
-              </div>
-              <div className="mobile-wall-buttons">
-                <button
-                  type="button"
-                  onClick={handleToggleCandidateOrientation}
-                  className="mobile-btn-rotate"
-                >
-                  <RotateCw size={13} /> Putar Orientasi
-                </button>
-                <button
-                  type="button"
-                  disabled={!isSelectedWallValid}
-                  onClick={handleConfirmCandidateWall}
-                  className="mobile-btn-confirm"
-                >
-                  <Check size={14} /> Pasang Dinding
-                </button>
-                <button
-                  type="button"
-                  onClick={handleCancelCandidate}
-                  className="mobile-btn-cancel"
-                >
-                  <X size={13} /> Batal
-                </button>
-              </div>
-            </div>
-          )}
         </div>
 
         <div

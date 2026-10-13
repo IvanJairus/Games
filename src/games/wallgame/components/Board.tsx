@@ -14,8 +14,6 @@ interface BoardProps {
   onSelectMove: (target: Position) => void;
   onPlaceWall: (wall: Wall) => void;
   onOrientationChange?: (orientation: WallOrientation) => void;
-  selectedWallCandidate?: Wall | null;
-  onSelectWallCandidate?: (wall: Wall | null) => void;
   disabled?: boolean;
 }
 
@@ -25,8 +23,6 @@ export const Board: React.FC<BoardProps> = ({
   onSelectMove,
   onPlaceWall,
   onOrientationChange,
-  selectedWallCandidate,
-  onSelectWallCandidate,
   disabled = false,
 }) => {
   const { gridSize, corePosition, players, walls, activePlayerIndex, phase } = gameState;
@@ -48,18 +44,10 @@ export const Board: React.FC<BoardProps> = ({
     return getValidMoves(gameState);
   }, [disabled, phase, gameState]);
 
-  // Active wall candidate is either touch-selected (mobile) or mouse-hovered (desktop)
-  const activeCandidate: Wall | null = useMemo(() => {
-    if (disabled || phase !== 'ACTION' || activePlayer.wallsRemaining <= 0) {
-      return null;
-    }
-    return selectedWallCandidate || hoveredWall;
-  }, [disabled, phase, activePlayer.wallsRemaining, selectedWallCandidate, hoveredWall]);
-
-  const isCandidateValid = useMemo(() => {
-    if (!activeCandidate) return false;
-    return isValidWallPlacement(gameState, activeCandidate);
-  }, [gameState, activeCandidate]);
+  const isPreviewValid = useMemo(() => {
+    if (!hoveredWall) return false;
+    return isValidWallPlacement(gameState, hoveredWall);
+  }, [gameState, hoveredWall]);
 
   const handleHoverSlot = (orientation: WallOrientation, wx: number, wy: number) => {
     if (disabled || phase !== 'ACTION' || activePlayer.wallsRemaining <= 0) return;
@@ -77,27 +65,9 @@ export const Board: React.FC<BoardProps> = ({
     if (disabled || phase !== 'ACTION' || activePlayer.wallsRemaining <= 0) return;
 
     const candidate: Wall = { orientation, x: wx, y: wy };
-    const isValid = isValidWallPlacement(gameState, candidate);
-    const isTouchDevice = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
-
-    if (isTouchDevice) {
-      // Mobile / touch screen: tap to preview & select, tap again at same spot to rotate
-      if (selectedWallCandidate && selectedWallCandidate.x === wx && selectedWallCandidate.y === wy) {
-        const nextOri: WallOrientation = selectedWallCandidate.orientation === 'H' ? 'V' : 'H';
-        const toggled: Wall = { ...candidate, orientation: nextOri };
-        onSelectWallCandidate?.(toggled);
-        onOrientationChange?.(nextOri);
-      } else {
-        onSelectWallCandidate?.(candidate);
-        onOrientationChange?.(orientation);
-      }
-    } else {
-      // Desktop: single-click direct placement if valid
-      if (isValid) {
-        onPlaceWall(candidate);
-        setHoveredWall(null);
-        onSelectWallCandidate?.(null);
-      }
+    if (isValidWallPlacement(gameState, candidate)) {
+      onPlaceWall(candidate);
+      setHoveredWall(null);
     }
   };
 
@@ -278,7 +248,7 @@ export const Board: React.FC<BoardProps> = ({
                       onClick={(e) => handleSlotClick('V', wx, wy, e)}
                     />
 
-                    {/* Crossroads Center Box (Dynamic Angle Follower & Click-to-Rotate) */}
+                    {/* Crossroads Center Box (Dynamic Angle Follower) */}
                     <rect
                       x={ix - 3}
                       y={iy - 3}
@@ -288,7 +258,7 @@ export const Board: React.FC<BoardProps> = ({
                       style={{ cursor: 'pointer' }}
                       onMouseMove={(e) => handleCrossMouseMove(wx, wy, e)}
                       onClick={(e) => {
-                        const curOri = activeCandidate?.orientation || wallOrientation;
+                        const curOri = hoveredWall?.orientation || wallOrientation;
                         handleSlotClick(curOri, wx, wy, e);
                       }}
                     />
@@ -297,26 +267,18 @@ export const Board: React.FC<BoardProps> = ({
               })
             )}
 
-            {/* Ghost Wall Bar with Click-to-Rotate Affordance */}
-            {activeCandidate && (
+            {/* Ghost Wall Bar (Clicking directly places the wall) */}
+            {hoveredWall && (
               <g
-                style={{ cursor: 'pointer' }}
+                style={{ cursor: isPreviewValid ? 'pointer' : 'not-allowed' }}
                 onClick={(e) => {
-                  e.stopPropagation();
-                  const nextOri: WallOrientation = activeCandidate.orientation === 'H' ? 'V' : 'H';
-                  const toggled: Wall = { ...activeCandidate, orientation: nextOri };
-                  if (onSelectWallCandidate) {
-                    onSelectWallCandidate(toggled);
-                  } else {
-                    setHoveredWall(toggled);
-                  }
-                  onOrientationChange?.(nextOri);
+                  handleSlotClick(hoveredWall.orientation, hoveredWall.x, hoveredWall.y, e);
                 }}
               >
                 {(() => {
-                  const isH = activeCandidate.orientation === 'H';
-                  const wx = isH ? getCellX(activeCandidate.x) : getCellX(activeCandidate.x) + cellSize;
-                  const wy = isH ? getCellY(activeCandidate.y) + cellSize : getCellY(activeCandidate.y);
+                  const isH = hoveredWall.orientation === 'H';
+                  const wx = isH ? getCellX(hoveredWall.x) : getCellX(hoveredWall.x) + cellSize;
+                  const wy = isH ? getCellY(hoveredWall.y) + cellSize : getCellY(hoveredWall.y);
                   const wWidth = isH ? cellSize * 2 + grooveThickness : grooveThickness;
                   const wHeight = isH ? grooveThickness : cellSize * 2 + grooveThickness;
 
@@ -327,11 +289,11 @@ export const Board: React.FC<BoardProps> = ({
                       width={wWidth}
                       height={wHeight}
                       rx={1}
-                      fill={isCandidateValid ? 'var(--gold)' : '#b42318'}
+                      fill={isPreviewValid ? 'var(--gold)' : '#b42318'}
                       opacity={0.65}
-                      stroke={isCandidateValid ? 'var(--gold-deep)' : '#8f1d14'}
+                      stroke={isPreviewValid ? 'var(--gold-deep)' : '#8f1d14'}
                       strokeWidth={1.5}
-                      strokeDasharray={isCandidateValid ? 'none' : '3 2'}
+                      strokeDasharray={isPreviewValid ? 'none' : '3 2'}
                     />
                   );
                 })()}
@@ -353,7 +315,6 @@ export const Board: React.FC<BoardProps> = ({
               onClick={(e) => {
                 e.stopPropagation();
                 if (!disabled) {
-                  onSelectWallCandidate?.(null);
                   setHoveredWall(null);
                   onSelectMove(m);
                 }
