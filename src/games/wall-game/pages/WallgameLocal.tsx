@@ -592,6 +592,9 @@ export const WallgameLocal: React.FC = () => {
         ref={rulesDialogRef}
         aria-labelledby="rules-title"
         style={{
+          position: 'fixed',
+          inset: 0,
+          margin: 'auto',
           border: '1px solid var(--line-strong)',
           borderRadius: 'var(--r4)',
           padding: '24px',

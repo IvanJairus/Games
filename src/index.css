@@ -77,12 +77,19 @@ input:focus-visible {
 
 /* Native dialog styling (Modern Web Guidance) */
 dialog {
+  margin: auto;
   border: 1px solid var(--line-strong);
   border-radius: var(--r4);
   background: var(--bg);
   color: var(--ink);
   padding: 24px;
   box-shadow: 0 16px 32px rgba(28, 25, 23, 0.15);
+}
+
+dialog[open] {
+  position: fixed;
+  inset: 0;
+  margin: auto;
 }
 
 dialog::backdrop {

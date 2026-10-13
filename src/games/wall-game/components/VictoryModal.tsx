@@ -62,6 +62,9 @@ export const VictoryModal: React.FC<VictoryModalProps> = ({
       aria-labelledby="victory-title"
       data-testid="victory-modal"
       style={{
+        position: 'fixed',
+        inset: 0,
+        margin: 'auto',
         border: '1px solid var(--gold-border)',
         borderRadius: 'var(--r4)',
         padding: '0',
