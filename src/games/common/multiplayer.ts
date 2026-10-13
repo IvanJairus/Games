@@ -148,9 +148,45 @@ export async function joinOnlineRoom(params: {
     connected: true,
   });
 
-  if (insertErr) throw new Error(insertErr.message);
+  if (insertErr) {
+    const { data: recheckPlayers } = await supabase
+      .from('match_players')
+      .select('*')
+      .eq('match_id', match.id);
 
-  // Auto-start for 2-player games if second player joins
+    const me = recheckPlayers?.find((p) => p.session_id === sessionId);
+    if (me) {
+      return {
+        matchId: match.id,
+        playerIndex: me.player_index,
+        isHost: me.is_host,
+      };
+    }
+
+    if (insertErr.code === '23505') {
+      const occupied = new Set(recheckPlayers?.map((p) => p.player_index) || []);
+      let retryIdx = 0;
+      while (occupied.has(retryIdx)) retryIdx++;
+
+      if (retryIdx < match.max_players) {
+        const { error: retryErr } = await supabase.from('match_players').insert({
+          match_id: match.id,
+          player_index: retryIdx,
+          session_id: sessionId,
+          name: params.playerName || `Pemain ${retryIdx + 1}`,
+          is_host: false,
+          connected: true,
+        });
+
+        if (!retryErr) {
+          return { matchId: match.id, playerIndex: retryIdx, isHost: false };
+        }
+      }
+    }
+
+    throw new Error('Gagal bergabung ke room. Room mungkin sudah penuh atau sedang diproses.');
+  }
+
   if (match.game_type === 'tic-tac-toe' && (players?.length || 0) + 1 >= match.max_players) {
     await supabase
       .from('matches')

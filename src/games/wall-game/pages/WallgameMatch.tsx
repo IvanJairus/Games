@@ -3,15 +3,12 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
   Check,
-  Play,
   RotateCw,
-  Crown,
   Share2,
   Clock,
-  AlertCircle,
   HelpCircle,
   Trophy,
-  Home,
+  AlertCircle,
 } from 'lucide-react';
 import {
   GameState,
@@ -56,21 +53,25 @@ export const WallgameMatch: React.FC = () => {
 
   const rulesDialogRef = useRef<HTMLDialogElement>(null);
   const channelRef = useRef<any>(null);
+  const joinAttemptedRef = useRef<boolean>(false);
 
-  // Join room on mount
+  // Join room on mount with single execution guard
   useEffect(() => {
-    if (!roomCode || !isSupabaseConfigured()) return;
+    if (!roomCode || !isSupabaseConfigured() || joinAttemptedRef.current) return;
+    joinAttemptedRef.current = true;
 
     let isMounted = true;
     joinOnlineRoom({ roomCode, playerName })
       .then(() => {
         if (isMounted) {
           setStoredPlayerName(playerName);
+          setJoinError(null);
         }
       })
       .catch((err) => {
         if (isMounted) {
-          setJoinError(err.message);
+          // Clean user-friendly message
+          setJoinError(err.message || 'Tidak dapat bergabung ke room');
         }
       });
 
@@ -87,15 +88,17 @@ export const WallgameMatch: React.FC = () => {
       roomCode,
       (data) => {
         setSyncData(data);
+        if (data.myPlayerIndex >= 0) {
+          setJoinError(null);
+        }
         if (data.match.status === 'abandoned' && data.match.game_state?.abandonedReason) {
           setOpponentLeftNotice(data.match.game_state.abandonedReason);
         }
       },
       () => {
-        // Quick move broadcast
+        // Move broadcast received
       },
       (leavePayload) => {
-        // Opponent leave broadcast
         setOpponentLeftNotice(`${leavePayload?.playerName || 'Lawan'} telah keluar dari pertandingan.`);
       }
     );
@@ -248,17 +251,17 @@ export const WallgameMatch: React.FC = () => {
 
   if (!isSupabaseConfigured()) {
     return (
-      <div style={{ maxWidth: '640px', margin: '40px auto', padding: '0 20px', textAlign: 'center' }}>
-        <div style={{ background: '#ffffff', border: '1px solid var(--line-strong)', borderRadius: 'var(--r4)', padding: '40px 24px' }}>
-          <AlertCircle size={40} color="var(--gold)" style={{ margin: '0 auto 16px' }} />
-          <h2 style={{ fontSize: '20px', fontWeight: 700, margin: '0 0 10px' }}>Supabase Belum Dikonfigurasi</h2>
-          <p style={{ color: 'var(--ink-dim)', fontSize: '14px', lineHeight: 1.6, marginBottom: '24px' }}>
+      <div style={{ maxWidth: '580px', margin: '40px auto', padding: '0 16px', textAlign: 'center' }}>
+        <div style={{ background: '#ffffff', border: '1px solid var(--line)', borderRadius: 'var(--r3)', padding: '36px 20px' }}>
+          <h2 style={{ fontSize: '18px', fontWeight: 700, margin: '0 0 10px' }}>Supabase Belum Dikonfigurasi</h2>
+          <p style={{ color: 'var(--ink-dim)', fontSize: '13.5px', lineHeight: 1.5, marginBottom: '20px' }}>
             Kredensial API Supabase belum terdeteksi. Silakan periksa file .env.local.
           </p>
           <Link
             to="/wall-game"
             style={{
-              padding: '10px 20px',
+              display: 'inline-block',
+              padding: '8px 16px',
               background: 'var(--gold)',
               color: '#ffffff',
               borderRadius: 'var(--r2)',
@@ -274,20 +277,23 @@ export const WallgameMatch: React.FC = () => {
     );
   }
 
-  if (joinError) {
+  // Only display join error if player is genuinely NOT joined in syncData
+  if (joinError && (!syncData || syncData.myPlayerIndex < 0)) {
     return (
-      <div style={{ maxWidth: '640px', margin: '40px auto', padding: '0 20px', textAlign: 'center' }}>
-        <div style={{ background: '#ffffff', border: '1px solid var(--line-strong)', borderRadius: 'var(--r4)', padding: '40px 24px' }}>
-          <AlertCircle size={40} color="var(--terracotta)" style={{ margin: '0 auto 16px' }} />
-          <h2 style={{ fontSize: '20px', fontWeight: 700, margin: '0 0 10px' }}>Tidak Dapat Bergabung</h2>
-          <p style={{ color: 'var(--ink-dim)', fontSize: '14px', lineHeight: 1.6, marginBottom: '24px' }}>
+      <div style={{ maxWidth: '580px', margin: '40px auto', padding: '0 16px', textAlign: 'center' }}>
+        <div style={{ background: '#ffffff', border: '1px solid var(--line)', borderRadius: 'var(--r3)', padding: '36px 20px' }}>
+          <h2 style={{ fontSize: '18px', fontWeight: 700, margin: '0 0 10px', color: 'var(--ink)' }}>
+            Tidak Dapat Bergabung
+          </h2>
+          <p style={{ color: 'var(--ink-dim)', fontSize: '13.5px', lineHeight: 1.5, marginBottom: '20px' }}>
             {joinError}
           </p>
           <Link
             to="/wall-game"
             style={{
-              padding: '10px 20px',
-              background: 'var(--gold)',
+              display: 'inline-block',
+              padding: '8px 16px',
+              background: 'var(--ink)',
               color: '#ffffff',
               borderRadius: 'var(--r2)',
               textDecoration: 'none',
@@ -304,9 +310,9 @@ export const WallgameMatch: React.FC = () => {
 
   if (!syncData) {
     return (
-      <div style={{ maxWidth: '640px', margin: '60px auto', textAlign: 'center' }}>
-        <Clock size={32} color="var(--gold)" style={{ margin: '0 auto 16px' }} />
-        <p style={{ font: '13px/1 var(--mono)', color: 'var(--ink-dim)', letterSpacing: '.05em' }}>
+      <div style={{ maxWidth: '580px', margin: '60px auto', textAlign: 'center' }}>
+        <Clock size={28} color="var(--gold)" style={{ margin: '0 auto 12px' }} />
+        <p style={{ font: '13px/1 var(--mono)', color: 'var(--ink-dim)' }}>
           Menghubungkan ke room {roomCode}...
         </p>
       </div>
@@ -324,19 +330,19 @@ export const WallgameMatch: React.FC = () => {
   const didIWinByAbandon = isAbandoned && match.winner_index === myPlayerIndex;
 
   return (
-    <div style={{ maxWidth: '640px', margin: '24px auto', padding: '0 16px' }}>
-      {/* Editorial Header (Consistent with Local Hotseat) */}
+    <div style={{ maxWidth: '640px', margin: '20px auto', padding: '0 12px' }}>
+      {/* Header */}
       <header
         style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          marginBottom: '20px',
+          marginBottom: '16px',
           borderBottom: '1px solid var(--line)',
-          paddingBottom: '14px',
+          paddingBottom: '12px',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <button
             type="button"
             onClick={handleExitRoom}
@@ -357,19 +363,13 @@ export const WallgameMatch: React.FC = () => {
             <ArrowLeft size={16} />
           </button>
           <div>
-            <h1
-              style={{
-                fontSize: '18px',
-                fontWeight: 700,
-                letterSpacing: '-0.015em',
-                margin: 0,
-                color: 'var(--ink)',
-              }}
-            >
-              WallGo · Mode Online
+            <h1 style={{ fontSize: '17px', fontWeight: 700, margin: 0, color: 'var(--ink)' }}>
+              WallGo <span style={{ fontWeight: 400, color: 'var(--ink-dim)' }}>· Room {roomCode}</span>
             </h1>
             <div style={{ font: '11px/1 var(--mono)', color: 'var(--ink-faint)', marginTop: '2px' }}>
-              Papan Catur Halang Rintang · {game ? `${game.playerCount} Pemain` : `${players.length} Pemain`} · Room: <span style={{ color: 'var(--ink)', fontWeight: 700 }}>{roomCode}</span>
+              {match.status === 'waiting'
+                ? `Menunggu Pemain (${players.length}/${match.max_players})`
+                : `Putaran #${game?.turn || 1} · ${players.length} Pemain`}
             </div>
           </div>
         </div>
@@ -381,8 +381,8 @@ export const WallgameMatch: React.FC = () => {
             style={{
               display: 'inline-flex',
               alignItems: 'center',
-              gap: '6px',
-              padding: '6px 12px',
+              gap: '5px',
+              padding: '6px 10px',
               border: '1px solid var(--line-strong)',
               borderRadius: 'var(--r2)',
               background: '#ffffff',
@@ -391,7 +391,7 @@ export const WallgameMatch: React.FC = () => {
               cursor: 'pointer',
             }}
           >
-            <HelpCircle size={14} /> Aturan
+            <HelpCircle size={13} /> Aturan
           </button>
 
           <button
@@ -400,7 +400,7 @@ export const WallgameMatch: React.FC = () => {
             style={{
               display: 'inline-flex',
               alignItems: 'center',
-              gap: '6px',
+              gap: '5px',
               padding: '6px 12px',
               border: `1px solid ${copied ? 'var(--gold)' : 'var(--gold-border)'}`,
               borderRadius: 'var(--r2)',
@@ -417,427 +417,296 @@ export const WallgameMatch: React.FC = () => {
         </div>
       </header>
 
-      {/* Opponent Left / Abandoned Alert */}
+      {/* Opponent Left Alert Banner */}
       {isAbandoned && (
         <div
           style={{
-            background: didIWinByAbandon ? 'var(--gold-tint)' : '#fef2f2',
-            border: `1.5px solid ${didIWinByAbandon ? 'var(--gold)' : '#fecaca'}`,
-            borderRadius: 'var(--r3)',
-            padding: '24px 20px',
+            background: didIWinByAbandon ? 'var(--gold-tint)' : '#fafaf9',
+            border: `1px solid ${didIWinByAbandon ? 'var(--gold-border)' : 'var(--line)'}`,
+            borderRadius: 'var(--r2)',
+            padding: '16px',
             textAlign: 'center',
-            marginBottom: '24px',
-            boxShadow: '0 4px 16px rgba(0,0,0,0.06)',
+            marginBottom: '16px',
           }}
         >
-          <div
-            style={{
-              width: '48px',
-              height: '48px',
-              borderRadius: '50%',
-              background: didIWinByAbandon ? '#ffffff' : '#fee2e2',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              margin: '0 auto 12px',
-              color: didIWinByAbandon ? 'var(--gold)' : '#991b1b',
-            }}
-          >
-            {didIWinByAbandon ? <Trophy size={24} /> : <AlertCircle size={24} />}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '6px' }}>
+            {didIWinByAbandon ? <Trophy size={18} color="var(--gold)" /> : <AlertCircle size={18} color="var(--ink-dim)" />}
+            <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--ink)' }}>
+              {didIWinByAbandon ? 'Lawan Menyerah — Anda Menang!' : 'Pertandingan Dibatalkan'}
+            </span>
           </div>
-          <h2 style={{ fontSize: '18px', fontWeight: 800, margin: '0 0 6px', color: 'var(--ink)' }}>
-            {didIWinByAbandon ? 'Selamat! Anda Menang (Lawan Menyerah)' : 'Pertandingan Dibatalkan'}
-          </h2>
-          <p style={{ fontSize: '13.5px', color: 'var(--ink-dim)', margin: '0 0 20px', lineHeight: 1.5 }}>
+          <p style={{ fontSize: '13px', color: 'var(--ink-dim)', margin: '0 0 14px' }}>
             {opponentLeftNotice || 'Pemain lawan telah keluar dari room pertandingan.'}
           </p>
-          <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
-            <button
-              type="button"
-              onClick={() => navigate('/wall-game')}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '10px 18px',
-                background: 'var(--ink)',
-                color: '#ffffff',
-                border: 'none',
-                borderRadius: 'var(--r2)',
-                font: '12px/1 var(--mono)',
-                fontWeight: 700,
-                cursor: 'pointer',
-              }}
-            >
-              <Home size={13} /> Kembali ke Lobby
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => navigate('/wall-game')}
+            style={{
+              padding: '8px 16px',
+              background: 'var(--ink)',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: 'var(--r2)',
+              font: '11.5px/1 var(--mono)',
+              fontWeight: 700,
+              cursor: 'pointer',
+            }}
+          >
+            Kembali ke Lobby
+          </button>
         </div>
       )}
 
-      {/* Waiting Lobby State */}
+      {/* Arena Status Bar (While Waiting or Before Start) */}
       {match.status === 'waiting' && (
         <div
           style={{
             background: '#ffffff',
-            border: '1px solid var(--line-strong)',
-            borderRadius: 'var(--r4)',
-            padding: '36px 24px',
-            boxShadow: '0 4px 16px rgba(28, 25, 23, 0.05)',
-            textAlign: 'center',
+            border: '1px solid var(--line)',
+            borderRadius: 'var(--r2)',
+            padding: '12px 16px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: '16px',
+            flexWrap: 'wrap',
+            gap: '10px',
           }}
         >
-          <div
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '8px 16px',
-              background: 'var(--gold-tint)',
-              border: '1px solid var(--gold-border)',
-              borderRadius: 'var(--r2)',
-              marginBottom: '20px',
-            }}
-          >
-            <span style={{ font: '11px/1 var(--mono)', letterSpacing: '.1em', color: 'var(--gold)', textTransform: 'uppercase' }}>
-              Kode Room:
-            </span>
-            <span style={{ font: '18px/1 var(--mono)', fontWeight: 800, letterSpacing: '.12em', color: 'var(--ink)' }}>
-              {roomCode}
-            </span>
-          </div>
-
-          <h2 style={{ fontSize: '20px', fontWeight: 700, margin: '0 0 8px' }}>
-            Menunggu Pemain Bergabung ({players.length} / {match.max_players})
-          </h2>
-          <p style={{ color: 'var(--ink-dim)', fontSize: '13.5px', marginBottom: '28px' }}>
-            Bagikan kode room di atas kepada teman Anda. Minimal 2 pemain untuk memulai permainan.
-          </p>
-
-          {/* Player Roster */}
-          <div style={{ maxWidth: '420px', margin: '0 auto 32px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {players.map((p, idx) => (
-              <div
-                key={p.id}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '10px 16px',
-                  background: p.player_index === myPlayerIndex ? 'var(--gold-tint)' : 'var(--bg-stage)',
-                  border: `1px solid ${p.player_index === myPlayerIndex ? 'var(--gold-border)' : 'var(--line)'}`,
-                  borderRadius: 'var(--r2)',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <div
-                    style={{
-                      width: '24px',
-                      height: '24px',
-                      borderRadius: '50%',
-                      background: idx === 0 ? 'var(--gold)' : '#292524',
-                      color: '#ffffff',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: '11px',
-                      fontWeight: 700,
-                    }}
-                  >
-                    {idx + 1}
-                  </div>
-                  <span style={{ fontSize: '14px', fontWeight: 600 }}>
-                    {p.name} {p.player_index === myPlayerIndex && '(Anda)'}
-                  </span>
-                </div>
-                {p.is_host && (
-                  <span
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      font: '10px/1 var(--mono)',
-                      color: 'var(--gold)',
-                      background: '#ffffff',
-                      border: '1px solid var(--gold-border)',
-                      borderRadius: 'var(--r2)',
-                      padding: '3px 6px',
-                      textTransform: 'uppercase',
-                    }}
-                  >
-                    <Crown size={11} /> Host
-                  </span>
-                )}
-              </div>
-            ))}
-
-            {Array.from({ length: Math.max(0, match.max_players - players.length) }).map((_, i) => (
-              <div
-                key={`empty-${i}`}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  padding: '10px 16px',
-                  border: '1px dashed var(--line-strong)',
-                  borderRadius: 'var(--r2)',
-                  font: '12px/1 var(--mono)',
-                  color: 'var(--ink-faint)',
-                }}
-              >
-                Slot Pemain {players.length + i + 1} Kosong...
-              </div>
-            ))}
-          </div>
-
-          {/* Host Controls */}
-          {isHost ? (
-            <button
-              onClick={handleStartGame}
-              disabled={players.length < 2 || isSubmitting}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '12px 28px',
-                background: players.length >= 2 ? 'var(--gold)' : 'var(--line-strong)',
-                color: '#ffffff',
-                border: 'none',
-                borderRadius: 'var(--r2)',
-                font: '13px/1 var(--mono)',
-                fontWeight: 700,
-                letterSpacing: '.05em',
-                cursor: players.length >= 2 && !isSubmitting ? 'pointer' : 'not-allowed',
-                textTransform: 'uppercase',
-              }}
-            >
-              <Play size={15} /> Mulai Pertandingan
-            </button>
-          ) : (
-            <div style={{ font: '12px/1 var(--mono)', color: 'var(--ink-dim)', letterSpacing: '.04em' }}>
-              Menunggu Host ({players[0]?.name || 'Pemain 1'}) menekan tombol Mulai...
+          <div>
+            <div style={{ fontSize: '13.5px', fontWeight: 700, color: 'var(--ink)' }}>
+              {players.length >= match.max_players
+                ? `Semua pemain telah bergabung (${players.length}/${match.max_players})`
+                : `Menunggu lawan (${players.length}/${match.max_players})`}
             </div>
-          )}
+            <div style={{ font: '11px/1 var(--mono)', color: 'var(--ink-dim)', marginTop: '3px' }}>
+              Pemain: {players.map((p) => `${p.name}${p.player_index === myPlayerIndex ? ' (Anda)' : ''}`).join(', ')}
+            </div>
+          </div>
+
+          <div>
+            {isHost ? (
+              <button
+                type="button"
+                onClick={handleStartGame}
+                disabled={players.length < 2 || isSubmitting}
+                style={{
+                  padding: '8px 16px',
+                  background: players.length >= 2 ? 'var(--gold)' : 'var(--line-strong)',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: 'var(--r2)',
+                  font: '11.5px/1 var(--mono)',
+                  fontWeight: 700,
+                  cursor: players.length >= 2 && !isSubmitting ? 'pointer' : 'not-allowed',
+                }}
+              >
+                Mulai Pertandingan
+              </button>
+            ) : (
+              <span style={{ font: '11px/1 var(--mono)', color: 'var(--ink-faint)' }}>
+                Menunggu Host memulai...
+              </span>
+            )}
+          </div>
         </div>
       )}
 
-      {/* Active Game State (Exact Layout Matching Local Hotseat) */}
-      {(match.status === 'playing' || match.status === 'completed') && game && activePlayer && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', width: '100%' }}>
-          {/* Turn Banner with Active Pawn Indicator & Telemetry */}
-          <div
-            data-testid="turn-banner"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              padding: '12px 16px',
-              borderRadius: 'var(--r3)',
-              background: '#ffffff',
-              border: `1.5px solid ${isMyTurn ? 'var(--gold)' : activePlayer.theme.hex}`,
-              boxShadow: isMyTurn ? '0 0 0 3px rgba(180, 83, 9, 0.15)' : '0 2px 8px rgba(28, 25, 23, 0.04)',
-              flexWrap: 'wrap',
-              gap: '10px',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <div
-                style={{
-                  width: '32px',
-                  height: '32px',
-                  borderRadius: '50%',
-                  background: activePlayer.theme.hex,
-                  border: `2px solid ${activePlayer.theme.border}`,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: activePlayer.theme.text,
-                  fontWeight: 700,
-                  font: '13px/1 var(--mono)',
-                }}
-              >
-                {activePlayer.id + 1}
-              </div>
-              <div>
-                <div style={{ font: '10px/1 var(--mono)', color: isMyTurn ? 'var(--gold)' : 'var(--ink-faint)', letterSpacing: '.08em', textTransform: 'uppercase' }}>
-                  {isMyTurn ? 'GILIRAN ANDA!' : `Giliran Aktif · Putaran #${game.turn}`}
-                </div>
-                <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--ink)' }}>
-                  {activePlayer.name} {game.activePlayerIndex === myPlayerIndex && '(Anda)'}
-                </div>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', font: 'var(--mono)', fontSize: '12px' }}>
-              <div>
-                <span style={{ color: 'var(--ink-faint)' }}>Jarak ke Inti: </span>
-                <span style={{ fontWeight: 700, color: 'var(--ink)' }}>{activePlayer.distanceToCore} langkah</span>
-              </div>
-              <div>
-                <span style={{ color: 'var(--ink-faint)' }}>Sisa Dinding: </span>
-                <span style={{ fontWeight: 700, color: 'var(--gold)' }}>{activePlayer.wallsRemaining} balok</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Quick Wall Mode Selector & Orientation Toggle */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              background: '#ffffff',
-              padding: '8px 14px',
-              borderRadius: 'var(--r2)',
-              border: '1px solid var(--line-strong)',
-              fontSize: '12px',
-              flexWrap: 'wrap',
-              gap: '8px',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ font: '11px/1 var(--mono)', color: 'var(--ink-dim)', textTransform: 'uppercase' }}>
-                Orientasi Dinding:
-              </span>
-              <button
-                type="button"
-                data-testid="orientation-toggle"
-                onClick={() => setWallOrientation((prev) => (prev === 'H' ? 'V' : 'H'))}
-                disabled={!isMyTurn || activePlayer.wallsRemaining <= 0 || isSubmitting}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  padding: '6px 10px',
-                  background: 'var(--bg-stage)',
-                  border: '1px solid var(--gold)',
-                  borderRadius: 'var(--r2)',
-                  color: 'var(--gold)',
-                  font: '11px/1 var(--mono)',
-                  fontWeight: 700,
-                  cursor: isMyTurn && activePlayer.wallsRemaining > 0 ? 'pointer' : 'not-allowed',
-                  opacity: isMyTurn && activePlayer.wallsRemaining > 0 ? 1 : 0.5,
-                }}
-              >
-                <RotateCw size={12} /> {wallOrientation === 'H' ? 'Horizontal (―)' : 'Vertikal (|)'}
-              </button>
-              <span style={{ font: '10px/1 var(--mono)', color: 'var(--ink-faint)' }}>
-                (Tekan Spasi/R atau sentuh celah)
-              </span>
-            </div>
-
-            <button
-              type="button"
-              onClick={handleExitRoom}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: 'var(--ink-faint)',
-                font: '11px/1 var(--mono)',
-                cursor: 'pointer',
-                textDecoration: 'underline',
-              }}
-            >
-              Keluar Room
-            </button>
-          </div>
-
-          {/* Action Error Flash */}
-          {actionError && (
+      {/* Active Turn Banner (When Playing) */}
+      {match.status === 'playing' && game && activePlayer && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '10px 14px',
+            borderRadius: 'var(--r2)',
+            background: '#ffffff',
+            border: `1.5px solid ${isMyTurn ? 'var(--gold)' : activePlayer.theme.hex}`,
+            marginBottom: '12px',
+            flexWrap: 'wrap',
+            gap: '8px',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <div
               style={{
-                padding: '8px 12px',
-                borderRadius: 'var(--r2)',
-                background: '#fef2f2',
-                border: '1px solid #fecaca',
-                color: '#991b1b',
+                width: '28px',
+                height: '28px',
+                borderRadius: '50%',
+                background: activePlayer.theme.hex,
+                border: `2px solid ${activePlayer.theme.border}`,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: activePlayer.theme.text,
+                fontWeight: 700,
                 fontSize: '12px',
                 fontFamily: 'var(--mono)',
               }}
             >
-              {actionError}
+              {activePlayer.id + 1}
             </div>
-          )}
-
-          {/* Main Interactive Board */}
-          <div style={{ width: '100%', display: 'flex', justifyContent: 'center' }}>
-            <Board
-              gameState={game}
-              wallOrientation={wallOrientation}
-              onSelectMove={handleSelectMove}
-              onPlaceWall={handlePlaceWall}
-              onOrientationChange={setWallOrientation}
-              disabled={!isMyTurn || isSubmitting}
-            />
+            <div>
+              <div style={{ font: '10px/1 var(--mono)', color: isMyTurn ? 'var(--gold)' : 'var(--ink-faint)', textTransform: 'uppercase' }}>
+                {isMyTurn ? 'Giliran Anda!' : `Giliran: ${activePlayer.name}`}
+              </div>
+              <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--ink)' }}>
+                {activePlayer.name} {game.activePlayerIndex === myPlayerIndex && '(Anda)'}
+              </div>
+            </div>
           </div>
 
-          {/* Player Roster Status Cards */}
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: `repeat(${game.playerCount}, 1fr)`,
-              gap: '8px',
-              marginTop: '4px',
-            }}
-          >
-            {game.players.map((p, idx) => {
-              const isTurn = idx === game.activePlayerIndex;
-              const isMe = idx === myPlayerIndex;
-              return (
-                <div
-                  key={p.id}
-                  style={{
-                    padding: '8px 10px',
-                    borderRadius: 'var(--r2)',
-                    background: '#ffffff',
-                    border: isTurn ? `1.5px solid ${p.theme.hex}` : '1px solid var(--line)',
-                    opacity: isTurn ? 1 : 0.75,
-                    font: 'var(--mono)',
-                    fontSize: '11px',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
-                    <span
-                      style={{
-                        display: 'inline-block',
-                        width: '8px',
-                        height: '8px',
-                        borderRadius: '50%',
-                        background: p.theme.hex,
-                      }}
-                    />
-                    <strong style={{ color: 'var(--ink)', fontSize: '11px' }}>
-                      {p.name} {isMe && '(Anda)'}
-                    </strong>
-                  </div>
-                  <div style={{ color: 'var(--ink-faint)', fontSize: '10px' }}>
-                    Sisa: <span style={{ color: 'var(--gold)', fontWeight: 700 }}>{p.wallsRemaining} dinding</span>
-                  </div>
-                </div>
-              );
-            })}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', font: 'var(--mono)', fontSize: '11.5px' }}>
+            <div>
+              <span style={{ color: 'var(--ink-faint)' }}>Jarak: </span>
+              <span style={{ fontWeight: 700, color: 'var(--ink)' }}>{activePlayer.distanceToCore} langkah</span>
+            </div>
+            <div>
+              <span style={{ color: 'var(--ink-faint)' }}>Dinding: </span>
+              <span style={{ fontWeight: 700, color: 'var(--gold)' }}>{activePlayer.wallsRemaining}</span>
+            </div>
           </div>
-
-          {/* Victory Modal */}
-          {winnerPlayer && (
-            <VictoryModal
-              isOpen={isGameOver}
-              winner={winnerPlayer}
-              turn={game.turn}
-              gridSize={game.gridSize}
-              onRestart={() => {
-                if (isHost) {
-                  handleRestartMatch();
-                }
-              }}
-              onNewSetup={handleExitRoom}
-              onClose={() => setIsVictoryModalDismissed(true)}
-            />
-          )}
         </div>
       )}
 
-      {/* Rules Dialog (Identical to Local Hotseat) */}
+      {/* Wall Orientation Selector (When My Turn) */}
+      {isMyTurn && activePlayer && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            background: 'var(--bg-stage)',
+            padding: '7px 12px',
+            borderRadius: 'var(--r2)',
+            border: '1px solid var(--line)',
+            fontSize: '11.5px',
+            marginBottom: '12px',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ font: '11px/1 var(--mono)', color: 'var(--ink-dim)' }}>Orientasi Dinding:</span>
+            <button
+              type="button"
+              onClick={() => setWallOrientation((prev) => (prev === 'H' ? 'V' : 'H'))}
+              disabled={activePlayer.wallsRemaining <= 0 || isSubmitting}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                padding: '4px 8px',
+                background: '#ffffff',
+                border: '1px solid var(--gold)',
+                borderRadius: 'var(--r2)',
+                color: 'var(--gold)',
+                font: '11px/1 var(--mono)',
+                fontWeight: 700,
+                cursor: activePlayer.wallsRemaining > 0 ? 'pointer' : 'not-allowed',
+              }}
+            >
+              <RotateCw size={11} /> {wallOrientation === 'H' ? 'Horizontal (―)' : 'Vertikal (|)'}
+            </button>
+          </div>
+          <span style={{ font: '10px/1 var(--mono)', color: 'var(--ink-faint)' }}>
+            Sentuh celah di papan
+          </span>
+        </div>
+      )}
+
+      {actionError && (
+        <div
+          style={{
+            padding: '8px 12px',
+            borderRadius: 'var(--r2)',
+            background: '#fef2f2',
+            border: '1px solid #fecaca',
+            color: '#991b1b',
+            fontSize: '12px',
+            marginBottom: '12px',
+          }}
+        >
+          {actionError}
+        </div>
+      )}
+
+      {/* The Arena Board (Always centered and prominent) */}
+      <div style={{ width: '100%', display: 'flex', justifyContent: 'center', marginBottom: '14px' }}>
+        <Board
+          gameState={game}
+          wallOrientation={wallOrientation}
+          onSelectMove={handleSelectMove}
+          onPlaceWall={handlePlaceWall}
+          onOrientationChange={setWallOrientation}
+          disabled={!isMyTurn || isSubmitting || match.status !== 'playing'}
+        />
+      </div>
+
+      {/* Roster Cards */}
+      {game && (
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: `repeat(${game.playerCount}, 1fr)`,
+            gap: '6px',
+          }}
+        >
+          {game.players.map((p, idx) => {
+            const isTurn = idx === game.activePlayerIndex && match.status === 'playing';
+            const isMe = idx === myPlayerIndex;
+            return (
+              <div
+                key={p.id}
+                style={{
+                  padding: '7px 8px',
+                  borderRadius: 'var(--r2)',
+                  background: '#ffffff',
+                  border: isTurn ? `1.5px solid ${p.theme.hex}` : '1px solid var(--line)',
+                  font: 'var(--mono)',
+                  fontSize: '10.5px',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '2px' }}>
+                  <span
+                    style={{
+                      display: 'inline-block',
+                      width: '7px',
+                      height: '7px',
+                      borderRadius: '50%',
+                      background: p.theme.hex,
+                    }}
+                  />
+                  <strong style={{ color: 'var(--ink)' }}>
+                    {p.name} {isMe && '(Anda)'}
+                  </strong>
+                </div>
+                <div style={{ color: 'var(--ink-faint)' }}>
+                  Sisa: <span style={{ color: 'var(--gold)', fontWeight: 700 }}>{p.wallsRemaining}</span> dinding
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Victory Modal */}
+      {winnerPlayer && (
+        <VictoryModal
+          isOpen={isGameOver}
+          winner={winnerPlayer}
+          turn={game.turn}
+          gridSize={game.gridSize}
+          onRestart={() => {
+            if (isHost) {
+              handleRestartMatch();
+            }
+          }}
+          onNewSetup={handleExitRoom}
+          onClose={() => setIsVictoryModalDismissed(true)}
+        />
+      )}
+
+      {/* Rules Dialog */}
       <dialog
         ref={rulesDialogRef}
         aria-labelledby="rules-title"
@@ -859,30 +728,30 @@ export const WallgameMatch: React.FC = () => {
           inset: 0,
           margin: 'auto',
           border: '1px solid var(--line-strong)',
-          borderRadius: 'var(--r4)',
+          borderRadius: 'var(--r3)',
           padding: '24px',
           background: '#ffffff',
           boxShadow: '0 12px 32px rgba(28, 25, 23, 0.12)',
-          maxWidth: '520px',
+          maxWidth: '500px',
           width: 'calc(100% - 32px)',
           color: 'var(--ink)',
         }}
       >
-        <h2 id="rules-title" style={{ fontSize: '18px', fontWeight: 700, margin: '0 0 12px', color: 'var(--ink)' }}>
+        <h2 id="rules-title" style={{ fontSize: '17px', fontWeight: 700, margin: '0 0 10px', color: 'var(--ink)' }}>
           Aturan WallGo (Quoridor Core)
         </h2>
         <ul style={{ fontSize: '13px', lineHeight: 1.6, paddingLeft: '18px', color: 'var(--ink-dim)', margin: '0 0 18px' }}>
           <li>
-            <strong>Tujuan:</strong> Bidak pertama yang mencapai <em>The Golden Core</em> (petak tengah berlingkaran emas) langsung memenangkan pertandingan.
+            <strong>Tujuan:</strong> Bidak pertama yang mencapai <em>The Golden Core</em> (petak tengah berlingkaran emas) memenangkan pertandingan.
           </li>
           <li>
-            <strong>Tindakan Giliran:</strong> Setiap giliran, pemain memilih <em>melangkah 1 petak</em> (ke atas, bawah, kiri, kanan) ATAU <em>memasang 1 balok dinding</em> (panjang 2 petak).
+            <strong>Tindakan Giliran:</strong> Setiap giliran, pemain memilih <em>melangkah 1 petak</em> (ke atas, bawah, kiri, kanan) ATAU <em>memasang 1 balok dinding</em>.
           </li>
           <li>
             <strong>Melompati Lawan:</strong> Jika berhadapan langsung dengan bidak lawan tanpa terhalang dinding, Anda dapat melompati bidak tersebut.
           </li>
           <li>
-            <strong>Aturan Keadilan (Fair Rule):</strong> Pemasangan dinding yang mengunci total jalan pemain mana pun menuju The Golden Core adalah pelanggaran dan dilarang (diverifikasi oleh BFS pathfinder).
+            <strong>Fair Rule:</strong> Pemasangan dinding yang mengunci total akses ke Core dilarang (divalidasi oleh BFS pathfinder).
           </li>
         </ul>
         <div style={{ textAlign: 'right' }}>
@@ -890,12 +759,12 @@ export const WallgameMatch: React.FC = () => {
             type="button"
             onClick={() => rulesDialogRef.current?.close()}
             style={{
-              padding: '8px 16px',
+              padding: '6px 14px',
               borderRadius: 'var(--r2)',
               border: '1px solid var(--line-strong)',
               background: 'var(--bg-stage)',
               color: 'var(--ink)',
-              font: '12px/1 var(--mono)',
+              font: '11.5px/1 var(--mono)',
               cursor: 'pointer',
             }}
           >
