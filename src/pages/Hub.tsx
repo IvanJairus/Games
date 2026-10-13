@@ -19,15 +19,16 @@ export const Hub: React.FC = () => {
         }}
       >
         <span
+          aria-hidden="true"
           style={{
             display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
             width: '24px',
             height: '24px',
-            border: '1px solid var(--gold)',
+            border: '1px solid var(--red)',
             borderRadius: 'var(--r2)',
-            color: 'var(--gold)',
+            color: 'var(--red)',
             font: '11px/1 var(--mono)',
             fontWeight: 700,
           }}
@@ -36,7 +37,7 @@ export const Hub: React.FC = () => {
         </span>
         <span>ivanjairus.xyz</span>
         <span style={{ color: 'var(--line-strong)' }}>/</span>
-        <span style={{ color: 'var(--gold)' }}>games</span>
+        <span style={{ color: 'var(--red)' }}>games</span>
         <span style={{ marginLeft: 'auto' }}>
           <a
             href="/"
