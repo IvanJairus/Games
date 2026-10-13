@@ -3,6 +3,7 @@ import { createBrowserRouter, RouterProvider, Outlet } from 'react-router-dom';
 import { Hub } from './pages/Hub';
 import { NotFound } from './pages/NotFound';
 import { wallgameRoutes } from './games/wallgame/routes';
+import { RouteErrorBoundary } from './components/ErrorBoundary';
 
 const Layout: React.FC = () => {
   return (
@@ -40,6 +41,7 @@ const router = createBrowserRouter(
     {
       path: '/',
       element: <Layout />,
+      errorElement: <RouteErrorBoundary />,
       children: [
         {
           index: true,
