@@ -2,7 +2,7 @@ import React from 'react';
 import { createBrowserRouter, RouterProvider, Outlet } from 'react-router-dom';
 import { Hub } from './pages/Hub';
 import { NotFound } from './pages/NotFound';
-import { wallgameRoutes } from './games/wallgame/routes';
+import { allGameRoutes } from './games/registry';
 import { RouteErrorBoundary } from './components/ErrorBoundary';
 
 const Layout: React.FC = () => {
@@ -28,7 +28,7 @@ const Layout: React.FC = () => {
       >
         <span>ivanjairus.xyz/games/</span>
         <span>·</span>
-        <span>papan strategi Quoridor · Race to Golden Core</span>
+        <span>papan strategi taktis · game hub lokal & online</span>
         <span>·</span>
         <span>dilayani oleh ij-gateway</span>
       </footer>
@@ -47,7 +47,7 @@ const router = createBrowserRouter(
           index: true,
           element: <Hub />,
         },
-        ...wallgameRoutes,
+        ...allGameRoutes,
         {
           path: '*',
           element: <NotFound />,

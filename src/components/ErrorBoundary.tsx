@@ -168,7 +168,7 @@ export const RouteErrorBoundary: React.FC = () => {
           </button>
 
           <Link
-            to="/wallgame/local"
+            to="/wall-game/local"
             style={{
               display: 'inline-flex',
               alignItems: 'center',

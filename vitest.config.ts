@@ -3,15 +3,15 @@ import path from 'path';
 
 export default defineConfig({
   test: {
-    environment: 'node',
+    environment: 'jsdom',
+    setupFiles: ['./tests/setup.ts'],
     coverage: {
       provider: 'v8',
-      include: ['supabase/functions/_shared/**/*.ts'],
+      include: ['src/games/**/engine/**/*.ts'],
     },
   },
   resolve: {
     alias: {
-      '@engine': path.resolve(__dirname, 'supabase/functions/_shared'),
       '@': path.resolve(__dirname, 'src'),
     },
   },

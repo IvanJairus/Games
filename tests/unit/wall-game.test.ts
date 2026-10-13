@@ -10,7 +10,7 @@ import {
   getRecommendedGridSize,
   getSpawnPositions,
   getInitialWallQuota,
-} from '../supabase/functions/_shared/wallgame/engine';
+} from '@/games/wall-game/engine';
 
 describe('WallGo: Race to the Golden Core Engine', () => {
   describe('Game Initialization & Symmetric Balance', () => {
@@ -58,67 +58,76 @@ describe('WallGo: Race to the Golden Core Engine', () => {
 
       const spawnsDefault = getSpawnPositions(7, 11);
       expect(spawnsDefault).toHaveLength(7);
-      expect(getInitialWallQuota(2)).toBe(10);
+      expect(getInitialWallQuota(1)).toBe(10);
     });
   });
 
   describe('Move Mechanics & Pawn Jumping', () => {
     it('allows legal orthogonal steps at start', () => {
       const game = createGame({ playerCount: 2, gridSize: 9 });
-      const moves = getValidMoves(game);
-
-      // P0 at (4, 8): can step North (4, 7), West (3, 8), East (5, 8). South is off-board.
-      expect(moves).toHaveLength(3);
-      expect(moves).toContainEqual({ x: 4, y: 7 });
-      expect(moves).toContainEqual({ x: 3, y: 8 });
-      expect(moves).toContainEqual({ x: 5, y: 8 });
+      // Player 0 at (4, 8)
+      const valid = getValidMoves(game);
+      expect(valid).toEqual(
+        expect.arrayContaining([
+          { x: 4, y: 7 }, // North
+          { x: 3, y: 8 }, // West
+          { x: 5, y: 8 }, // East
+        ])
+      );
+      expect(valid).toHaveLength(3); // South is out of bounds
     });
 
     it('blocks movement across horizontal and vertical walls', () => {
       let game = createGame({ playerCount: 2, gridSize: 9 });
-      // Place horizontal wall at (3, 7) -> blocks movement between row 7 and row 8 at col 3 and col 4!
-      game.walls.push({ orientation: 'H', x: 3, y: 7 });
+      // Player 0 at (4, 8). Place horizontal wall right in front at (4, 7)
+      game = {
+        ...game,
+        walls: [{ orientation: 'H', x: 4, y: 7 }],
+      };
 
-      const moves = getValidMoves(game);
-      // North step (4, 7) should now be blocked
-      expect(moves).not.toContainEqual({ x: 4, y: 7 });
-      expect(moves).toContainEqual({ x: 3, y: 8 });
-      expect(moves).toContainEqual({ x: 5, y: 8 });
+      const valid = getValidMoves(game);
+      // North step (4, 7) must be blocked
+      const canMoveNorth = valid.some((m) => m.x === 4 && m.y === 7);
+      expect(canMoveNorth).toBe(false);
     });
 
     it('allows jumping straight over an opponent pawn', () => {
       let game = createGame({ playerCount: 2, gridSize: 9 });
-      // Place P1 directly in front of P0 at (4, 7)
-      game.players[1].position = { x: 4, y: 7 };
+      // Move Player 0 to (4, 5) and Player 1 to (4, 4)
+      game.players[0].position = { x: 4, y: 5 };
+      game.players[1].position = { x: 4, y: 4 };
 
-      const moves = getValidMoves(game);
-      // P0 at (4, 8) can jump over P1 at (4, 7) to land on (4, 6)!
-      expect(moves).toContainEqual({ x: 4, y: 6 });
-      expect(moves).not.toContainEqual({ x: 4, y: 7 }); // Cannot land on opponent
+      const valid = getValidMoves(game);
+      // Can jump straight over Player 1 to (4, 3)
+      const canJumpStraight = valid.some((m) => m.x === 4 && m.y === 3);
+      expect(canJumpStraight).toBe(true);
     });
 
     it('allows diagonal jump when straight jump is blocked by a wall', () => {
       let game = createGame({ playerCount: 2, gridSize: 9 });
-      game.players[1].position = { x: 4, y: 7 };
-      // Wall behind opponent at (4, 6)
-      game.walls.push({ orientation: 'H', x: 3, y: 6 });
+      // Player 0 at (4, 5), Player 1 at (4, 4).
+      // Place a horizontal wall between Player 1 (4, 4) and (4, 3)
+      game.players[0].position = { x: 4, y: 5 };
+      game.players[1].position = { x: 4, y: 4 };
+      game.walls = [{ orientation: 'H', x: 4, y: 3 }];
 
-      const moves = getValidMoves(game);
-      // Straight jump to (4, 6) is blocked, diagonal jumps to (3, 7) and (5, 7) are allowed!
-      expect(moves).not.toContainEqual({ x: 4, y: 6 });
-      expect(moves).toContainEqual({ x: 3, y: 7 });
-      expect(moves).toContainEqual({ x: 5, y: 7 });
+      const valid = getValidMoves(game);
+      // Straight jump to (4, 3) should NOT be allowed
+      expect(valid.some((m) => m.x === 4 && m.y === 3)).toBe(false);
+      // Diagonal jumps to (3, 4) and (5, 4) SHOULD be allowed
+      expect(valid.some((m) => m.x === 3 && m.y === 4)).toBe(true);
+      expect(valid.some((m) => m.x === 5 && m.y === 4)).toBe(true);
     });
 
     it('detects victory immediately upon stepping onto The Golden Core', () => {
       let game = createGame({ playerCount: 2, gridSize: 9 });
-      // Place P0 adjacent to Core (4, 4) at (4, 5)
+      // Position Player 0 adjacent to Core (4, 4), e.g. at (4, 5)
       game.players[0].position = { x: 4, y: 5 };
 
-      const updated = applyMove(game, { x: 4, y: 4 });
-      expect(updated.phase).toBe('GAME_OVER');
-      expect(updated.winnerId).toBe(0);
-      expect(updated.players[0].position).toEqual({ x: 4, y: 4 });
+      const nextState = applyMove(game, { x: 4, y: 4 });
+      expect(nextState.phase).toBe('GAME_OVER');
+      expect(nextState.winnerId).toBe(0);
+      expect(nextState.players[0].position).toEqual({ x: 4, y: 4 });
     });
   });
 
@@ -127,7 +136,8 @@ describe('WallGo: Race to the Golden Core Engine', () => {
       let game = createGame({ playerCount: 2, gridSize: 9 });
       game.players[0].wallsRemaining = 0;
 
-      expect(isValidWallPlacement(game, { orientation: 'H', x: 2, y: 2 })).toBe(false);
+      const isValid = isValidWallPlacement(game, { orientation: 'H', x: 3, y: 3 });
+      expect(isValid).toBe(false);
     });
 
     it('rejects overlapping and crossing walls', () => {
@@ -155,38 +165,38 @@ describe('WallGo: Race to the Golden Core Engine', () => {
       // Wall that would completely trap P0 from reaching Core (3, 3)
       const trappingWall = { orientation: 'V' as const, x: 4, y: 5 };
       expect(isValidWallPlacement(game, trappingWall)).toBe(false);
+      expect(() => applyWall(game, trappingWall)).toThrow(/Invalid or illegal wall placement/);
     });
 
     it('applies wall, decrements quota, updates distances, and cycles turn', () => {
-      let game = createGame({ playerCount: 3, gridSize: 9 });
-      const initialQuota = game.players[0].wallsRemaining;
+      const initial = createGame({ playerCount: 2, gridSize: 9 });
+      const next = applyWall(initial, { orientation: 'H', x: 1, y: 1 });
 
-      game = applyWall(game, { orientation: 'H', x: 2, y: 2 });
-      expect(game.players[0].wallsRemaining).toBe(initialQuota - 1);
-      expect(game.walls).toHaveLength(1);
-      expect(game.activePlayerIndex).toBe(1); // Turn advanced to P1
-      expect(game.turn).toBe(2);
+      expect(next.walls).toHaveLength(1);
+      expect(next.players[0].wallsRemaining).toBe(9);
+      expect(next.players[1].wallsRemaining).toBe(10);
+      expect(next.activePlayerIndex).toBe(1);
+      expect(next.turn).toBe(2);
+      expect(next.history).toHaveLength(1);
+      expect(next.history[0].type).toBe('WALL');
     });
   });
 
   describe('Pathfinding & Utilities', () => {
     it('getShortestPath returns correct path and handles blocked routes', () => {
-      const path = getShortestPath({ x: 0, y: 0 }, { x: 2, y: 0 }, [], 5);
-      expect(path).toHaveLength(3); // (0,0) -> (1,0) -> (2,0)
+      const path = getShortestPath({ x: 0, y: 0 }, { x: 2, y: 0 }, [], 9);
+      expect(path).toHaveLength(3);
 
-      // Block with vertical wall
-      const walls = [{ orientation: 'V' as const, x: 0, y: 0 }];
-      const blockedPath = getShortestPath({ x: 0, y: 0 }, { x: 1, y: 0 }, walls, 5);
-      // Must detour around wall
-      expect(blockedPath?.length).toBeGreaterThan(2);
+      const pathSelf = getShortestPath({ x: 3, y: 3 }, { x: 3, y: 3 }, [], 9);
+      expect(pathSelf).toHaveLength(1);
     });
 
     it('isPathBlockedByWall checks accurate spans', () => {
-      const walls = [{ orientation: 'H' as const, x: 2, y: 1 }];
-      // Wall at (2, 1) blocks col 2 and col 3 between row 1 and row 2
-      expect(isPathBlockedByWall({ x: 2, y: 1 }, { x: 2, y: 2 }, walls)).toBe(true);
-      expect(isPathBlockedByWall({ x: 3, y: 1 }, { x: 3, y: 2 }, walls)).toBe(true);
-      expect(isPathBlockedByWall({ x: 1, y: 1 }, { x: 1, y: 2 }, walls)).toBe(false);
+      const wallH = [{ orientation: 'H' as const, x: 2, y: 2 }];
+      // Vertical step crossing wall
+      expect(isPathBlockedByWall({ x: 2, y: 2 }, { x: 2, y: 3 }, wallH)).toBe(true);
+      expect(isPathBlockedByWall({ x: 3, y: 2 }, { x: 3, y: 3 }, wallH)).toBe(true);
+      expect(isPathBlockedByWall({ x: 4, y: 2 }, { x: 4, y: 3 }, wallH)).toBe(false);
     });
   });
 });

@@ -9,7 +9,7 @@ export const WallgameLobby: React.FC = () => {
   const handleJoinOnline = (e: React.FormEvent) => {
     e.preventDefault();
     if (roomCode.trim()) {
-      navigate(`/wallgame/m/${roomCode.trim().toUpperCase()}`);
+      navigate(`/wall-game/m/${roomCode.trim().toUpperCase()}`);
     }
   };
 
@@ -114,7 +114,8 @@ export const WallgameLobby: React.FC = () => {
               </p>
             </div>
             <Link
-              to="/wallgame/local"
+              to="/wall-game/local"
+              data-testid="local-play-link"
               style={{
                 display: 'flex',
                 alignItems: 'center',

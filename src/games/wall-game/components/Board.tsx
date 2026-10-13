@@ -6,9 +6,9 @@ import {
   WallOrientation,
   getValidMoves,
   isValidWallPlacement,
-} from '../../../../supabase/functions/_shared/wallgame/engine';
+} from '../engine';
 
-interface BoardProps {
+export interface BoardProps {
   gameState: GameState;
   wallOrientation: WallOrientation;
   onSelectMove: (target: Position) => void;
@@ -101,6 +101,7 @@ export const Board: React.FC<BoardProps> = ({
         }}
         role="region"
         aria-label="Papan permainan WallGo"
+        data-testid="wallgame-board-svg"
       >
         {/* Outer border guide */}
         <rect
@@ -131,6 +132,7 @@ export const Board: React.FC<BoardProps> = ({
                   fill={isCore ? 'var(--core-bg)' : 'var(--bg-tile)'}
                   stroke={isCore ? 'var(--core-border)' : 'var(--line)'}
                   strokeWidth={isCore ? 2 : 1}
+                  data-testid={`tile-${x}-${y}`}
                 />
 
                 {/* Central Golden Core emblem */}
@@ -167,7 +169,7 @@ export const Board: React.FC<BoardProps> = ({
           const wHeight = isH ? grooveThickness : cellSize * 2 + grooveThickness;
 
           return (
-            <g key={`wall-${index}`}>
+            <g key={`wall-${index}`} data-testid={`placed-wall-${wall.orientation}-${wall.x}-${wall.y}`}>
               <rect
                 x={wx + 1}
                 y={wy + 1}
@@ -190,9 +192,9 @@ export const Board: React.FC<BoardProps> = ({
           );
         })}
 
-        {/* Wall Slots & Hover Preview (Tightly bounded to groove so tiles remain accessible) */}
+        {/* Wall Slots & Hover Preview */}
         {phase === 'ACTION' && !disabled && activePlayer.wallsRemaining > 0 && (
-          <g>
+          <g data-testid="wall-slots-layer">
             {Array.from({ length: gridSize - 1 }).map((_, wy) =>
               Array.from({ length: gridSize - 1 }).map((_, wx) => {
                 const ix = getCellX(wx) + cellSize;
@@ -248,7 +250,7 @@ export const Board: React.FC<BoardProps> = ({
                       onClick={(e) => handleSlotClick('V', wx, wy, e)}
                     />
 
-                    {/* Crossroads Center Box (Dynamic Angle Follower) */}
+                    {/* Crossroads Center Box */}
                     <rect
                       x={ix - 3}
                       y={iy - 3}
@@ -256,6 +258,7 @@ export const Board: React.FC<BoardProps> = ({
                       height={grooveThickness + 6}
                       fill="transparent"
                       style={{ cursor: 'pointer' }}
+                      data-testid={`groove-cross-${wx}-${wy}`}
                       onMouseMove={(e) => handleCrossMouseMove(wx, wy, e)}
                       onClick={(e) => {
                         const curOri = hoveredWall?.orientation || wallOrientation;
@@ -270,6 +273,7 @@ export const Board: React.FC<BoardProps> = ({
             {/* Ghost Wall Bar (Clicking directly places the wall) */}
             {hoveredWall && (
               <g
+                data-testid="ghost-wall-preview"
                 style={{ cursor: isPreviewValid ? 'pointer' : 'not-allowed' }}
                 onClick={(e) => {
                   handleSlotClick(hoveredWall.orientation, hoveredWall.x, hoveredWall.y, e);
@@ -312,6 +316,7 @@ export const Board: React.FC<BoardProps> = ({
             <g
               key={`candidate-${m.x}-${m.y}`}
               className="move-candidate-group"
+              data-testid={`move-candidate-${m.x}-${m.y}`}
               onClick={(e) => {
                 e.stopPropagation();
                 if (!disabled) {
@@ -378,8 +383,8 @@ export const Board: React.FC<BoardProps> = ({
           const radius = cellSize * 0.34;
 
           return (
-            <g key={`pawn-${p.id}`} pointerEvents="none">
-              {/* Static ring indicator on active pawn */}
+            <g key={`pawn-${p.id}`} pointerEvents="none" data-testid={`player-pawn-${p.id}`}>
+              {/* Ring indicator on active pawn */}
               {isActive && (
                 <circle
                   cx={px}
