@@ -1,0 +1,40 @@
+{
+  "name": "ij-games",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:unit": "vitest run tests/unit",
+    "test:ui": "vitest run tests/ui",
+    "test:coverage": "vitest run --coverage",
+    "release:check": "node scripts/release-audit.mjs",
+    "guard:check": "git grep -nE '\\.vercel\\.app' -- ':!registry/' ':!vercel.json' ':!.github/' || true"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.117.3",
+    "lucide-react": "^1.16.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-router-dom": "^7.2.0"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@types/node": "^22.13.1",
+    "@types/react": "^19.0.10",
+    "@types/react-dom": "^19.0.4",
+    "@vitejs/plugin-react": "^4.3.4",
+    "@vitest/coverage-v8": "^3.2.7",
+    "jsdom": "^29.1.1",
+    "libsodium-wrappers": "^0.8.4",
+    "pg": "^8.23.1",
+    "typescript": "^5.7.3",
+    "vercel": "^63.1.2",
+    "vite": "^6.2.0",
+    "vitest": "^3.0.5"
+  }
+}

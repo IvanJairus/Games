@@ -1,0 +1,142 @@
+:root {
+  --bg: #ffffff;
+  --bg-paper: #faf7f2;
+  --bg-stage: #f6f5f3;
+  --bg-tile: #f5f2eb;
+  --bg-tile-hover: #eae4d7;
+  --ink: #1c1917;
+  --ink-dim: #5c5348;
+  --ink-faint: #766b5f;
+  --line: rgba(28, 25, 23, 0.12);
+  --line-strong: rgba(28, 25, 23, 0.24);
+  
+  /* Tactical Palette (No muddy brown - Clean Architectural Slate & Brass Accent) */
+  --gold: #b45309;
+  --gold-deep: #1e293b;
+  --gold-tint: rgba(180, 83, 9, 0.07);
+  --gold-border: rgba(180, 83, 9, 0.32);
+  
+  /* Placed Wall Stone (Slate Graphite) */
+  --wall-placed: #1e293b;
+  --wall-placed-border: #334155;
+  --wall-placed-shadow: rgba(15, 23, 42, 0.18);
+  
+  /* Core Goal */
+  --core-bg: #fef3c7;
+  --core-border: #b45309;
+
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  
+  --r2: 2px;
+  --r4: 4px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  margin: 0;
+  background-color: var(--bg);
+  color: var(--ink);
+  font-family: var(--sans);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+}
+
+.mono {
+  font-family: var(--mono);
+}
+
+/* Accessible Focus Indicators (Modern Web Guidance) */
+:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+/* Subtle Architectural Paper Grid Texture matching gateway-B2 */
+.paper-bg {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.35;
+  background-image: 
+    linear-gradient(var(--line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--line) 1px, transparent 1px);
+  background-size: 64px 64px;
+  -webkit-mask-image: radial-gradient(130% 90% at 50% 10%, #000 0%, transparent 80%);
+  mask-image: radial-gradient(130% 90% at 50% 10%, #000 0%, transparent 80%);
+  z-index: 0;
+}
+
+/* Native dialog styling (Modern Web Guidance) */
+dialog {
+  margin: auto;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r4);
+  background: var(--bg);
+  color: var(--ink);
+  padding: 24px;
+  box-shadow: 0 16px 32px rgba(28, 25, 23, 0.15);
+}
+
+dialog[open],
+dialog:modal {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  overscroll-behavior: contain;
+}
+
+dialog::backdrop {
+  overflow: hidden;
+  overscroll-behavior: contain;
+  background: rgba(28, 25, 23, 0.4);
+  backdrop-filter: blur(2px);
+}
+
+/* Interactive Candidate Move Tiles */
+.move-candidate-group {
+  cursor: pointer;
+}
+
+.move-candidate-tile {
+  transition: fill 0.12s ease, stroke 0.12s ease, stroke-width 0.12s ease;
+}
+
+.move-candidate-group:hover .move-candidate-tile {
+  fill: #fef08a !important;
+  stroke: var(--gold-deep) !important;
+  stroke-width: 2.2px !important;
+  stroke-dasharray: none !important;
+}
+
+.move-candidate-group:active .move-candidate-tile {
+  fill: #fde047 !important;
+}
+
+/* Responsive Game Board Layout (antislop-layoutmobile) */
+.game-layout {
+  display: grid;
+  grid-template-columns: minmax(320px, 1fr) 280px;
+  gap: 24px;
+  align-items: start;
+}
+
+@media (max-width: 768px) {
+  .game-layout {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+}
