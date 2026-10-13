@@ -3,7 +3,6 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
   Check,
-  RotateCw,
   Share2,
   Clock,
   HelpCircle,
@@ -524,7 +523,8 @@ export const WallgameMatch: React.FC = () => {
             background: '#ffffff',
             border: `1.5px solid ${isMyTurn ? 'var(--gold)' : activePlayer.theme.hex}`,
             marginBottom: '12px',
-            flexWrap: 'wrap',
+            minHeight: '52px',
+            boxSizing: 'border-box',
             gap: '8px',
           }}
         >
@@ -543,21 +543,22 @@ export const WallgameMatch: React.FC = () => {
                 fontWeight: 700,
                 fontSize: '12px',
                 fontFamily: 'var(--mono)',
+                flexShrink: 0,
               }}
             >
               {activePlayer.id + 1}
             </div>
             <div>
-              <div style={{ font: '10px/1 var(--mono)', color: isMyTurn ? 'var(--gold)' : 'var(--ink-faint)', textTransform: 'uppercase' }}>
+              <div style={{ font: '10px/1 var(--mono)', color: isMyTurn ? 'var(--gold)' : 'var(--ink-faint)', textTransform: 'uppercase', letterSpacing: '.06em' }}>
                 {isMyTurn ? 'Giliran Anda!' : `Giliran: ${activePlayer.name}`}
               </div>
-              <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--ink)' }}>
+              <div style={{ fontSize: '13.5px', fontWeight: 700, color: 'var(--ink)' }}>
                 {activePlayer.name} {game.activePlayerIndex === myPlayerIndex && '(Anda)'}
               </div>
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', font: 'var(--mono)', fontSize: '11.5px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', font: 'var(--mono)', fontSize: '11px', flexShrink: 0 }}>
             <div>
               <span style={{ color: 'var(--ink-faint)' }}>Jarak: </span>
               <span style={{ fontWeight: 700, color: 'var(--ink)' }}>{activePlayer.distanceToCore} langkah</span>
@@ -570,67 +571,7 @@ export const WallgameMatch: React.FC = () => {
         </div>
       )}
 
-      {/* Wall Orientation Selector (When My Turn) */}
-      {isMyTurn && activePlayer && (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            background: 'var(--bg-stage)',
-            padding: '7px 12px',
-            borderRadius: 'var(--r2)',
-            border: '1px solid var(--line)',
-            fontSize: '11.5px',
-            marginBottom: '12px',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ font: '11px/1 var(--mono)', color: 'var(--ink-dim)' }}>Orientasi Dinding:</span>
-            <button
-              type="button"
-              onClick={() => setWallOrientation((prev) => (prev === 'H' ? 'V' : 'H'))}
-              disabled={activePlayer.wallsRemaining <= 0 || isSubmitting}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '5px',
-                padding: '4px 8px',
-                background: '#ffffff',
-                border: '1px solid var(--gold)',
-                borderRadius: 'var(--r2)',
-                color: 'var(--gold)',
-                font: '11px/1 var(--mono)',
-                fontWeight: 700,
-                cursor: activePlayer.wallsRemaining > 0 ? 'pointer' : 'not-allowed',
-              }}
-            >
-              <RotateCw size={11} /> {wallOrientation === 'H' ? 'Horizontal (―)' : 'Vertikal (|)'}
-            </button>
-          </div>
-          <span style={{ font: '10px/1 var(--mono)', color: 'var(--ink-faint)' }}>
-            Sentuh celah di papan
-          </span>
-        </div>
-      )}
-
-      {actionError && (
-        <div
-          style={{
-            padding: '8px 12px',
-            borderRadius: 'var(--r2)',
-            background: '#fef2f2',
-            border: '1px solid #fecaca',
-            color: '#991b1b',
-            fontSize: '12px',
-            marginBottom: '12px',
-          }}
-        >
-          {actionError}
-        </div>
-      )}
-
-      {/* The Arena Board (Always centered and prominent) */}
+      {/* The Arena Board (Always centered, zero-shift position) */}
       <div style={{ width: '100%', display: 'flex', justifyContent: 'center', marginBottom: '14px' }}>
         <Board
           gameState={game}
@@ -639,8 +580,27 @@ export const WallgameMatch: React.FC = () => {
           onPlaceWall={handlePlaceWall}
           onOrientationChange={setWallOrientation}
           disabled={!isMyTurn || isSubmitting || match.status !== 'playing'}
+          statusNotice={!isMyTurn ? `Menunggu giliran ${activePlayer?.name || 'lawan'}...` : undefined}
         />
       </div>
+
+      {actionError && (
+        <div
+          style={{
+            padding: '7px 12px',
+            borderRadius: 'var(--r2)',
+            background: '#fef2f2',
+            border: '1px solid #fecaca',
+            color: '#991b1b',
+            fontSize: '11.5px',
+            marginBottom: '10px',
+            fontFamily: 'var(--mono)',
+            textAlign: 'center',
+          }}
+        >
+          {actionError}
+        </div>
+      )}
 
       {/* Roster Cards */}
       {game && (

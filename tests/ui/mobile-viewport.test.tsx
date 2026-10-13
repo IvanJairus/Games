@@ -43,6 +43,24 @@ describe('Mobile Viewport Automation Suite (375px)', () => {
 
     fireEvent.click(toggleBtn);
     expect(toggleBtn).toHaveTextContent(/Horizontal/);
+
+    // 2-Step Wall Placement on Mobile:
+    // Tap groove cross: stages wall preview without committing prematurely
+    const grooveCross = screen.getByTestId('groove-cross-1-1');
+    fireEvent.click(grooveCross);
+
+    // Staged preview bar and preview on SVG are visible
+    expect(screen.getByTestId('staged-wall-bar')).toBeInTheDocument();
+    expect(screen.getByTestId('staged-wall-preview')).toBeInTheDocument();
+
+    // Confirm button is present and clickable
+    const confirmBtn = screen.getByTestId('confirm-wall-btn');
+    expect(confirmBtn).toBeInTheDocument();
+    fireEvent.click(confirmBtn);
+
+    // Turn should advance to Player 2
+    expect(screen.getByTestId('turn-banner')).toHaveTextContent(/Putaran #2/);
+    expect(screen.getByTestId('turn-banner')).toHaveTextContent(/Pemain 2/);
   });
 
   it('triggers Victory Modal upon winning and offers restart, new setup, and home actions', () => {

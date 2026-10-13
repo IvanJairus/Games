@@ -169,24 +169,44 @@ export const WallgameLocal: React.FC = () => {
           </button>
 
           {game && (
-            <button
-              type="button"
-              onClick={handleResetGame}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '6px 12px',
-                border: '1px solid var(--line-strong)',
-                borderRadius: 'var(--r2)',
-                background: '#ffffff',
-                color: 'var(--ink-dim)',
-                font: '11px/1 var(--mono)',
-                cursor: 'pointer',
-              }}
-            >
-              <RotateCw size={13} /> Reset
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={handleExitToSetup}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '6px 12px',
+                  border: '1px solid var(--line-strong)',
+                  borderRadius: 'var(--r2)',
+                  background: '#ffffff',
+                  color: 'var(--ink-dim)',
+                  font: '11px/1 var(--mono)',
+                  cursor: 'pointer',
+                }}
+              >
+                Setup
+              </button>
+              <button
+                type="button"
+                onClick={handleResetGame}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '6px 12px',
+                  border: '1px solid var(--line-strong)',
+                  borderRadius: 'var(--r2)',
+                  background: '#ffffff',
+                  color: 'var(--ink-dim)',
+                  font: '11px/1 var(--mono)',
+                  cursor: 'pointer',
+                }}
+              >
+                <RotateCw size={13} /> Reset
+              </button>
+            </>
           )}
         </div>
       </header>
@@ -445,87 +465,7 @@ export const WallgameLocal: React.FC = () => {
             </div>
           </div>
 
-          {/* Quick Wall Mode Selector & Orientation Toggle */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              background: '#ffffff',
-              padding: '8px 14px',
-              borderRadius: 'var(--r2)',
-              border: '1px solid var(--line-strong)',
-              fontSize: '12px',
-              flexWrap: 'wrap',
-              gap: '8px',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ font: '11px/1 var(--mono)', color: 'var(--ink-dim)', textTransform: 'uppercase' }}>
-                Orientasi Dinding:
-              </span>
-              <button
-                type="button"
-                data-testid="orientation-toggle"
-                onClick={() => setWallOrientation((prev) => (prev === 'H' ? 'V' : 'H'))}
-                disabled={activePlayer.wallsRemaining <= 0}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  padding: '6px 10px',
-                  background: 'var(--bg-stage)',
-                  border: '1px solid var(--gold)',
-                  borderRadius: 'var(--r2)',
-                  color: 'var(--gold)',
-                  font: '11px/1 var(--mono)',
-                  fontWeight: 700,
-                  cursor: activePlayer.wallsRemaining > 0 ? 'pointer' : 'not-allowed',
-                  opacity: activePlayer.wallsRemaining > 0 ? 1 : 0.5,
-                }}
-              >
-                <RotateCw size={12} /> {wallOrientation === 'H' ? 'Horizontal (―)' : 'Vertikal (|)'}
-              </button>
-              <span style={{ font: '10px/1 var(--mono)', color: 'var(--ink-faint)' }}>
-                (Tekan Spasi/R atau hover celah)
-              </span>
-            </div>
-
-            <button
-              type="button"
-              onClick={handleExitToSetup}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: 'var(--ink-faint)',
-                font: '11px/1 var(--mono)',
-                cursor: 'pointer',
-                textDecoration: 'underline',
-              }}
-            >
-              Ubah Pengaturan
-            </button>
-          </div>
-
-          {/* Action Error Flash */}
-          {actionError && (
-            <div
-              data-testid="action-error"
-              style={{
-                padding: '8px 12px',
-                borderRadius: 'var(--r2)',
-                background: '#fef2f2',
-                border: '1px solid #fecaca',
-                color: '#991b1b',
-                fontSize: '12px',
-                fontFamily: 'var(--mono)',
-              }}
-            >
-              {actionError}
-            </div>
-          )}
-
-          {/* Main SVG Board */}
+          {/* Main SVG Board (with integrated zero-shift Action Dock) */}
           <Board
             gameState={game}
             wallOrientation={wallOrientation}
@@ -534,6 +474,25 @@ export const WallgameLocal: React.FC = () => {
             onOrientationChange={setWallOrientation}
             disabled={game.phase === 'GAME_OVER'}
           />
+
+          {/* Action Error Notice */}
+          {actionError && (
+            <div
+              data-testid="action-error"
+              style={{
+                padding: '7px 12px',
+                borderRadius: 'var(--r2)',
+                background: '#fef2f2',
+                border: '1px solid #fecaca',
+                color: '#991b1b',
+                fontSize: '11.5px',
+                fontFamily: 'var(--mono)',
+                textAlign: 'center',
+              }}
+            >
+              {actionError}
+            </div>
+          )}
 
           {/* Player Roster Status Cards */}
           <div

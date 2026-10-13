@@ -58,10 +58,18 @@ describe('Desktop Viewport Automation Suite (1024px)', () => {
     expect(screen.getByTestId('turn-banner')).toHaveTextContent(/Putaran #2/);
     expect(screen.getByTestId('turn-banner')).toHaveTextContent(/Pemain 2/);
 
-    // Direct 1-Click Wall Placement on Desktop:
-    // Click cross groove at (2, 2)
+    // 2-Step Wall Placement (Preview & Confirm):
+    // First click on groove cross stages preview
     const grooveCross = screen.getByTestId('groove-cross-2-2');
     fireEvent.click(grooveCross);
+
+    // Staged wall confirmation bar appears
+    expect(screen.getByTestId('staged-wall-bar')).toBeInTheDocument();
+    const confirmBtn = screen.getByTestId('confirm-wall-btn');
+    expect(confirmBtn).toBeInTheDocument();
+
+    // Confirm wall placement
+    fireEvent.click(confirmBtn);
 
     // Turn should advance to Putaran #3
     expect(screen.getByTestId('turn-banner')).toHaveTextContent(/Putaran #3/);
