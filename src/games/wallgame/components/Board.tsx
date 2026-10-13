@@ -13,6 +13,9 @@ interface BoardProps {
   wallOrientation: WallOrientation;
   onSelectMove: (target: Position) => void;
   onPlaceWall: (wall: Wall) => void;
+  onOrientationChange?: (orientation: WallOrientation) => void;
+  selectedWallCandidate?: Wall | null;
+  onSelectWallCandidate?: (wall: Wall | null) => void;
   disabled?: boolean;
 }
 
@@ -21,12 +24,15 @@ export const Board: React.FC<BoardProps> = ({
   wallOrientation,
   onSelectMove,
   onPlaceWall,
+  onOrientationChange,
+  selectedWallCandidate,
+  onSelectWallCandidate,
   disabled = false,
 }) => {
   const { gridSize, corePosition, players, walls, activePlayerIndex, phase } = gameState;
   const activePlayer = players[activePlayerIndex];
 
-  const [hoveredIntersection, setHoveredIntersection] = useState<{ x: number; y: number } | null>(null);
+  const [hoveredWall, setHoveredWall] = useState<Wall | null>(null);
 
   const cellSize = 50;
   const grooveThickness = 10;
@@ -42,27 +48,78 @@ export const Board: React.FC<BoardProps> = ({
     return getValidMoves(gameState);
   }, [disabled, phase, gameState]);
 
-  const previewWallCandidate: Wall | null = useMemo(() => {
-    if (disabled || phase !== 'ACTION' || !hoveredIntersection || activePlayer.wallsRemaining <= 0) {
+  // Active wall candidate is either touch-selected (mobile) or mouse-hovered (desktop)
+  const activeCandidate: Wall | null = useMemo(() => {
+    if (disabled || phase !== 'ACTION' || activePlayer.wallsRemaining <= 0) {
       return null;
     }
-    return {
-      orientation: wallOrientation,
-      x: hoveredIntersection.x,
-      y: hoveredIntersection.y,
-    };
-  }, [disabled, phase, hoveredIntersection, wallOrientation, activePlayer.wallsRemaining]);
+    return selectedWallCandidate || hoveredWall;
+  }, [disabled, phase, activePlayer.wallsRemaining, selectedWallCandidate, hoveredWall]);
 
-  const isPreviewValid = useMemo(() => {
-    if (!previewWallCandidate) return false;
-    return isValidWallPlacement(gameState, previewWallCandidate);
-  }, [gameState, previewWallCandidate]);
+  const isCandidateValid = useMemo(() => {
+    if (!activeCandidate) return false;
+    return isValidWallPlacement(gameState, activeCandidate);
+  }, [gameState, activeCandidate]);
+
+  const handleHoverSlot = (orientation: WallOrientation, wx: number, wy: number) => {
+    if (disabled || phase !== 'ACTION' || activePlayer.wallsRemaining <= 0) return;
+    setHoveredWall({ orientation, x: wx, y: wy });
+    onOrientationChange?.(orientation);
+  };
+
+  const handleSlotClick = (
+    orientation: WallOrientation,
+    wx: number,
+    wy: number,
+    e: React.MouseEvent
+  ) => {
+    e.stopPropagation();
+    if (disabled || phase !== 'ACTION' || activePlayer.wallsRemaining <= 0) return;
+
+    const candidate: Wall = { orientation, x: wx, y: wy };
+    const isValid = isValidWallPlacement(gameState, candidate);
+    const isTouchDevice = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
+
+    if (isTouchDevice) {
+      // Mobile / touch screen: tap to preview & select, tap again at same spot to rotate
+      if (selectedWallCandidate && selectedWallCandidate.x === wx && selectedWallCandidate.y === wy) {
+        const nextOri: WallOrientation = selectedWallCandidate.orientation === 'H' ? 'V' : 'H';
+        const toggled: Wall = { ...candidate, orientation: nextOri };
+        onSelectWallCandidate?.(toggled);
+        onOrientationChange?.(nextOri);
+      } else {
+        onSelectWallCandidate?.(candidate);
+        onOrientationChange?.(orientation);
+      }
+    } else {
+      // Desktop: single-click direct placement if valid
+      if (isValid) {
+        onPlaceWall(candidate);
+        setHoveredWall(null);
+        onSelectWallCandidate?.(null);
+      }
+    }
+  };
+
+  const handleCrossMouseMove = (
+    wx: number,
+    wy: number,
+    e: React.MouseEvent<SVGRectElement>
+  ) => {
+    if (disabled || phase !== 'ACTION' || activePlayer.wallsRemaining <= 0) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const dx = e.clientX - (rect.left + rect.width / 2);
+    const dy = e.clientY - (rect.top + rect.height / 2);
+    const orientation: WallOrientation = Math.abs(dx) >= Math.abs(dy) ? 'H' : 'V';
+    setHoveredWall({ orientation, x: wx, y: wy });
+    onOrientationChange?.(orientation);
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', userSelect: 'none' }}>
       <svg
         viewBox={`0 0 ${totalSize} ${totalSize}`}
-        onMouseLeave={() => setHoveredIntersection(null)}
+        onMouseLeave={() => setHoveredWall(null)}
         style={{
           width: '100%',
           maxWidth: '600px',
@@ -170,42 +227,96 @@ export const Board: React.FC<BoardProps> = ({
               Array.from({ length: gridSize - 1 }).map((_, wx) => {
                 const ix = getCellX(wx) + cellSize;
                 const iy = getCellY(wy) + cellSize;
-                const isH = wallOrientation === 'H';
-                const slotX = isH ? getCellX(wx) : ix - 3;
-                const slotY = isH ? iy - 3 : getCellY(wy);
-                const slotW = isH ? cellSize * 2 + grooveThickness : grooveThickness + 6;
-                const slotH = isH ? grooveThickness + 6 : cellSize * 2 + grooveThickness;
 
                 return (
-                  <rect
-                    key={`slot-${wx}-${wy}`}
-                    x={slotX}
-                    y={slotY}
-                    width={slotW}
-                    height={slotH}
-                    fill="transparent"
-                    style={{ cursor: 'pointer' }}
-                    onMouseEnter={() => setHoveredIntersection({ x: wx, y: wy })}
-                    onMouseLeave={() => setHoveredIntersection(null)}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (previewWallCandidate && isPreviewValid) {
-                        onPlaceWall(previewWallCandidate);
-                        setHoveredIntersection(null);
-                      }
-                    }}
-                  />
+                  <g key={`groove-slot-${wx}-${wy}`}>
+                    {/* Horizontal Wing (Left) */}
+                    <rect
+                      x={getCellX(wx)}
+                      y={iy - 3}
+                      width={cellSize}
+                      height={grooveThickness + 6}
+                      fill="transparent"
+                      style={{ cursor: 'pointer' }}
+                      onMouseEnter={() => handleHoverSlot('H', wx, wy)}
+                      onClick={(e) => handleSlotClick('H', wx, wy, e)}
+                    />
+
+                    {/* Horizontal Wing (Right) */}
+                    <rect
+                      x={ix + grooveThickness}
+                      y={iy - 3}
+                      width={cellSize}
+                      height={grooveThickness + 6}
+                      fill="transparent"
+                      style={{ cursor: 'pointer' }}
+                      onMouseEnter={() => handleHoverSlot('H', wx, wy)}
+                      onClick={(e) => handleSlotClick('H', wx, wy, e)}
+                    />
+
+                    {/* Vertical Wing (Top) */}
+                    <rect
+                      x={ix - 3}
+                      y={getCellY(wy)}
+                      width={grooveThickness + 6}
+                      height={cellSize}
+                      fill="transparent"
+                      style={{ cursor: 'pointer' }}
+                      onMouseEnter={() => handleHoverSlot('V', wx, wy)}
+                      onClick={(e) => handleSlotClick('V', wx, wy, e)}
+                    />
+
+                    {/* Vertical Wing (Bottom) */}
+                    <rect
+                      x={ix - 3}
+                      y={iy + grooveThickness}
+                      width={grooveThickness + 6}
+                      height={cellSize}
+                      fill="transparent"
+                      style={{ cursor: 'pointer' }}
+                      onMouseEnter={() => handleHoverSlot('V', wx, wy)}
+                      onClick={(e) => handleSlotClick('V', wx, wy, e)}
+                    />
+
+                    {/* Crossroads Center Box (Dynamic Angle Follower & Click-to-Rotate) */}
+                    <rect
+                      x={ix - 3}
+                      y={iy - 3}
+                      width={grooveThickness + 6}
+                      height={grooveThickness + 6}
+                      fill="transparent"
+                      style={{ cursor: 'pointer' }}
+                      onMouseMove={(e) => handleCrossMouseMove(wx, wy, e)}
+                      onClick={(e) => {
+                        const curOri = activeCandidate?.orientation || wallOrientation;
+                        handleSlotClick(curOri, wx, wy, e);
+                      }}
+                    />
+                  </g>
                 );
               })
             )}
 
-            {/* Ghost Wall Bar */}
-            {previewWallCandidate && (
-              <g pointerEvents="none">
+            {/* Ghost Wall Bar with Click-to-Rotate Affordance */}
+            {activeCandidate && (
+              <g
+                style={{ cursor: 'pointer' }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const nextOri: WallOrientation = activeCandidate.orientation === 'H' ? 'V' : 'H';
+                  const toggled: Wall = { ...activeCandidate, orientation: nextOri };
+                  if (onSelectWallCandidate) {
+                    onSelectWallCandidate(toggled);
+                  } else {
+                    setHoveredWall(toggled);
+                  }
+                  onOrientationChange?.(nextOri);
+                }}
+              >
                 {(() => {
-                  const isH = previewWallCandidate.orientation === 'H';
-                  const wx = isH ? getCellX(previewWallCandidate.x) : getCellX(previewWallCandidate.x) + cellSize;
-                  const wy = isH ? getCellY(previewWallCandidate.y) + cellSize : getCellY(previewWallCandidate.y);
+                  const isH = activeCandidate.orientation === 'H';
+                  const wx = isH ? getCellX(activeCandidate.x) : getCellX(activeCandidate.x) + cellSize;
+                  const wy = isH ? getCellY(activeCandidate.y) + cellSize : getCellY(activeCandidate.y);
                   const wWidth = isH ? cellSize * 2 + grooveThickness : grooveThickness;
                   const wHeight = isH ? grooveThickness : cellSize * 2 + grooveThickness;
 
@@ -216,11 +327,11 @@ export const Board: React.FC<BoardProps> = ({
                       width={wWidth}
                       height={wHeight}
                       rx={1}
-                      fill={isPreviewValid ? 'var(--gold)' : '#b42318'}
-                      opacity={0.5}
-                      stroke={isPreviewValid ? 'var(--gold-deep)' : '#8f1d14'}
-                      strokeWidth={1}
-                      strokeDasharray={isPreviewValid ? 'none' : '3 2'}
+                      fill={isCandidateValid ? 'var(--gold)' : '#b42318'}
+                      opacity={0.65}
+                      stroke={isCandidateValid ? 'var(--gold-deep)' : '#8f1d14'}
+                      strokeWidth={1.5}
+                      strokeDasharray={isCandidateValid ? 'none' : '3 2'}
                     />
                   );
                 })()}
@@ -242,6 +353,8 @@ export const Board: React.FC<BoardProps> = ({
               onClick={(e) => {
                 e.stopPropagation();
                 if (!disabled) {
+                  onSelectWallCandidate?.(null);
+                  setHoveredWall(null);
                   onSelectMove(m);
                 }
               }}

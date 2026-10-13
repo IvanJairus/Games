@@ -109,3 +109,106 @@ dialog::backdrop {
 .move-candidate-group:active .move-candidate-tile {
   fill: #fde047 !important;
 }
+
+/* Responsive Game Board Layout (antislop-layoutmobile) */
+.game-layout {
+  display: grid;
+  grid-template-columns: minmax(320px, 1fr) 280px;
+  gap: 24px;
+  align-items: start;
+}
+
+@media (max-width: 768px) {
+  .game-layout {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+}
+
+/* Mobile & Touch Wall Placement Drawer */
+.mobile-wall-drawer {
+  margin-top: 14px;
+  padding: 12px 14px;
+  background: #ffffff;
+  border: 1px solid var(--gold);
+  border-radius: var(--r2);
+  box-shadow: 0 4px 14px rgba(180, 83, 9, 0.12);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mobile-wall-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: 11.5px/1 var(--mono);
+  color: var(--ink);
+  flex-wrap: wrap;
+}
+
+.mobile-wall-tag {
+  background: var(--gold-tint);
+  border: 1px solid var(--gold-border);
+  color: var(--gold);
+  padding: 3px 6px;
+  border-radius: var(--r2);
+  font-weight: 700;
+}
+
+.mobile-wall-invalid {
+  color: #b42318;
+  font-weight: 700;
+  font-size: 11px;
+}
+
+.mobile-wall-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.mobile-btn-rotate,
+.mobile-btn-confirm,
+.mobile-btn-cancel {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 14px;
+  min-height: 42px;
+  border-radius: var(--r2);
+  font: 11.5px/1 var(--mono);
+  font-weight: 700;
+  cursor: pointer;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  touch-action: manipulation;
+}
+
+.mobile-btn-rotate {
+  background: var(--bg-stage);
+  border: 1px solid var(--line-strong);
+  color: var(--ink);
+  flex: 1;
+}
+
+.mobile-btn-confirm {
+  background: var(--gold);
+  border: 1px solid var(--gold-deep);
+  color: #ffffff;
+  flex: 1.5;
+}
+
+.mobile-btn-confirm:disabled {
+  background: #e5e0d8;
+  border-color: #d6cfc5;
+  color: var(--ink-faint);
+  cursor: not-allowed;
+}
+
+.mobile-btn-cancel {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--ink-dim);
+}
