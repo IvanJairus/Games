@@ -10,11 +10,16 @@
   --line: rgba(28, 25, 23, 0.12);
   --line-strong: rgba(28, 25, 23, 0.24);
   
-  /* Gold & Brown Accents (WCAG compliant >= 4.5:1 on light surfaces) */
+  /* Tactical Palette (No muddy brown - Clean Architectural Slate & Brass Accent) */
   --gold: #b45309;
-  --gold-deep: #78350f;
+  --gold-deep: #1e293b;
   --gold-tint: rgba(180, 83, 9, 0.07);
   --gold-border: rgba(180, 83, 9, 0.32);
+  
+  /* Placed Wall Stone (Slate Graphite) */
+  --wall-placed: #1e293b;
+  --wall-placed-border: #334155;
+  --wall-placed-shadow: rgba(15, 23, 42, 0.18);
   
   /* Core Goal */
   --core-bg: #fef3c7;

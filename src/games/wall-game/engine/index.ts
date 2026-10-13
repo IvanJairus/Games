@@ -11,12 +11,12 @@ import {
 export * from './types';
 
 export const PLAYER_GOLD_THEMES: PlayerTheme[] = [
-  { name: 'Player 1', hex: '#b45309', label: 'Emas Kuningan', border: '#78350f', text: '#ffffff' },
-  { name: 'Player 2', hex: '#451a03', label: 'Coklat Tua', border: '#1c1917', text: '#ffffff' },
-  { name: 'Player 3', hex: '#991b1b', label: 'Terracotta', border: '#7f1d1d', text: '#ffffff' },
-  { name: 'Player 4', hex: '#166534', label: 'Zaitun Tua', border: '#14532d', text: '#ffffff' },
-  { name: 'Player 5', hex: '#1e3a8a', label: 'Safir Klasik', border: '#172554', text: '#ffffff' },
-  { name: 'Player 6', hex: '#292524', label: 'Arang Gelap', border: '#0c0a09', text: '#ffffff' },
+  { name: 'Player 1', hex: '#c2410c', label: 'Terracotta', border: '#9a3412', text: '#ffffff' },
+  { name: 'Player 2', hex: '#1d4ed8', label: 'Biru Kobalt', border: '#1e40af', text: '#ffffff' },
+  { name: 'Player 3', hex: '#047857', label: 'Hijau Zamrud', border: '#065f46', text: '#ffffff' },
+  { name: 'Player 4', hex: '#d97706', label: 'Emas Kuning', border: '#b45309', text: '#ffffff' },
+  { name: 'Player 5', hex: '#7c3aed', label: 'Ungu Amethyst', border: '#6d28d9', text: '#ffffff' },
+  { name: 'Player 6', hex: '#334155', label: 'Batu Basalt', border: '#1e293b', text: '#ffffff' },
 ];
 
 export function getRecommendedGridSize(playerCount: number): number {

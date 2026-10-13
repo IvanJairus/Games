@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { RotateCw, Check, X } from 'lucide-react';
 import {
   GameState,
@@ -34,6 +34,11 @@ export const Board: React.FC<BoardProps> = ({
   const [stagedWall, setStagedWall] = useState<Wall | null>(null);
   const [hoveredWall, setHoveredWall] = useState<Wall | null>(null);
 
+  const svgRef = useRef<SVGSVGElement>(null);
+  const isDraggingRef = useRef(false);
+  const dragMovedRef = useRef(false);
+  const dragStartClientPos = useRef<{ x: number; y: number } | null>(null);
+
   const cellSize = 50;
   const grooveThickness = 10;
   const padding = 20;
@@ -46,6 +51,7 @@ export const Board: React.FC<BoardProps> = ({
   useEffect(() => {
     setStagedWall(null);
     setHoveredWall(null);
+    isDraggingRef.current = false;
   }, [activePlayerIndex, phase, disabled]);
 
   const validMoves = useMemo(() => {
@@ -63,8 +69,28 @@ export const Board: React.FC<BoardProps> = ({
     return isValidWallPlacement(gameState, hoveredWall);
   }, [gameState, hoveredWall]);
 
+  const getSlotFromPointer = (clientX: number, clientY: number): { x: number; y: number } | null => {
+    const svg = svgRef.current;
+    if (!svg) return null;
+    const rect = svg.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return null;
+
+    const scale = totalSize / rect.width;
+    const svgX = (clientX - rect.left) * scale;
+    const svgY = (clientY - rect.top) * scale;
+
+    const step = cellSize + grooveThickness;
+    const rawWx = Math.round((svgX - padding - cellSize - grooveThickness / 2) / step);
+    const rawWy = Math.round((svgY - padding - cellSize - grooveThickness / 2) / step);
+
+    const wx = Math.max(0, Math.min(gridSize - 2, rawWx));
+    const wy = Math.max(0, Math.min(gridSize - 2, rawWy));
+
+    return { x: wx, y: wy };
+  };
+
   const handleHoverSlot = (orientation: WallOrientation, wx: number, wy: number) => {
-    if (disabled || phase !== 'ACTION' || activePlayer.wallsRemaining <= 0) return;
+    if (disabled || phase !== 'ACTION' || activePlayer.wallsRemaining <= 0 || isDraggingRef.current) return;
     setHoveredWall({ orientation, x: wx, y: wy });
   };
 
@@ -73,12 +99,69 @@ export const Board: React.FC<BoardProps> = ({
     wy: number,
     e: React.MouseEvent<SVGRectElement>
   ) => {
-    if (disabled || phase !== 'ACTION' || activePlayer.wallsRemaining <= 0) return;
+    if (disabled || phase !== 'ACTION' || activePlayer.wallsRemaining <= 0 || isDraggingRef.current) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const dx = e.clientX - (rect.left + rect.width / 2);
     const dy = e.clientY - (rect.top + rect.height / 2);
     const orientation: WallOrientation = Math.abs(dx) >= Math.abs(dy) ? 'H' : 'V';
     setHoveredWall({ orientation, x: wx, y: wy });
+  };
+
+  const handlePointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (disabled || phase !== 'ACTION' || activePlayer.wallsRemaining <= 0) return;
+    const target = e.target as Element;
+    if (target.closest('.move-candidate-group')) return;
+
+    const slot = getSlotFromPointer(e.clientX, e.clientY);
+    if (!slot) return;
+
+    isDraggingRef.current = true;
+    dragMovedRef.current = false;
+    dragStartClientPos.current = { x: e.clientX, y: e.clientY };
+
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      // Ignore in environments without pointer capture
+    }
+
+    setStagedWall((prev) => {
+      const curOri = prev?.orientation || wallOrientation;
+      return { orientation: curOri, x: slot.x, y: slot.y };
+    });
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (!isDraggingRef.current) return;
+    const start = dragStartClientPos.current;
+    if (start) {
+      const dist = Math.hypot(e.clientX - start.x, e.clientY - start.y);
+      if (dist > 8) {
+        dragMovedRef.current = true;
+      }
+    }
+
+    const slot = getSlotFromPointer(e.clientX, e.clientY);
+    if (!slot) return;
+
+    setStagedWall((prev) => {
+      const curOri = prev?.orientation || wallOrientation;
+      if (prev && prev.x === slot.x && prev.y === slot.y && prev.orientation === curOri) {
+        return prev;
+      }
+      return { orientation: curOri, x: slot.x, y: slot.y };
+    });
+  };
+
+  const handlePointerUp = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (!isDraggingRef.current) return;
+    isDraggingRef.current = false;
+
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      // Ignore
+    }
   };
 
   const handleSlotClick = (
@@ -146,10 +229,17 @@ export const Board: React.FC<BoardProps> = ({
   return (
     <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', userSelect: 'none' }}>
       <svg
+        ref={svgRef}
         viewBox={`0 0 ${totalSize} ${totalSize}`}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
         onMouseLeave={() => setHoveredWall(null)}
         onClick={() => {
-          if (stagedWall) setStagedWall(null);
+          if (!dragMovedRef.current && stagedWall) {
+            // Clicking empty canvas dismisses preview if not dragging
+          }
         }}
         style={{
           width: '100%',
@@ -159,6 +249,7 @@ export const Board: React.FC<BoardProps> = ({
           borderRadius: 'var(--r4)',
           border: '1px solid var(--line-strong)',
           boxShadow: '0 4px 12px rgba(28, 25, 23, 0.06)',
+          touchAction: disabled || phase !== 'ACTION' ? 'auto' : 'none',
         }}
         role="region"
         aria-label="Papan permainan WallGo"
@@ -218,6 +309,7 @@ export const Board: React.FC<BoardProps> = ({
           })
         )}
 
+        {/* Placed 2-Segment Walls (Deep Slate Stone - No muddy brown) */}
         {walls.map((wall, index) => {
           const isH = wall.orientation === 'H';
           const wx = isH ? getCellX(wall.x) : getCellX(wall.x) + cellSize;
@@ -233,7 +325,7 @@ export const Board: React.FC<BoardProps> = ({
                 width={wWidth}
                 height={wHeight}
                 rx={1}
-                fill="rgba(28, 25, 23, 0.15)"
+                fill="var(--wall-placed-shadow, rgba(15, 23, 42, 0.18))"
               />
               <rect
                 x={wx}
@@ -241,8 +333,8 @@ export const Board: React.FC<BoardProps> = ({
                 width={wWidth}
                 height={wHeight}
                 rx={1}
-                fill="var(--gold-deep)"
-                stroke="var(--gold)"
+                fill="var(--wall-placed, #1e293b)"
+                stroke="var(--wall-placed-border, #334155)"
                 strokeWidth="1"
               />
             </g>
@@ -258,7 +350,7 @@ export const Board: React.FC<BoardProps> = ({
 
                 return (
                   <g key={`groove-slot-${wx}-${wy}`}>
-                    {/* Horizontal Wing (Left) with generous touch hit-box */}
+                    {/* Horizontal Wing (Left) with generous touch target */}
                     <rect
                       x={getCellX(wx)}
                       y={iy - 6}
@@ -270,7 +362,7 @@ export const Board: React.FC<BoardProps> = ({
                       onClick={(e) => handleSlotClick('H', wx, wy, e)}
                     />
 
-                    {/* Horizontal Wing (Right) with generous touch hit-box */}
+                    {/* Horizontal Wing (Right) with generous touch target */}
                     <rect
                       x={ix + grooveThickness}
                       y={iy - 6}
@@ -282,7 +374,7 @@ export const Board: React.FC<BoardProps> = ({
                       onClick={(e) => handleSlotClick('H', wx, wy, e)}
                     />
 
-                    {/* Vertical Wing (Top) with generous touch hit-box */}
+                    {/* Vertical Wing (Top) with generous touch target */}
                     <rect
                       x={ix - 6}
                       y={getCellY(wy)}
@@ -294,7 +386,7 @@ export const Board: React.FC<BoardProps> = ({
                       onClick={(e) => handleSlotClick('V', wx, wy, e)}
                     />
 
-                    {/* Vertical Wing (Bottom) with generous touch hit-box */}
+                    {/* Vertical Wing (Bottom) with generous touch target */}
                     <rect
                       x={ix - 6}
                       y={iy + grooveThickness}
@@ -353,11 +445,11 @@ export const Board: React.FC<BoardProps> = ({
               </g>
             )}
 
-            {/* Staged Wall Preview (Tap 1x stages, Tap 2x / button confirms) */}
+            {/* Staged Wall Preview (Tap to stage, Drag to glide, Tap 2x or button to confirm) */}
             {stagedWall && (
               <g
                 data-testid="staged-wall-preview"
-                style={{ cursor: isStagedValid ? 'pointer' : 'not-allowed' }}
+                style={{ cursor: isStagedValid ? 'grab' : 'not-allowed' }}
                 onClick={(e) => {
                   e.stopPropagation();
                   handleConfirmStaged();
@@ -372,7 +464,7 @@ export const Board: React.FC<BoardProps> = ({
 
                   return (
                     <>
-                      {/* Aura */}
+                      {/* Aura glow */}
                       <rect
                         x={wx - 3}
                         y={wy - 3}
@@ -389,12 +481,12 @@ export const Board: React.FC<BoardProps> = ({
                         height={wHeight}
                         rx={1.5}
                         fill={isStagedValid ? 'var(--gold)' : '#dc2626'}
-                        opacity={0.9}
+                        opacity={0.92}
                         stroke={isStagedValid ? 'var(--gold-deep)' : '#991b1b'}
                         strokeWidth={1.5}
                         strokeDasharray={isStagedValid ? 'none' : '4 2'}
                       />
-                      {/* Confirmation micro-badge */}
+                      {/* Confirmation micro-badge / drag hint */}
                       {isStagedValid && (
                         <text
                           x={wx + wWidth / 2}
@@ -428,6 +520,7 @@ export const Board: React.FC<BoardProps> = ({
               key={`candidate-${m.x}-${m.y}`}
               className="move-candidate-group"
               data-testid={`move-candidate-${m.x}-${m.y}`}
+              onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => {
                 e.stopPropagation();
                 if (!disabled) {
@@ -499,7 +592,7 @@ export const Board: React.FC<BoardProps> = ({
                   cy={py}
                   r={radius + 4}
                   fill="none"
-                  stroke="var(--gold)"
+                  stroke={p.theme.hex}
                   strokeWidth="1.5"
                   strokeDasharray="3 2"
                 />
@@ -555,7 +648,8 @@ export const Board: React.FC<BoardProps> = ({
               background: 'var(--bg-stage)',
               borderRadius: 'var(--r2)',
               border: '1px solid var(--line)',
-              font: '11px/1 var(--mono)',
+              fontFamily: 'var(--mono)',
+              fontSize: '11px',
               color: 'var(--ink-faint)',
             }}
           >
@@ -571,9 +665,9 @@ export const Board: React.FC<BoardProps> = ({
               alignItems: 'center',
               justifyContent: 'space-between',
               padding: '0 8px',
-              background: isStagedValid ? '#fffbeb' : '#fef2f2',
+              background: isStagedValid ? 'var(--gold-tint)' : '#fef2f2',
               borderRadius: 'var(--r2)',
-              border: `1.5px solid ${isStagedValid ? 'var(--gold)' : '#f87171'}`,
+              border: `1px solid ${isStagedValid ? 'var(--gold-border)' : '#f87171'}`,
               boxSizing: 'border-box',
               gap: '6px',
             }}
@@ -588,14 +682,14 @@ export const Board: React.FC<BoardProps> = ({
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '4px',
-                  padding: '6px 10px',
+                  padding: '5px 10px',
                   background: '#ffffff',
-                  border: '1px solid var(--gold)',
+                  border: '1px solid var(--line-strong)',
                   borderRadius: 'var(--r2)',
-                  color: 'var(--gold)',
+                  color: 'var(--ink)',
                   fontFamily: 'var(--mono)',
                   fontSize: '11px',
-                  fontWeight: 700,
+                  fontWeight: 600,
                   cursor: 'pointer',
                 }}
               >
@@ -610,11 +704,11 @@ export const Board: React.FC<BoardProps> = ({
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '4px',
-                  padding: '6px 10px',
+                  padding: '5px 10px',
                   background: '#ffffff',
                   border: '1px solid var(--line-strong)',
                   borderRadius: 'var(--r2)',
-                  color: 'var(--ink-dim)',
+                  color: 'var(--ink-faint)',
                   fontFamily: 'var(--mono)',
                   fontSize: '11px',
                   cursor: 'pointer',
@@ -634,7 +728,7 @@ export const Board: React.FC<BoardProps> = ({
                 alignItems: 'center',
                 gap: '5px',
                 padding: '6px 14px',
-                background: isStagedValid ? 'var(--gold)' : '#e5e7eb',
+                background: isStagedValid ? 'var(--ink)' : '#e5e7eb',
                 color: isStagedValid ? '#ffffff' : '#9ca3af',
                 border: 'none',
                 borderRadius: 'var(--r2)',
@@ -655,43 +749,46 @@ export const Board: React.FC<BoardProps> = ({
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              padding: '0 10px',
+              padding: '0 8px',
               background: 'var(--bg-stage)',
               borderRadius: 'var(--r2)',
               border: '1px solid var(--line)',
               boxSizing: 'border-box',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontFamily: 'var(--mono)', fontSize: '10.5px', color: 'var(--ink-dim)', textTransform: 'uppercase' }}>
-                Orientasi:
-              </span>
-              <button
-                type="button"
-                data-testid="orientation-toggle"
-                onClick={() => onOrientationChange?.(wallOrientation === 'H' ? 'V' : 'H')}
-                disabled={activePlayer.wallsRemaining <= 0}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '5px',
-                  padding: '4px 8px',
-                  background: '#ffffff',
-                  border: '1px solid var(--gold)',
-                  borderRadius: 'var(--r2)',
-                  color: 'var(--gold)',
-                  fontFamily: 'var(--mono)',
-                  fontSize: '11px',
-                  fontWeight: 700,
-                  cursor: activePlayer.wallsRemaining > 0 ? 'pointer' : 'not-allowed',
-                  opacity: activePlayer.wallsRemaining > 0 ? 1 : 0.5,
-                }}
-              >
-                <RotateCw size={11} /> {wallOrientation === 'H' ? 'Horizontal (―)' : 'Vertikal (|)'}
-              </button>
-            </div>
-            <span style={{ font: '10px/1 var(--mono)', color: 'var(--ink-faint)' }}>
-              {activePlayer.wallsRemaining > 0 ? 'Sentuh celah untuk pratinjau' : 'Dinding habis'}
+            <button
+              type="button"
+              data-testid="orientation-toggle"
+              onClick={() => onOrientationChange?.(wallOrientation === 'H' ? 'V' : 'H')}
+              disabled={activePlayer.wallsRemaining <= 0}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '5px 10px',
+                background: '#ffffff',
+                border: '1px solid var(--line-strong)',
+                borderRadius: 'var(--r2)',
+                color: 'var(--ink)',
+                fontFamily: 'var(--mono)',
+                fontSize: '11px',
+                fontWeight: 600,
+                cursor: activePlayer.wallsRemaining > 0 ? 'pointer' : 'not-allowed',
+                opacity: activePlayer.wallsRemaining > 0 ? 1 : 0.5,
+              }}
+            >
+              <RotateCw size={11} /> Orientasi: {wallOrientation === 'H' ? 'Horizontal (―)' : 'Vertikal (|)'}
+            </button>
+
+            <span
+              style={{
+                fontFamily: 'var(--mono)',
+                fontSize: '10.5px',
+                color: 'var(--ink-faint)',
+                letterSpacing: '.01em',
+              }}
+            >
+              {activePlayer.wallsRemaining > 0 ? 'Tahan & geser atau tap celah' : 'Dinding habis'}
             </span>
           </div>
         )}
