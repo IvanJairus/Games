@@ -8,6 +8,47 @@ terpisah saat kamu menerbitkan rilis.
 Entri dimulai dari 14 Oktober 2026. Perubahan sebelum tanggal itu ada pada riwayat git dan daftar
 pull request, karena tidak dicatat saat terjadi.
 
+## 2026-10-14 - Slap Arena: polish karakter (PR #12)
+
+Karakter prosedural dari PR #8 masih jauh dari arah "bulat cebol" yang dipilih lewat pratinjau.
+Enam cacat geometri dan pencahayaan menumpuk menjadi satu wajah yang jelek.
+
+### Diperbaiki
+
+- Mata terkubur di bawah kupluk. Garis bibir topi duduk di y=1,439 sementara mata di y=1,62,
+  dihitung dari geometri yang sama. Kepala dinaikkan (`HEAD_Y` 1,56 menjadi 1,68) dan dome topi
+  dipendekkan.
+- Rambut membungkus 209 derajat sehingga menutupi separuh wajah. Sekarang pita 120 derajat di
+  tengkuk saja; wajah tetap kulit dan punggung tidak lagi menjadi gumpalan polos.
+- Sarung tinju merah tidak terlihat di atas kostum merah. `gloveColor()` menukar warnanya ke krem
+  saat hue kostum bertabrakan.
+- Kulit pemain berwarna zaitun. Pantulan tanah `HemisphereLight` memakai warna rumput `#6fcf7c`;
+  diganti abu netral `#cfd6dd`.
+- Mulut membentuk huruf J, bukan senyum. Busur torus diputar `PI*1.4` menjadi `PI*1.1`.
+- Jamur tumbuh di dalam ring spawn, terlihat sebagai artefak render di bawah kaki pemain.
+  digeser ke 0,62-0,96 radius pulau.
+- Pohon menutupi karakter saat berkelahi karena berdiri di radius 0,80, persis di area pertarungan.
+  Sekarang empat pohon di 0,955 (bibir pulau) dengan tajuk dikecilkan dari 0,95 menjadi 0,78.
+
+### Diubah
+
+- Kamera portrait tidak lagi memaksa seluruh piringan muat secara horizontal. Bibir piringan boleh
+  ter-crop dan kamera mengikuti pemain. Terukur pada layar 390x844: jarak kamera 50,0 menjadi
+  38,8 unit dan ukuran karakter di layar 29,4 menjadi 38,3 px, yaitu 30% lebih besar.
+- `window.__slapCamHold` (mode DEV saja) menahan kamera di satu titik, satu-satunya cara memotret
+  brawler dari dekat untuk tinjauan visual.
+
+### Terukur
+
+| Metrik | Sebelum | Sesudah |
+| --- | --- | --- |
+| Ukuran karakter di layar 390x844 | 29,4 px | 38,3 px |
+| Jarak kamera portrait | 50,0 unit | 38,8 unit |
+| FPS desktop / mobile | 60 / 60 | 60 / 60 (n=121 frame) |
+| Error halaman | 0 | 0 |
+
+Diverifikasi dengan `tsc -b` bersih, 139 tes lulus, dan `npm run release:check` 5/5.
+
 ## 2026-10-14 - Slap Arena (PR #5 sampai #8)
 
 Rombak besar Slap Arena. Game ini sebelumnya tayang dalam keadaan multiplayer tidak bisa start
@@ -118,4 +159,5 @@ produksi sukses, dengan dua sesi browser terisolasi untuk jalur multiplayer.
 - PR #6 `fix(slap-arena): let the site CSP load the GLB pipeline` (pengecualiannya dicabut di PR #8)
 - PR #7 `fix(slap-arena): bots can slap, hit-stop stops stuttering, stick releases between rounds`
 - PR #8 `feat(slap-arena): procedural chunky brawler, strict CSP restored`
+- PR #12 `fix(slap-arena): make the brawler readable instead of ugly` (entri polish karakter di atas)
 - Baseline jumlah tes diukur pada `0ac7f76` (main sebelum PR #5) memakai worktree terpisah.
