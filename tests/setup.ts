@@ -6,7 +6,20 @@ afterEach(() => {
   cleanup();
 });
 
-// Polyfill HTMLDialogElement for jsdom if needed
+// jsdom ships no matchMedia; game screens use it for reduced-motion and pointer hints.
+if (typeof window !== 'undefined' && !window.matchMedia) {
+  window.matchMedia = (query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  });
+}
+
 if (typeof HTMLDialogElement !== 'undefined') {
   if (!HTMLDialogElement.prototype.showModal) {
     HTMLDialogElement.prototype.showModal = function () {

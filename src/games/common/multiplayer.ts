@@ -4,7 +4,7 @@ import { RealtimeChannel } from '@supabase/supabase-js';
 export interface MatchRow {
   id: string;
   room_code: string;
-  game_type: 'wall-game' | 'tic-tac-toe';
+  game_type: 'wall-game' | 'tic-tac-toe' | 'slap-arena';
   status: 'waiting' | 'playing' | 'completed' | 'abandoned';
   max_players: number;
   current_turn: number;
@@ -42,7 +42,7 @@ export const generateRoomCode = (): string => {
 };
 
 export async function createOnlineRoom(params: {
-  gameType: 'wall-game' | 'tic-tac-toe';
+  gameType: 'wall-game' | 'tic-tac-toe' | 'slap-arena';
   maxPlayers: number;
   hostName: string;
   initialState: any;
@@ -322,11 +322,25 @@ export async function leaveOnlineMatch(params: {
   } catch {}
 }
 
+export interface MatchSubscriptionExtras {
+  /**
+   * Extra broadcast events to bind. They must be registered before subscribe():
+   * postgres_changes filters are sent to the server at join time, and keeping every
+   * binding in one place avoids games silently missing events after the channel opens.
+   */
+  broadcast?: Record<string, (payload: any) => void>;
+  /** Presence metadata tracked on join, so a closed tab is noticed without a goodbye message. */
+  presence?: { onChange?: () => void };
+  /** Called with the channel join status so callers know when track()/send() are safe. */
+  onStatus?: (status: string) => void;
+}
+
 export function subscribeToMatch(
   roomCode: string,
   onSync: (sync: MatchSyncData) => void,
   onBroadcastMove?: (payload: any) => void,
-  onBroadcastLeave?: (payload: any) => void
+  onBroadcastLeave?: (payload: any) => void,
+  extras?: MatchSubscriptionExtras
 ): { unsubscribe: () => void; channel: RealtimeChannel | null } {
   const supabase = getSupabase();
   if (!supabase) {
@@ -368,6 +382,14 @@ export function subscribeToMatch(
     config: { broadcast: { self: false } },
   });
 
+  for (const [event, handler] of Object.entries(extras?.broadcast ?? {})) {
+    channel.on('broadcast', { event }, (msg: { payload: unknown }) => handler(msg.payload));
+  }
+
+  if (extras?.presence) {
+    channel.on('presence', { event: 'sync' }, () => extras.presence?.onChange?.());
+  }
+
   channel
     .on('broadcast', { event: 'game_move' }, (event) => {
       if (onBroadcastMove) {
@@ -404,7 +426,9 @@ export function subscribeToMatch(
         fetchFullState();
       }
     )
-    .subscribe();
+    .subscribe((status) => {
+      extras?.onStatus?.(status);
+    });
 
   const intervalId = setInterval(fetchFullState, 3000);
 

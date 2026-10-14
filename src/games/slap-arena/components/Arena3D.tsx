@@ -1,410 +1,428 @@
-import React, { useRef, useEffect } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
 import * as THREE from 'three';
-import type { PlayerState } from '../engine/types';
+import type { SlapSim } from '../engine/sim';
 import { ARENA_RADIUS } from '../engine/physics';
+import { BrawlerRig, loadBrawlerSource, type BrawlerSource } from './three/characters';
+import { ParticleField, createBackdrop, createGroundMarker, createIsland, createSky, type Island } from './three/world';
 
-interface Arena3DProps {
-  players: Record<string, PlayerState>;
-  localPlayerId: string;
+export interface Arena3DHandle {
+  impact(x: number, z: number, color: string, strength: number, label?: string): void;
+  koBurst(x: number, z: number, color: string): void;
+  confetti(): void;
+  shake(amount: number): void;
 }
 
-export const Arena3D: React.FC<Arena3DProps> = ({ players, localPlayerId }) => {
+interface Arena3DProps {
+  sim: SlapSim;
+  localId: string;
+  reducedMotion: boolean;
+  onError: (message: string) => void;
+  onFps?: (fps: number, quality: 'high' | 'low') => void;
+}
+
+const BASE = import.meta.env.BASE_URL || '/';
+const CHARACTER_URLS = [`${BASE}models/barbarian.glb`, `${BASE}models/knight.glb`];
+const PALETTE_FALLBACK = '#4f8cff';
+
+interface Entry {
+  rig: BrawlerRig;
+  group: THREE.Group;
+  marker: ReturnType<typeof createGroundMarker>;
+  label: HTMLDivElement;
+  prevSlap: number;
+  prevDash: number;
+  wobble: number;
+  renderX: number;
+  renderZ: number;
+}
+
+const Arena3D = forwardRef<Arena3DHandle, Arena3DProps>(function Arena3D(
+  { sim, localId, reducedMotion, onError, onFps },
+  ref
+) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const playersRef = useRef(players);
-  playersRef.current = players;
-  const localPlayerIdRef = useRef(localPlayerId);
-  localPlayerIdRef.current = localPlayerId;
+  const labelLayerRef = useRef<HTMLDivElement>(null);
+  const apiRef = useRef<Arena3DHandle | null>(null);
+
+  useImperativeHandle(ref, () => ({
+    impact: (x, z, color, strength, label) => apiRef.current?.impact(x, z, color, strength, label),
+    koBurst: (x, z, color) => apiRef.current?.koBurst(x, z, color),
+    confetti: () => apiRef.current?.confetti(),
+    shake: (amount) => apiRef.current?.shake(amount),
+  }));
 
   useEffect(() => {
     const container = containerRef.current;
-    if (!container) return;
+    const labelLayer = labelLayerRef.current;
+    if (!container || !labelLayer) return;
+    // Function declarations below are hoisted, so TypeScript will not carry the
+    // null-guard into them. These aliases do.
+    const stage = container;
+    const labels = labelLayer;
 
-    // 1. Scene setup
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color('#38bdf8'); // Sky blue
-    scene.fog = new THREE.FogExp2('#38bdf8', 0.015);
+    let renderer: THREE.WebGLRenderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
+    } catch {
+      onError('Perangkat ini tidak bisa menjalankan grafis 3D (WebGL tidak tersedia).');
+      return;
+    }
 
-    // 2. Camera setup
+    let disposed = false;
+    let contextLost = false;
     const width = container.clientWidth || window.innerWidth;
     const height = container.clientHeight || window.innerHeight;
-    const camera = new THREE.PerspectiveCamera(48, width / height, 0.1, 1000);
-    camera.position.set(0, 18, 17);
-    camera.lookAt(0, 0, 0);
+    let quality: 'high' | 'low' = window.innerWidth < 720 ? 'low' : 'high';
 
-    // 3. Renderer
-    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     renderer.setSize(width, height);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.shadowMap.enabled = true;
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, quality === 'high' ? 2 : 1.35));
+    renderer.shadowMap.enabled = quality === 'high';
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
     container.appendChild(renderer.domElement);
 
-    // 4. Lighting
-    const ambientLight = new THREE.AmbientLight('#ffffff', 0.85);
-    scene.add(ambientLight);
+    const scene = new THREE.Scene();
+    const sky = createSky();
+    scene.add(sky.mesh);
+    scene.fog = new THREE.Fog(new THREE.Color('#bfe6ff'), 60, 190);
 
-    const sunLight = new THREE.DirectionalLight('#fffbeb', 1.4);
-    sunLight.position.set(16, 28, 14);
-    sunLight.castShadow = true;
-    sunLight.shadow.mapSize.width = 1024;
-    sunLight.shadow.mapSize.height = 1024;
-    sunLight.shadow.camera.near = 0.5;
-    sunLight.shadow.camera.far = 70;
-    sunLight.shadow.camera.left = -ARENA_RADIUS - 4;
-    sunLight.shadow.camera.right = ARENA_RADIUS + 4;
-    sunLight.shadow.camera.top = ARENA_RADIUS + 4;
-    sunLight.shadow.camera.bottom = -ARENA_RADIUS - 4;
-    scene.add(sunLight);
+    const camera = new THREE.PerspectiveCamera(46, width / height, 0.1, 500);
+    camera.position.set(0, 14, 18);
 
-    // Subtle upward bounce light
-    const bounceLight = new THREE.DirectionalLight('#6ee7b7', 0.35);
-    bounceLight.position.set(0, -10, 0);
-    scene.add(bounceLight);
+    const hemi = new THREE.HemisphereLight('#ffffff', '#6fcf7c', 1.15);
+    scene.add(hemi);
+    const sun = new THREE.DirectionalLight('#fff4d6', 1.5);
+    sun.position.set(12, 24, 10);
+    sun.castShadow = quality === 'high';
+    sun.shadow.mapSize.set(1024, 1024);
+    sun.shadow.camera.near = 1;
+    sun.shadow.camera.far = 60;
+    const s = ARENA_RADIUS + 3;
+    sun.shadow.camera.left = -s;
+    sun.shadow.camera.right = s;
+    sun.shadow.camera.top = s;
+    sun.shadow.camera.bottom = -s;
+    scene.add(sun);
+    const rim = new THREE.DirectionalLight('#8ad2ff', 0.55);
+    rim.position.set(-10, 8, -14);
+    scene.add(rim);
 
-    // 5. Floating Island Meshes
-    const islandGroup = new THREE.Group();
+    const island: Island = createIsland({ radius: ARENA_RADIUS });
+    scene.add(island.group);
+    const backdrop = createBackdrop();
+    scene.add(backdrop.group);
+    const particles = new ParticleField();
+    scene.add(particles.points);
 
-    // Grass platform
-    const platformGeo = new THREE.CylinderGeometry(ARENA_RADIUS, ARENA_RADIUS, 1.4, 48);
-    const grassMat = new THREE.MeshLambertMaterial({ color: '#22c55e' });
-    const platformMesh = new THREE.Mesh(platformGeo, grassMat);
-    platformMesh.position.y = -0.7;
-    platformMesh.receiveShadow = true;
-    islandGroup.add(platformMesh);
+    const entries = new Map<string, Entry>();
+    const sources: BrawlerSource[] = [];
+    let loadError = false;
 
-    // Island stone border rim
-    const rimGeo = new THREE.TorusGeometry(ARENA_RADIUS, 0.35, 12, 48);
-    rimGeo.rotateX(Math.PI / 2);
-    const rimMat = new THREE.MeshLambertMaterial({ color: '#b45309' });
-    const rimMesh = new THREE.Mesh(rimGeo, rimMat);
-    rimMesh.position.y = 0.05;
-    islandGroup.add(rimMesh);
+    const shake = { amount: 0, decay: 6 };
+    const projected = new THREE.Vector3();
 
-    // Danger zone warning circle (Radius 9.8)
-    const dangerGeo = new THREE.RingGeometry(9.6, 9.8, 48);
-    dangerGeo.rotateX(-Math.PI / 2);
-    const dangerMat = new THREE.MeshBasicMaterial({
-      color: '#dc2626',
-      side: THREE.DoubleSide,
-      transparent: true,
-      opacity: 0.5,
-    });
-    const dangerMesh = new THREE.Mesh(dangerGeo, dangerMat);
-    dangerMesh.position.y = 0.02;
-    islandGroup.add(dangerMesh);
-
-    // Center arena icon circle
-    const centerCircleGeo = new THREE.CircleGeometry(2.2, 32);
-    centerCircleGeo.rotateX(-Math.PI / 2);
-    const centerMat = new THREE.MeshBasicMaterial({
-      color: '#15803d',
-      side: THREE.DoubleSide,
-    });
-    const centerMesh = new THREE.Mesh(centerCircleGeo, centerMat);
-    centerMesh.position.y = 0.01;
-    islandGroup.add(centerMesh);
-
-    // Inverted rock cone bottom
-    const rockGeo = new THREE.ConeGeometry(ARENA_RADIUS * 0.98, 7.5, 24);
-    rockGeo.rotateX(Math.PI);
-    const rockMat = new THREE.MeshLambertMaterial({ color: '#451a03' });
-    const rockMesh = new THREE.Mesh(rockGeo, rockMat);
-    rockMesh.position.y = -5.15;
-    islandGroup.add(rockMesh);
-
-    scene.add(islandGroup);
-
-    // 6. Floating clouds
-    const cloudsGroup = new THREE.Group();
-    const cloudGeo = new THREE.DodecahedronGeometry(2.4, 1);
-    const cloudMat = new THREE.MeshLambertMaterial({ color: '#ffffff', transparent: true, opacity: 0.85 });
-
-    for (let i = 0; i < 6; i++) {
-      const angle = (i / 6) * Math.PI * 2;
-      const c = new THREE.Mesh(cloudGeo, cloudMat);
-      c.position.set(Math.cos(angle) * 32, -2 + Math.sin(i) * 3, Math.sin(angle) * 32);
-      c.scale.set(1.5, 0.7, 1.2);
-      cloudsGroup.add(c);
-    }
-    scene.add(cloudsGroup);
-
-    // 7. Player Mesh Cache
-    interface PlayerMeshes {
-      root: THREE.Group;
-      body: THREE.Mesh;
-      leftGlove: THREE.Mesh;
-      rightGlove: THREE.Mesh;
-      leftEye: THREE.Mesh;
-      rightEye: THREE.Mesh;
-      nameSprite: THREE.Sprite;
-    }
-    const playerMeshMap = new Map<string, PlayerMeshes>();
-
-    // Shared geometries
-    const bodyGeo = new THREE.CapsuleGeometry(0.65, 0.7, 12, 16);
-    const gloveGeo = new THREE.SphereGeometry(0.3, 12, 12);
-    const eyeWhiteGeo = new THREE.SphereGeometry(0.16, 10, 10);
-    const pupilGeo = new THREE.SphereGeometry(0.08, 8, 8);
-    const eyeWhiteMat = new THREE.MeshBasicMaterial({ color: '#ffffff' });
-    const pupilMat = new THREE.MeshBasicMaterial({ color: '#000000' });
-
-    function createNameSprite(name: string, isLocal: boolean): THREE.Sprite {
-      const canvas = document.createElement('canvas');
-      canvas.width = 256;
-      canvas.height = 64;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.fillStyle = isLocal ? 'rgba(245, 158, 11, 0.88)' : 'rgba(28, 25, 23, 0.75)';
-        ctx.roundRect(10, 8, 236, 48, 12);
-        ctx.fill();
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = '#ffffff';
-        ctx.stroke();
-
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 24px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(name.slice(0, 12), 128, 33);
-      }
-      const texture = new THREE.CanvasTexture(canvas);
-      const spriteMat = new THREE.SpriteMaterial({ map: texture, depthTest: false });
-      const sprite = new THREE.Sprite(spriteMat);
-      sprite.scale.set(2.4, 0.6, 1);
-      sprite.position.y = 1.9;
-      return sprite;
+    function makeLabel(name: string, color: string, isLocal: boolean): HTMLDivElement {
+      const el = document.createElement('div');
+      el.className = `sa-tag${isLocal ? ' sa-tag--me' : ''}`;
+      el.style.setProperty('--tag', color);
+      el.textContent = name.length > 12 ? `${name.slice(0, 11)}\u2026` : name;
+      labels.appendChild(el);
+      return el;
     }
 
-    function spawnPlayerMesh(player: PlayerState): PlayerMeshes {
-      const root = new THREE.Group();
-
-      // Body
-      const bodyMat = new THREE.MeshLambertMaterial({ color: player.color || '#3b82f6' });
-      const body = new THREE.Mesh(bodyGeo, bodyMat);
-      body.position.y = 0.95;
-      body.castShadow = true;
-      body.receiveShadow = true;
-      root.add(body);
-
-      // Left eye
-      const leftEyeGroup = new THREE.Group();
-      const leftEyeWhite = new THREE.Mesh(eyeWhiteGeo, eyeWhiteMat);
-      const leftPupil = new THREE.Mesh(pupilGeo, pupilMat);
-      leftPupil.position.z = 0.12;
-      leftEyeGroup.add(leftEyeWhite);
-      leftEyeGroup.add(leftPupil);
-      leftEyeGroup.position.set(-0.25, 1.2, 0.55);
-      root.add(leftEyeGroup);
-
-      // Right eye
-      const rightEyeGroup = new THREE.Group();
-      const rightEyeWhite = new THREE.Mesh(eyeWhiteGeo, eyeWhiteMat);
-      const rightPupil = new THREE.Mesh(pupilGeo, pupilMat);
-      rightPupil.position.z = 0.12;
-      rightEyeGroup.add(rightEyeWhite);
-      rightEyeGroup.add(rightPupil);
-      rightEyeGroup.position.set(0.25, 1.2, 0.55);
-      root.add(rightEyeGroup);
-
-      // Left Glove
-      const gloveMat = new THREE.MeshLambertMaterial({ color: '#dc2626' });
-      const leftGlove = new THREE.Mesh(gloveGeo, gloveMat);
-      leftGlove.position.set(-0.75, 0.85, 0.4);
-      leftGlove.castShadow = true;
-      root.add(leftGlove);
-
-      // Right Glove
-      const rightGlove = new THREE.Mesh(gloveGeo, gloveMat);
-      rightGlove.position.set(0.75, 0.85, 0.4);
-      rightGlove.castShadow = true;
-      root.add(rightGlove);
-
-      // Name tag billboard
-      const nameSprite = createNameSprite(player.name, player.id === localPlayerIdRef.current);
-      root.add(nameSprite);
-
-      scene.add(root);
-
-      return {
-        root,
-        body,
-        leftGlove,
-        rightGlove,
-        leftEye: leftEyeWhite,
-        rightEye: rightEyeWhite,
-        nameSprite,
+    function addEntry(id: string, name: string, color: string, modelIndex: number): Entry {
+      const group = new THREE.Group();
+      const rig = new BrawlerRig(sources[modelIndex % sources.length], color || PALETTE_FALLBACK);
+      group.add(rig.group);
+      const marker = createGroundMarker(color || PALETTE_FALLBACK);
+      group.add(marker.group);
+      scene.add(group);
+      const p0 = sim.players[id];
+      const entry: Entry = {
+        rig,
+        group,
+        marker,
+        label: makeLabel(name, color || PALETTE_FALLBACK, id === localId),
+        prevSlap: 0,
+        prevDash: 0,
+        wobble: Math.random() * 6,
+        renderX: p0.x,
+        renderZ: p0.z,
       };
+      entries.set(id, entry);
+      return entry;
     }
 
-    // 8. Animation & Render loop
-    let animId = 0;
-    let clock = new THREE.Clock();
+    function removeEntry(id: string): void {
+      const e = entries.get(id);
+      if (!e) return;
+      e.label.remove();
+      e.rig.dispose();
+      e.marker.dispose();
+      e.group.parent?.remove(e.group);
+      entries.delete(id);
+    }
 
-    const animate = () => {
-      animId = requestAnimationFrame(animate);
-      const dt = clock.getDelta();
-      const elapsed = clock.getElapsedTime();
+    function popText(x: number, z: number, text: string, color: string): void {
+      const el = document.createElement('div');
+      el.className = 'sa-pop';
+      el.style.color = color;
+      el.textContent = text;
+      labels.appendChild(el);
+      const at = new THREE.Vector3(x, 1.9, z).project(camera);
+      const rect = stage.getBoundingClientRect();
+      el.style.left = `${((at.x + 1) / 2) * rect.width}px`;
+      el.style.top = `${((-at.y + 1) / 2) * rect.height}px`;
+      window.setTimeout(() => el.remove(), 780);
+    }
 
-      // Slowly rotate clouds
-      cloudsGroup.rotation.y = elapsed * 0.04;
-
-      const currentPlayers = playersRef.current;
-      const currentIds = Object.keys(currentPlayers);
-
-      // Remove obsolete meshes
-      for (const [id, meshes] of playerMeshMap.entries()) {
-        if (!currentPlayers[id]) {
-          scene.remove(meshes.root);
-          meshes.nameSprite.material.map?.dispose();
-          meshes.nameSprite.material.dispose();
-          playerMeshMap.delete(id);
+    apiRef.current = {
+      impact(x, z, color, strength, label) {
+        particles.burst({ x, z, y: 1.1, color, count: Math.round(8 + strength * 10), speed: 4 + strength * 4 });
+        if (label) popText(x, z, label, color);
+        if (!reducedMotion) shake.amount = Math.min(0.55, shake.amount + 0.16 * strength);
+      },
+      koBurst(x, z, color) {
+        particles.burst({ x, z, y: 0.6, color, count: 16, speed: 7, life: 0.8 });
+        if (!reducedMotion) shake.amount = Math.min(0.8, shake.amount + 0.34);
+      },
+      confetti() {
+        const colors = ['#ffd166', '#ff6b6b', '#5fd06a', '#4dabf7', '#f783ac'];
+        for (let i = 0; i < 5; i++) {
+          particles.burst({
+            x: (Math.random() - 0.5) * 6,
+            z: (Math.random() - 0.5) * 6,
+            y: 6 + Math.random() * 3,
+            color: colors[i % colors.length],
+            count: 26,
+            speed: 3.4,
+            life: 2.4,
+          });
         }
-      }
-
-      // Update / Create meshes
-      for (const id of currentIds) {
-        const p = currentPlayers[id];
-        let meshes = playerMeshMap.get(id);
-        if (!meshes) {
-          meshes = spawnPlayerMesh(p);
-          playerMeshMap.set(id, meshes);
-        }
-
-        // Position & angle
-        const targetY = p.isFalling ? p.fallY : 0;
-        meshes.root.position.set(p.x, targetY, p.z);
-        meshes.root.rotation.y = -p.angle + Math.PI / 2;
-
-        // Slap animation
-        if (p.isSlapping) {
-          meshes.rightGlove.position.z = 1.35;
-          meshes.rightGlove.position.x = 0.35;
-          meshes.rightGlove.scale.set(1.4, 1.4, 1.4);
-        } else {
-          meshes.rightGlove.position.z = 0.4;
-          meshes.rightGlove.position.x = 0.75;
-          meshes.rightGlove.scale.set(1, 1, 1);
-        }
-
-        // Hit wobble / spin
-        if (p.isHit) {
-          meshes.body.rotation.z = Math.sin(elapsed * 40) * 0.4;
-          meshes.body.rotation.x = -0.3;
-        } else {
-          meshes.body.rotation.z = 0;
-          meshes.body.rotation.x = 0;
-        }
-
-        // Falling spin
-        if (p.isFalling) {
-          meshes.root.rotation.x += dt * 8;
-          meshes.root.rotation.z += dt * 6;
-          const shrink = Math.max(0.1, 1 + p.fallY * 0.05);
-          meshes.root.scale.set(shrink, shrink, shrink);
-        } else {
-          meshes.root.scale.set(1, 1, 1);
-        }
-
-        // Walking bounce bobbing
-        const speed = Math.hypot(p.vx, p.vz);
-        if (speed > 0.5 && !p.isFalling) {
-          meshes.body.position.y = 0.95 + Math.abs(Math.sin(elapsed * 12)) * 0.15;
-        } else if (!p.isFalling) {
-          meshes.body.position.y = 0.95;
-        }
-      }
-
-      // 9. Camera Tracking
-      const localP = currentPlayers[localPlayerIdRef.current];
-      const curW = container ? container.clientWidth : width;
-      const curH = container ? container.clientHeight : height;
-      const isPortrait = curH > curW;
-
-      if (localP && !localP.isFalling) {
-        // Desktop is closer and more immersive 3rd-person brawler action; Mobile portrait is elevated to see full ring
-        const camDistY = isPortrait ? 18.5 : 9.5;
-        const camDistZ = isPortrait ? 16.0 : 11.5;
-
-        const targetCamX = localP.x * (isPortrait ? 0.4 : 0.7);
-        const targetCamY = camDistY;
-        const targetCamZ = localP.z * (isPortrait ? 0.4 : 0.7) + camDistZ;
-
-        camera.position.x += (targetCamX - camera.position.x) * 0.08;
-        camera.position.y += (targetCamY - camera.position.y) * 0.08;
-        camera.position.z += (targetCamZ - camera.position.z) * 0.08;
-        camera.lookAt(localP.x * (isPortrait ? 0.4 : 0.85), 1.1, localP.z * (isPortrait ? 0.4 : 0.85));
-      } else {
-        // Fallback to center view
-        camera.position.x += (0 - camera.position.x) * 0.05;
-        camera.position.y += (isPortrait ? 20 : 12) - camera.position.y * 0.05;
-        camera.position.z += (isPortrait ? 17 : 13) - camera.position.z * 0.05;
-        camera.lookAt(0, 0, 0);
-      }
-
-
-      renderer.render(scene, camera);
+      },
+      shake(amount) {
+        if (!reducedMotion) shake.amount = Math.min(0.9, shake.amount + amount);
+      },
     };
 
-    animate();
+    const clock = new THREE.Clock();
+    let animId = 0;
+    let frames = 0;
+    let fpsTimer = 0;
+    let slowFrames = 0;
 
-    // 10. Resize handler
+    function pickAnimation(e: Entry, p: { isFalling: boolean; slapCooldown: number; dashCooldown: number; speed: number }): void {
+      if (p.isFalling) {
+        e.rig.once('Death_A');
+        return;
+      }
+      if (e.prevSlap - p.slapCooldown > 0.15) {
+        e.rig.once(Math.random() > 0.5 ? 'Unarmed_Melee_Attack_Punch_A' : 'Unarmed_Melee_Attack_Punch_B');
+      }
+      if (e.prevDash - p.dashCooldown > 0.5) {
+        e.rig.once('Dodge_Forward');
+      }
+      if (p.speed > 0.7) e.rig.loop('Running_A', Math.min(1.35, 0.7 + p.speed * 0.06));
+      else e.rig.loop('Idle');
+      e.prevSlap = p.slapCooldown;
+      e.prevDash = p.dashCooldown;
+    }
+
+    function frame(): void {
+      animId = requestAnimationFrame(frame);
+      const dt = Math.min(clock.getDelta(), 0.05);
+      const { state } = sim;
+
+      for (const id of entries.keys()) if (!state.players[id]) removeEntry(id);
+
+      let danger = 0;
+      const ids = Object.keys(state.players);
+      ids.forEach((id, index) => {
+        const p = state.players[id];
+        let e = entries.get(id);
+        if (!e) {
+          if (sources.length === 0) return;
+          e = addEntry(id, p.name, p.color, index);
+        }
+        const speed = Math.hypot(p.vx, p.vz);
+        e.wobble += dt * (4 + speed);
+        e.marker.setColor(p.color || PALETTE_FALLBACK);
+
+        // A client only hears about remote brawlers 20 times a second, so draw them
+        // where they should be between snapshots instead of teleporting on arrival.
+        const interpolate = !sim.authoritative && id !== localId;
+        const px = p.x;
+        const pz = p.z;
+        if (interpolate) {
+          const ik = 1 - Math.pow(0.0001, dt);
+          e.renderX += (px - e.renderX) * ik;
+          e.renderZ += (pz - e.renderZ) * ik;
+        } else {
+          e.renderX = px;
+          e.renderZ = pz;
+        }
+
+        if (p.isFalling) {
+          e.group.position.set(e.renderX, p.fallY, e.renderZ);
+          e.group.rotation.z += dt * 5.5;
+          e.group.rotation.x = Math.sin(e.wobble) * 0.5;
+          e.marker.group.visible = false;
+        } else {
+          e.group.position.set(e.renderX, 0, e.renderZ);
+          e.group.rotation.y = -p.angle + Math.PI / 2;
+          e.group.rotation.z = 0;
+          e.group.rotation.x = 0;
+          e.marker.group.visible = true;
+          const airborne = Math.hypot(p.x, p.z) > ARENA_RADIUS - 0.4;
+          if (airborne) danger = Math.max(danger, 1);
+        }
+
+        const bump = p.bump;
+        const squash = 1 - bump * 0.16;
+        const stretch = 1 + bump * 0.2;
+        const bob = speed > 0.7 ? Math.abs(Math.sin(e.wobble * 1.6)) * 0.05 : 0;
+        e.group.scale.set(squash, stretch, squash);
+        e.group.position.y = (p.isFalling ? p.fallY : 0) + bob;
+
+        pickAnimation(e, { isFalling: p.isFalling, slapCooldown: p.slapCooldown, dashCooldown: p.dashCooldown, speed });
+        e.rig.update(dt);
+
+        const label = e.label;
+        projected.set(e.renderX, 2.35 + bob, e.renderZ).project(camera);
+        if (projected.z > 1 || p.eliminated) {
+          label.style.opacity = '0';
+        } else {
+          label.style.opacity = p.isFalling ? '0.35' : '1';
+          label.style.transform = `translate(-50%,-50%) translate(${((projected.x + 1) / 2) * stage.clientWidth}px,${((-projected.y + 1) / 2) * stage.clientHeight}px)`;
+        }
+      });
+
+      island.setDanger(danger);
+      island.update(dt);
+      backdrop.update(dt);
+      particles.update(dt);
+
+      // Framing: the focus point is pulled toward the island centre so the ring of
+      // grass never leaves the screen, even when you are clinging to the lip.
+      const me = state.players[localId];
+      const leader = ids
+        .map((id) => state.players[id])
+        .sort((a, b) => b.score - a.score)
+        .find((p) => !p.isFalling && !p.eliminated);
+      const follow = me && !me.isFalling ? me : leader ?? me;
+      const w = stage.clientWidth;
+      const h = stage.clientHeight;
+      const aspect = w / Math.max(1, h);
+      // Vertical FOV binds on wide screens, horizontal FOV on tall ones, so the
+      // distance is derived from whichever axis is the tight fit.
+      const fovRad = (camera.fov * Math.PI) / 180;
+      const needV = (ARENA_RADIUS + 1.6) / Math.tan(fovRad / 2);
+      const needH = (ARENA_RADIUS + 1.6) / (Math.tan(fovRad / 2) * aspect);
+      const fit = Math.max(needV, needH);
+      const wide = aspect > 1.4;
+      const dist = fit * (wide ? 1.06 : 0.87);
+      const high = fit * (wide ? 0.5 : 0.72);
+      const fx = follow ? follow.x * 0.5 : 0;
+      const fz = follow ? follow.z * 0.5 : 0;
+      const k = 1 - Math.pow(0.0015, dt);
+
+      camera.position.x += (fx - camera.position.x) * k;
+      camera.position.y += (high - camera.position.y) * k;
+      camera.position.z += (fz + dist - camera.position.z) * k;
+
+      if (shake.amount > 0.001) {
+        camera.position.x += (Math.random() - 0.5) * shake.amount;
+        camera.position.y += (Math.random() - 0.5) * shake.amount;
+        shake.amount = Math.max(0, shake.amount - dt * shake.decay * shake.amount * 3 - dt * 0.12);
+      }
+      camera.lookAt(fx * 0.6, 1.1, fz * 0.6);
+
+      renderer.render(scene, camera);
+
+      frames++;
+      fpsTimer += dt;
+      if (fpsTimer >= 1) {
+        const fps = frames / fpsTimer;
+        frames = 0;
+        fpsTimer = 0;
+        if (fps < 45 && quality === 'high') {
+          slowFrames++;
+          if (slowFrames >= 2) {
+            quality = 'low';
+            slowFrames = 0;
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.35));
+            renderer.shadowMap.enabled = false;
+            sun.castShadow = false;
+            for (const e of entries.values()) {
+              e.group.traverse((o) => {
+                if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).castShadow = false;
+              });
+            }
+          }
+        } else if (fps > 58) {
+          slowFrames = 0;
+        }
+        onFps?.(Math.round(fps), quality);
+      }
+    }
+
     const handleResize = () => {
-      if (!container) return;
       const w = container.clientWidth;
       const h = container.clientHeight;
+      if (!w || !h) return;
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
       renderer.setSize(w, h);
     };
 
+    const handleContextLost = (event: Event) => {
+      event.preventDefault();
+      contextLost = true;
+      cancelAnimationFrame(animId);
+      onError('Kartu grafis melepas koneksi 3D. Muat ulang halaman untuk lanjut main.');
+    };
+    renderer.domElement.addEventListener('webglcontextlost', handleContextLost);
     window.addEventListener('resize', handleResize);
 
+    (async () => {
+      try {
+        for (const url of CHARACTER_URLS) {
+          const src = await loadBrawlerSource(url);
+          if (disposed) return;
+          sources.push(src);
+        }
+      } catch (err) {
+        loadError = true;
+        console.error('[slap-arena] gagal memuat model karakter', err);
+        onError('Model karakter gagal dimuat. Periksa koneksi lalu muat ulang halaman.');
+        return;
+      }
+      if (disposed || contextLost || loadError) return;
+      frame();
+    })();
+
     return () => {
+      disposed = true;
       cancelAnimationFrame(animId);
       window.removeEventListener('resize', handleResize);
+      renderer.domElement.removeEventListener('webglcontextlost', handleContextLost);
+      for (const id of [...entries.keys()]) removeEntry(id);
+      island.dispose();
+      backdrop.dispose();
+      particles.dispose();
+      sky.dispose();
       renderer.dispose();
-      platformGeo.dispose();
-      grassMat.dispose();
-      rimGeo.dispose();
-      rimMat.dispose();
-      dangerGeo.dispose();
-      dangerMat.dispose();
-      centerCircleGeo.dispose();
-      centerMat.dispose();
-      rockGeo.dispose();
-      rockMat.dispose();
-      cloudGeo.dispose();
-      cloudMat.dispose();
-      bodyGeo.dispose();
-      gloveGeo.dispose();
-      eyeWhiteGeo.dispose();
-      pupilGeo.dispose();
-      eyeWhiteMat.dispose();
-      pupilMat.dispose();
-      for (const meshes of playerMeshMap.values()) {
-        scene.remove(meshes.root);
-        meshes.nameSprite.material.map?.dispose();
-        meshes.nameSprite.material.dispose();
-      }
-      playerMeshMap.clear();
-      if (container.contains(renderer.domElement)) {
-        container.removeChild(renderer.domElement);
-      }
+      renderer.domElement.remove();
+      apiRef.current = null;
     };
-  }, []);
+  }, [sim, localId, reducedMotion, onError]);
 
   return (
-    <div
-      ref={containerRef}
-      style={{
-        width: '100%',
-        height: '100%',
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        overflow: 'hidden',
-        touchAction: 'none',
-      }}
-    />
+    <div ref={containerRef} className="sa-stage" data-testid="slap-arena-stage">
+      <div ref={labelLayerRef} className="sa-label-layer" aria-hidden="true" />
+    </div>
   );
-};
+});
+
+export { Arena3D };
+export type { Arena3DProps };

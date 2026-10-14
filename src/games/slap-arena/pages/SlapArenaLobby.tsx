@@ -1,473 +1,295 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import '../slap-arena.css';
 import { getStoredPlayerName, setStoredPlayerName } from '../../../lib/supabase';
 import { createOnlineRoom } from '../../common/multiplayer';
-import { createInitialArena } from '../engine/physics';
 
 const COLOR_OPTIONS = [
-  { label: 'Biru Cerah', hex: '#3b82f6' },
-  { label: 'Merah Bara', hex: '#ef4444' },
-  { label: 'Hijau Zamrud', hex: '#10b981' },
-  { label: 'Kuning Mentari', hex: '#f59e0b' },
-  { label: 'Ungu Mistis', hex: '#8b5cf6' },
-  { label: 'Merah Muda', hex: '#ec4899' },
+  { label: 'Biru Laut', hex: '#4dabf7' },
+  { label: 'Merah Cabai', hex: '#ff5d5d' },
+  { label: 'Hijau Mint', hex: '#6fe3b0' },
+  { label: 'Kuning Madu', hex: '#ffcf5c' },
+  { label: 'Ungu Anggur', hex: '#b197fc' },
+  { label: 'Oranye Jeruk', hex: '#ffa94d' },
 ];
+
+const readSavedColor = () => {
+  try {
+    const raw = window.localStorage.getItem('slap_player_color');
+    return raw && COLOR_OPTIONS.some((c) => c.hex === raw) ? raw : COLOR_OPTIONS[0].hex;
+  } catch {
+    return COLOR_OPTIONS[0].hex;
+  }
+};
+
+/** The mascot is drawn, not a photo: it recolours instantly and costs one request. */
+const Mascot: React.FC<{ color: string }> = ({ color }) => (
+  <svg className="sa-lobby__art" viewBox="0 0 260 220" role="img" aria-label="Brawler pulau tampol">
+    <defs>
+      <linearGradient id="sa-sky" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stopColor="#bfe8ff" />
+        <stop offset="100%" stopColor="#eaf9dc" />
+      </linearGradient>
+    </defs>
+    <rect x="0" y="0" width="260" height="220" rx="22" fill="url(#sa-sky)" />
+    <ellipse cx="52" cy="44" rx="26" ry="12" fill="#fff" opacity="0.9" />
+    <ellipse cx="210" cy="60" rx="22" ry="10" fill="#fff" opacity="0.9" />
+    <ellipse cx="130" cy="186" rx="86" ry="22" fill="#5fd06a" stroke="#2a1b33" strokeWidth="5" />
+    <ellipse cx="130" cy="182" rx="62" ry="14" fill="#3fae52" opacity="0.55" />
+    <path d="M60 200h140l-18 16H78z" fill="#a2683c" stroke="#2a1b33" strokeWidth="5" strokeLinejoin="round" />
+
+    <g stroke="#2a1b33" strokeWidth="5.5" strokeLinejoin="round">
+      <ellipse cx="130" cy="176" rx="34" ry="9" fill="#2a1b33" opacity="0.16" stroke="none" />
+      <rect x="104" y="150" width="18" height="22" rx="9" fill={color} />
+      <rect x="138" y="150" width="18" height="22" rx="9" fill={color} />
+      <rect x="96" y="96" width="68" height="66" rx="30" fill={color} />
+      <circle cx="130" cy="72" r="34" fill="#ffd9b3" />
+      <path d="M96 66a34 34 0 0 1 68 0z" fill={color} />
+      <circle cx="130" cy="30" r="9" fill="#fff6e5" />
+      <circle cx="118" cy="74" r="6.5" fill="#2a1b33" stroke="none" />
+      <circle cx="142" cy="74" r="6.5" fill="#2a1b33" stroke="none" />
+      <path d="M120 88q10 8 20 0" fill="none" strokeLinecap="round" />
+      <circle cx="78" cy="118" r="19" fill="#ff5d5d" />
+      <circle cx="182" cy="112" r="22" fill="#ff5d5d" />
+    </g>
+    <g fill="#fff" opacity="0.55">
+      <circle cx="72" cy="112" r="5" />
+      <circle cx="175" cy="105" r="6" />
+    </g>
+  </svg>
+);
 
 export const SlapArenaLobby: React.FC = () => {
   const navigate = useNavigate();
-  const [name, setName] = useState(() => getStoredPlayerName() || 'Brawler ' + Math.floor(100 + Math.random() * 900));
-  const [selectedColor, setSelectedColor] = useState(() => {
-    return localStorage.getItem('slap_player_color') || '#3b82f6';
-  });
+  const [name, setName] = useState(
+    () => getStoredPlayerName() || `Brawler ${Math.floor(100 + Math.random() * 900)}`
+  );
+  const [color, setColor] = useState(readSavedColor);
   const [joinCode, setJoinCode] = useState('');
-  const [activeTab, setActiveTab] = useState<'solo' | 'multiplayer'>('solo');
-  const [isLoading, setIsLoading] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('');
+  const [tab, setTab] = useState<'solo' | 'online'>('solo');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
 
-  const savePreferences = (newName: string, newColor: string) => {
+  const save = (newName: string) => {
     setStoredPlayerName(newName);
-    localStorage.setItem('slap_player_color', newColor);
+    try {
+      window.localStorage.setItem('slap_player_color', color);
+    } catch {
+      /* private mode */
+    }
   };
 
-  const handleStartSolo = (e: React.FormEvent) => {
+  const startSolo = (e: React.FormEvent) => {
     e.preventDefault();
-    const cleanName = name.trim() || 'Brawler';
-    savePreferences(cleanName, selectedColor);
+    save(name.trim() || 'Brawler');
     navigate('/slap-arena/solo');
   };
 
-  const handleCreateRoom = async () => {
-    const cleanName = name.trim() || 'Host Brawler';
-    savePreferences(cleanName, selectedColor);
-    setIsLoading(true);
-    setErrorMessage('');
-
+  const createRoom = async () => {
+    setBusy(true);
+    setError('');
+    const cleanName = name.trim() || 'Tuan Rumah';
+    save(cleanName);
     try {
-      const initialArena = createInitialArena('temp', 3);
       const { roomCode } = await createOnlineRoom({
-        gameType: 'wall-game' as any, // reuse matches schema
+        gameType: 'slap-arena',
         maxPlayers: 4,
         hostName: cleanName,
-        initialState: {
-          ...initialArena,
-          gameType: 'slap-arena',
-          hostColor: selectedColor,
-        },
+        initialState: { gameType: 'slap-arena', hostColor: color, scoreToWin: 3 },
       });
-
       navigate(`/slap-arena/m/${roomCode}`);
-    } catch (err: any) {
-      setErrorMessage(err?.message || 'Gagal membuat room. Periksa koneksi internet Anda.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Gagal membuat room. Periksa koneksi internetmu.');
     } finally {
-      setIsLoading(false);
+      setBusy(false);
     }
   };
 
-  const handleJoinRoom = (e: React.FormEvent) => {
+  const joinRoom = (e: React.FormEvent) => {
     e.preventDefault();
-    const cleanCode = joinCode.trim().toUpperCase();
-    if (cleanCode.length < 4) {
-      setErrorMessage('Masukkan kode room yang valid (minimal 4 karakter).');
+    const code = joinCode.trim().toUpperCase();
+    if (code.length < 6) {
+      setError('Kode room terdiri dari 6 huruf atau angka.');
       return;
     }
-    const cleanName = name.trim() || 'Brawler';
-    savePreferences(cleanName, selectedColor);
-    navigate(`/slap-arena/m/${cleanCode}`);
+    setError('');
+    save(name.trim() || 'Brawler');
+    navigate(`/slap-arena/m/${code}`);
   };
 
   return (
-    <div
-      style={{
-        maxWidth: '720px',
-        margin: '0 auto',
-        padding: '24px 16px 48px',
-        color: 'var(--ink, #1c1917)',
-      }}
-    >
-      {/* Header */}
-      <div style={{ textAlign: 'center', marginBottom: '28px' }}>
-        <div
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '8px',
-            backgroundColor: '#fee2e2',
-            color: '#b91c1c',
-            padding: '4px 14px',
-            borderRadius: '999px',
-            font: '700 12px/1 var(--mono, monospace)',
-            marginBottom: '12px',
-          }}
-        >
-          <span>PULAU TAMPOL 3D</span>
-          <span>·</span>
-          <span>ROBLOX-STYLE BRAWLER</span>
+    <div className="sa sa-lobby" data-testid="slap-lobby">
+      <header className="sa-lobby__hero">
+        <div>
+          <span className="sa-lobby__badge">PULAU TAMPOL 3D</span>
+          <h1>Slap Arena</h1>
+          <p className="sa-lobby__lede">
+            Empat brawler, satu pulau melayang, tanpa senjata. Tampar dan terjang lawan sampai tercebur.
+            Rebut tiga ronde untuk jadi juara pulau.
+          </p>
         </div>
-        <h1
-          style={{
-            font: '900 clamp(28px, 6vw, 42px)/1.15 var(--sans, sans-serif)',
-            letterSpacing: '-0.02em',
-            margin: '0 0 10px',
-            color: '#0f172a',
-          }}
-        >
-          Slap Arena: Island Brawler
-        </h1>
-        <p
-          style={{
-            font: '15px/1.6 var(--sans, sans-serif)',
-            color: '#64748b',
-            maxWidth: '520px',
-            margin: '0 auto',
-          }}
-        >
-          Jatuhkan lawan dari pulau melayang dengan tamparan sarung tinju raksasa. 
-          Raih 3 kemenangan ronde untuk menjadi juara pulau.
-        </p>
-      </div>
+        <Mascot color={color} />
+      </header>
 
-      {/* Profile & Customization Card */}
-      <div
-        style={{
-          backgroundColor: '#ffffff',
-          borderRadius: '16px',
-          border: '1px solid #e2e8f0',
-          padding: '20px',
-          marginBottom: '24px',
-          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)',
-        }}
-      >
-        <h2 style={{ font: '700 16px/1.2 var(--sans, sans-serif)', margin: '0 0 14px', color: '#1e293b' }}>
-          Profil Petarung
-        </h2>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px' }}>
-          {/* Name Input */}
-          <div>
-            <label
-              htmlFor="player-name-input"
-              style={{ display: 'block', font: '600 13px/1.4 var(--sans, sans-serif)', color: '#475569', marginBottom: '6px' }}
-            >
-              Nama Petarung
-            </label>
+      <section className="sa-section" aria-labelledby="sa-profile">
+        <h2 id="sa-profile">Kartermu</h2>
+        <div className="sa-fields">
+          <div className="sa-field">
+            <label htmlFor="sa-name">Nama brawler</label>
             <input
-              id="player-name-input"
+              id="sa-name"
+              className="sa-input"
               type="text"
               value={name}
               maxLength={14}
+              autoComplete="off"
+              data-testid="slap-name-input"
               onChange={(e) => setName(e.target.value)}
-              placeholder="Contoh: Brawler Pro"
-              style={{
-                width: '100%',
-                boxSizing: 'border-box',
-                padding: '12px 14px',
-                borderRadius: '10px',
-                border: '1.5px solid #cbd5e1',
-                font: '600 15px/1 var(--sans, sans-serif)',
-                color: '#0f172a',
-                backgroundColor: '#f8fafc',
-                outline: 'none',
-              }}
             />
           </div>
-
-          {/* Color Picker */}
-          <div>
-            <span style={{ display: 'block', font: '600 13px/1.4 var(--sans, sans-serif)', color: '#475569', marginBottom: '6px' }}>
-              Warna Karakter
+          <div className="sa-field">
+            <span className="sa-label" id="sa-color-label">
+              Warna kostum
             </span>
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-              {COLOR_OPTIONS.map((c) => {
-                const isSelected = selectedColor === c.hex;
-                return (
-                  <button
-                    key={c.hex}
-                    type="button"
-                    onClick={() => setSelectedColor(c.hex)}
-                    style={{
-                      width: '38px',
-                      height: '38px',
-                      borderRadius: '50%',
-                      backgroundColor: c.hex,
-                      border: isSelected ? '3px solid #0f172a' : '2px solid #ffffff',
-                      boxShadow: isSelected ? '0 0 0 2px #3b82f6' : '0 2px 4px rgba(0,0,0,0.1)',
-                      cursor: 'pointer',
-                      transform: isSelected ? 'scale(1.1)' : 'scale(1)',
-                      transition: 'transform 0.1s ease',
-                    }}
-                    aria-label={`Pilih warna ${c.label}`}
-                  />
-                );
-              })}
+            <div className="sa-swatches" role="group" aria-labelledby="sa-color-label">
+              {COLOR_OPTIONS.map((c) => (
+                <button
+                  key={c.hex}
+                  type="button"
+                  className="sa-swatch"
+                  style={{ '--c': c.hex } as React.CSSProperties}
+                  aria-label={c.label}
+                  aria-pressed={color === c.hex}
+                  data-testid={`slap-color-${c.hex.slice(1)}`}
+                  onClick={() => setColor(c.hex)}
+                />
+              ))}
             </div>
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* Mode Selector Tabs */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
-          gap: '8px',
-          marginBottom: '20px',
-          backgroundColor: '#e2e8f0',
-          padding: '4px',
-          borderRadius: '12px',
-        }}
-      >
+      <div className="sa-tabs" role="tablist" aria-label="Mode permainan">
         <button
           type="button"
+          role="tab"
+          id="sa-tab-solo"
+          aria-selected={tab === 'solo'}
+          aria-controls="sa-panel-solo"
+          className="sa-tab"
+          data-testid="slap-tab-solo"
           onClick={() => {
-            setActiveTab('solo');
-            setErrorMessage('');
-          }}
-          style={{
-            padding: '12px',
-            borderRadius: '9px',
-            border: 'none',
-            font: '700 14px/1 var(--sans, sans-serif)',
-            backgroundColor: activeTab === 'solo' ? '#ffffff' : 'transparent',
-            color: activeTab === 'solo' ? '#0f172a' : '#64748b',
-            boxShadow: activeTab === 'solo' ? '0 2px 6px rgba(0,0,0,0.08)' : 'none',
-            cursor: 'pointer',
+            setTab('solo');
+            setError('');
           }}
         >
-          Mode Solo (vs 3 Bot AI)
+          Solo vs 3 Bot
         </button>
         <button
           type="button"
+          role="tab"
+          id="sa-tab-online"
+          aria-selected={tab === 'online'}
+          aria-controls="sa-panel-online"
+          className="sa-tab"
+          data-testid="slap-tab-online"
           onClick={() => {
-            setActiveTab('multiplayer');
-            setErrorMessage('');
-          }}
-          style={{
-            padding: '12px',
-            borderRadius: '9px',
-            border: 'none',
-            font: '700 14px/1 var(--sans, sans-serif)',
-            backgroundColor: activeTab === 'multiplayer' ? '#ffffff' : 'transparent',
-            color: activeTab === 'multiplayer' ? '#0f172a' : '#64748b',
-            boxShadow: activeTab === 'multiplayer' ? '0 2px 6px rgba(0,0,0,0.08)' : 'none',
-            cursor: 'pointer',
+            setTab('online');
+            setError('');
           }}
         >
-          Online Multiplayer (2 - 4 Pemain)
+          Online 2-4 Pemain
         </button>
       </div>
 
-      {/* Error Banner */}
-      {errorMessage && (
-        <div
-          role="alert"
-          style={{
-            padding: '12px 16px',
-            backgroundColor: '#fef2f2',
-            border: '1px solid #fecaca',
-            borderRadius: '10px',
-            color: '#b91c1c',
-            font: '500 13px/1.5 var(--sans, sans-serif)',
-            marginBottom: '18px',
-          }}
-        >
-          {errorMessage}
+      {error && (
+        <div className="sa-alert" role="alert" data-testid="slap-error">
+          {error}
         </div>
       )}
 
-      {/* Tab 1: Solo Mode */}
-      {activeTab === 'solo' && (
-        <div
-          style={{
-            backgroundColor: '#ffffff',
-            borderRadius: '16px',
-            border: '1px solid #e2e8f0',
-            padding: '24px',
-            textAlign: 'center',
-            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)',
-          }}
-        >
-          <div
-            style={{
-              width: '64px',
-              height: '64px',
-              borderRadius: '50%',
-              backgroundColor: '#dbeafe',
-              color: '#2563eb',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              margin: '0 auto 16px',
-            }}
-          >
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z" />
-              <path d="M12 6a4 4 0 1 0 4 4 4 4 0 0 0-4-4zm0 6a2 2 0 1 1 2-2 2 2 0 0 1-2 2z" />
-            </svg>
-          </div>
-          <h3 style={{ font: '800 18px/1.2 var(--sans, sans-serif)', margin: '0 0 8px', color: '#0f172a' }}>
-            Pertarungan Instan Tanpa Antre
-          </h3>
-          <p style={{ font: '14px/1.6 var(--sans, sans-serif)', color: '#64748b', margin: '0 0 22px' }}>
-            Langsung terjun ke pulau dan lawan 3 bot pintar: Brawler Bob, Speedy Sam, dan Sneaky Sue.
-            Mendukung kontrol sentuh smartphone atau keyboard PC.
-          </p>
-
-          <button
-            type="button"
-            onClick={handleStartSolo}
-            style={{
-              width: '100%',
-              maxWidth: '360px',
-              padding: '16px 24px',
-              borderRadius: '12px',
-              border: 'none',
-              backgroundColor: '#2563eb',
-              color: '#ffffff',
-              font: '800 16px/1 var(--sans, sans-serif)',
-              cursor: 'pointer',
-              boxShadow: '0 4px 12px rgba(37, 99, 235, 0.35)',
-              transition: 'transform 0.1s ease',
-            }}
-          >
-            Mulai Bermain Solo
-          </button>
-        </div>
-      )}
-
-      {/* Tab 2: Multiplayer Mode */}
-      {activeTab === 'multiplayer' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
-          {/* Create Room */}
-          <div
-            style={{
-              backgroundColor: '#ffffff',
-              borderRadius: '16px',
-              border: '1px solid #e2e8f0',
-              padding: '24px',
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'space-between',
-              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)',
-            }}
-          >
+      {tab === 'solo' ? (
+        <section className="sa-modes" id="sa-panel-solo" role="tabpanel" aria-labelledby="sa-tab-solo">
+          <div className="sa-mode">
             <div>
-              <h3 style={{ font: '800 18px/1.2 var(--sans, sans-serif)', margin: '0 0 8px', color: '#0f172a' }}>
-                Buat Room Baru
-              </h3>
-              <p style={{ font: '13px/1.5 var(--sans, sans-serif)', color: '#64748b', margin: '0 0 20px' }}>
-                Jadilah tuan rumah pertarungan. Dapatkan kode 6 karakter untuk dibagikan ke teman.
-              </p>
+              <h3>Langsung terjun</h3>
+              <p>Satu ronde melawan tiga bot berkarakter: Bob yang berani, Sam yang cepat, Sue yang hati-hati. Tidak perlu antre, tidak perlu kode.</p>
             </div>
-
-            <button
-              type="button"
-              onClick={handleCreateRoom}
-              disabled={isLoading}
-              style={{
-                width: '100%',
-                padding: '14px 20px',
-                borderRadius: '12px',
-                border: 'none',
-                backgroundColor: '#059669',
-                color: '#ffffff',
-                font: '800 15px/1 var(--sans, sans-serif)',
-                cursor: isLoading ? 'not-allowed' : 'pointer',
-                opacity: isLoading ? 0.7 : 1,
-                boxShadow: '0 4px 12px rgba(5, 150, 105, 0.3)',
-              }}
-            >
-              {isLoading ? 'Membuat Room...' : 'Buat Room Sekarang'}
+            <button type="button" className="sa-btn sa-btn--primary" data-testid="slap-start-solo" onClick={startSolo}>
+              Mulai sekarang
             </button>
           </div>
-
-          {/* Join Room */}
-          <div
-            style={{
-              backgroundColor: '#ffffff',
-              borderRadius: '16px',
-              border: '1px solid #e2e8f0',
-              padding: '24px',
-              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)',
-            }}
-          >
-            <h3 style={{ font: '800 18px/1.2 var(--sans, sans-serif)', margin: '0 0 8px', color: '#0f172a' }}>
-              Gabung Room Teman
-            </h3>
-            <p style={{ font: '13px/1.5 var(--sans, sans-serif)', color: '#64748b', margin: '0 0 16px' }}>
-              Masukkan kode 6 huruf yang diberikan oleh tuan rumah room.
-            </p>
-
-            <form onSubmit={handleJoinRoom} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <input
-                type="text"
-                value={joinCode}
-                onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-                placeholder="CONTOH: 7K9P2X"
-                maxLength={8}
-                style={{
-                  width: '100%',
-                  boxSizing: 'border-box',
-                  padding: '12px 14px',
-                  borderRadius: '10px',
-                  border: '1.5px solid #cbd5e1',
-                  font: '700 16px/1 var(--mono, monospace)',
-                  letterSpacing: '0.1em',
-                  textTransform: 'uppercase',
-                  textAlign: 'center',
-                  backgroundColor: '#f8fafc',
-                  outline: 'none',
-                }}
-              />
-
-              <button
-                type="submit"
-                style={{
-                  width: '100%',
-                  padding: '14px 20px',
-                  borderRadius: '12px',
-                  border: 'none',
-                  backgroundColor: '#3b82f6',
-                  color: '#ffffff',
-                  font: '800 15px/1 var(--sans, sans-serif)',
-                  cursor: 'pointer',
-                  boxShadow: '0 4px 12px rgba(59, 130, 246, 0.3)',
-                }}
-              >
-                Gabung ke Arena
-              </button>
-            </form>
+        </section>
+      ) : (
+        <section className="sa-modes" id="sa-panel-online" role="tabpanel" aria-labelledby="sa-tab-online">
+          <div className="sa-mode">
+            <div>
+              <h3>Buat room</h3>
+              <p>Kamu jadi tuan rumah dan pemilik simulasi. Bagikan kode enam karakter ke maksimal tiga teman.</p>
+            </div>
+            <button
+              type="button"
+              className="sa-btn sa-btn--primary"
+              data-testid="slap-create-room"
+              onClick={createRoom}
+              disabled={busy}
+            >
+              {busy ? 'Membuat room...' : 'Buat room'}
+            </button>
           </div>
-        </div>
+          <form className="sa-mode" onSubmit={joinRoom}>
+            <div>
+              <h3>Gabung room</h3>
+              <p>Tulis kode dari tuan rumah. Kamu langsung masuk begitu roomnya siap.</p>
+            </div>
+            <input
+              className="sa-input sa-input--code"
+              type="text"
+              value={joinCode}
+              onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+              placeholder="ABC123"
+              maxLength={6}
+              autoComplete="off"
+              inputMode="text"
+              aria-label="Kode room"
+              data-testid="slap-join-input"
+            />
+            <button type="submit" className="sa-btn" data-testid="slap-join-room" disabled={busy}>
+              Gabung
+            </button>
+          </form>
+        </section>
       )}
 
-      {/* How to Play Guide Card */}
-      <div
-        style={{
-          marginTop: '32px',
-          backgroundColor: '#f8fafc',
-          borderRadius: '16px',
-          border: '1px solid #e2e8f0',
-          padding: '20px',
-        }}
-      >
-        <h3 style={{ font: '700 14px/1.3 var(--sans, sans-serif)', margin: '0 0 10px', color: '#334155' }}>
-          Petunjuk Kontrol & Gameplay
-        </h3>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px', font: '13px/1.6 var(--sans, sans-serif)', color: '#475569' }}>
+      <section className="sa-section" aria-labelledby="sa-howto">
+        <h2 id="sa-howto">Cara main</h2>
+        <div className="sa-tips">
           <div>
-            <strong>Desktop (Keyboard):</strong>
-            <div>• WASD / Tombol Panah: Gerak</div>
-            <div>• Spasi: Tampar (SLAP!)</div>
-            <div>• Shift: Terjang Cepat (Dash)</div>
+            <strong>Keyboard</strong>
+            <ul>
+              <li>WASD atau tombol panah: jalan</li>
+              <li>Spasi: tampar</li>
+              <li>Shift: terjang</li>
+            </ul>
           </div>
           <div>
-            <strong>Smartphone (Layar Sentuh):</strong>
-            <div>• Virtual Joystick: Kendalikan arah</div>
-            <div>• Tombol Merah: Tampar lawan</div>
-            <div>• Tombol Biru: Terjang cepat menghindar</div>
+            <strong>Layar sentuh</strong>
+            <ul>
+              <li>Tempel jempol kiri di sisi layar: stik muncul di sana</li>
+              <li>Tombol merah besar: tampar</li>
+              <li>Tombol biru: terjang</li>
+            </ul>
+          </div>
+          <div>
+            <strong>Aturan pulau</strong>
+            <ul>
+              <li>Garis merah putus-putus artinya jurang</li>
+              <li>Terjang melaju cepat, lalu jeda 1,8 detik sebelum bisa dipakai lagi</li>
+              <li>Bot yang terdesak akan mundur ke tengah</li>
+            </ul>
           </div>
         </div>
-      </div>
+      </section>
     </div>
   );
 };
