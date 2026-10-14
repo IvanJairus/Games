@@ -22,7 +22,7 @@ export const GAMES_REGISTRY: GameMetadata[] = [
     subtitle: 'Mekanik Walls.gg / Quoridor',
     description: 'Gerak 1 petak atau pasang dinding 2-petak. Capai petak pusat emas lebih dulu dengan strategi anti-trap.',
     playerRange: '2 - 6 Pemain',
-    statusLabel: 'Lokal Siap',
+    statusLabel: 'Lokal & Online',
     route: '/wall-game',
     routes: wallGameRoutes,
     thumbnail: (
@@ -45,7 +45,7 @@ export const GAMES_REGISTRY: GameMetadata[] = [
     subtitle: 'Maksimal 3 Bidak (Anti-Seri)',
     description: 'Setiap pemain maksimal memiliki 3 bidak di papan. Bidak ke-4 otomatis melenyapkan bidak tertua. Mustahil seri!',
     playerRange: '2 Pemain',
-    statusLabel: 'Lokal Siap',
+    statusLabel: 'Lokal & Online',
     route: '/tic-tac-toe',
     routes: ticTacToeRoutes,
     thumbnail: (

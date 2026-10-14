@@ -369,6 +369,50 @@ export const TicTacToeLocal: React.FC = () => {
         </div>
       )}
 
+      {/* Online Challenge Callout */}
+      <div
+        style={{
+          marginTop: '32px',
+          padding: '16px 20px',
+          background: 'var(--bg-stage)',
+          border: '1px solid var(--line)',
+          borderRadius: 'var(--r3)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '12px',
+        }}
+      >
+        <div>
+          <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--ink)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <Globe size={16} color="var(--gold)" /> Ingin tanding jarak jauh?
+          </div>
+          <div style={{ fontSize: '12.5px', color: 'var(--ink-dim)', marginTop: '2px' }}>
+            Buat room privat dan bagikan tautan untuk bermain online via smartphone atau PC.
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => onlineDialogRef.current?.showModal()}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            padding: '8px 14px',
+            background: 'var(--gold)',
+            color: '#ffffff',
+            border: 'none',
+            borderRadius: 'var(--r2)',
+            font: '12px/1 var(--mono)',
+            fontWeight: 700,
+            cursor: 'pointer',
+          }}
+        >
+          Buat / Gabung Room Online →
+        </button>
+      </div>
+
       <dialog
         ref={rulesDialogRef}
         aria-labelledby="tictactoe-rules-title"
