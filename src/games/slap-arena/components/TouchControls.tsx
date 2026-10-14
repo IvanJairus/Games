@@ -1,7 +1,8 @@
 import React, { useEffect, useRef } from 'react';
 import { DASH_COOLDOWN, SLAP_COOLDOWN } from '../engine/physics';
 import type { SlapSim } from '../engine/sim';
-import { unlockAudio } from '../engine/audio';
+import { unlockAudio } from '../../common/audio';
+import { buzz } from '../../common/haptics';
 
 interface TouchControlsProps {
   sim: SlapSim;
@@ -14,14 +15,6 @@ interface TouchControlsProps {
 }
 
 const STICK_RADIUS = 46;
-
-function buzz(ms: number): void {
-  try {
-    navigator.vibrate?.(ms);
-  } catch {
-    /* not supported */
-  }
-}
 
 /**
  * Floating stick: the base appears under the thumb instead of waiting in a corner,

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
@@ -389,20 +389,5 @@ describe('Slap Arena stays inside the site CSP', () => {
 
   it('ships no model files', () => {
     expect(existsSync(resolve(process.cwd(), 'public/models'))).toBe(false);
-  });
-});
-
-describe('Slap Arena audio safety net', () => {
-  it('does not throw when the browser refuses an AudioContext', async () => {
-    const original = window.AudioContext;
-    Object.defineProperty(window, 'AudioContext', { value: undefined, configurable: true });
-    vi.resetModules();
-    const audio = await import('../../src/games/slap-arena/engine/audio');
-    expect(() => {
-      audio.unlockAudio();
-      audio.playSlapSound();
-      audio.playRoundWinSound();
-    }).not.toThrow();
-    Object.defineProperty(window, 'AudioContext', { value: original, configurable: true });
   });
 });

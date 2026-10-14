@@ -33,6 +33,9 @@ import {
 import { watchRoomPeers } from '../../common/roomPresence';
 import { RoomPeersNotice } from '../../../components/RoomPeersNotice';
 import { getStoredPlayerName, isSupabaseConfigured, setStoredPlayerName } from '../../../lib/supabase';
+import { playDefeat, playHit, playMiss, playVictory } from '../../common/audio';
+import { buzzTap, buzzThud } from '../../common/haptics';
+import { SoundToggle } from '../../common/SoundToggle';
 
 const seatOf = (index: number): 0 | 1 => (index === 1 ? 1 : 0);
 const nameForSeat = (seat: number, mine: number): string => (seat === mine ? 'Anda' : 'Lawan');
@@ -105,6 +108,32 @@ export const BattleshipMatch: React.FC = () => {
   const game = (syncData?.match.game_state as BattleshipState) || null;
   const mySeat = syncData?.myPlayerIndex ?? -1;
   const opponentSeat = otherSeat(seatOf(mySeat));
+
+  const lastSeen = useRef<{ shots: number; hits: number; phase: string } | null>(null);
+
+  useEffect(() => {
+    if (!game) return;
+    const shots = game.shotsTaken[0] + game.shotsTaken[1];
+    const hits = game.marks.reduce((n, board) => n + Object.values(board).filter((m) => m === 'hit').length, 0);
+    const previous = lastSeen.current;
+    lastSeen.current = { shots, hits, phase: game.phase };
+    if (!previous) return;
+    // Both seats react to the same synced verdict, so the defender hears the result
+    // of the shot aimed at its own fleet too.
+    if (shots > previous.shots) {
+      if (hits > previous.hits) {
+        playHit();
+        buzzThud();
+      } else {
+        playMiss();
+        buzzTap();
+      }
+    }
+    if (game.phase === 'FINISHED' && previous.phase !== 'FINISHED') {
+      if (game.winner === null || game.winner === mySeat) playVictory();
+      else playDefeat();
+    }
+  }, [game, mySeat]);
 
   const push = useCallback(
     async (
@@ -492,10 +521,13 @@ const RoomHeader: React.FC<{
         ROOM <strong style={{ color: 'var(--ink)', letterSpacing: '.12em' }}>{roomCode}</strong>
       </span>
     </div>
-    <button type="button" className="bs-btn" style={{ flex: '0 0 auto' }} onClick={onCopy}>
-      {copied ? <Check size={13} /> : <Share2 size={13} />}
-      {copied ? 'Tersalin' : 'Bagikan'}
-    </button>
+    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: '0 0 auto' }}>
+      <SoundToggle className="bs-btn" iconSize={15} />
+      <button type="button" className="bs-btn" onClick={onCopy}>
+        {copied ? <Check size={13} /> : <Share2 size={13} />}
+        {copied ? 'Tersalin' : 'Bagikan'}
+      </button>
+    </div>
   </header>
 );
 

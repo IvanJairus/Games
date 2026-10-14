@@ -2,7 +2,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom';
 import '../slap-arena.css';
 import { Arena3D, type Arena3DHandle } from '../components/Arena3D';
-import { ArenaModal, Hud, useMuted, type HudSnapshot } from '../components/Hud';
+import { ArenaModal, Hud, type HudSnapshot } from '../components/Hud';
+import { useMuted } from '../../common/SoundToggle';
 import { TouchControls } from '../components/TouchControls';
 import { SlapSim } from '../engine/sim';
 import { ArenaNet, type InputMessage } from '../engine/net';
@@ -16,7 +17,7 @@ import {
   playRoundWinSound,
   playSlapSound,
   unlockAudio,
-} from '../engine/audio';
+} from '../../common/audio';
 import { getSupabase, getPlayerSessionId, getStoredPlayerName } from '../../../lib/supabase';
 import {
   joinOnlineRoom,
