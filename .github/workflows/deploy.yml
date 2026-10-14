@@ -82,8 +82,17 @@ jobs:
       - name: Pull Vercel Environment Information
         run: npx vercel pull --yes --environment=production --token=$VERCEL_TOKEN
 
+      - name: Inject Supabase Credentials into Vercel Build Environment
+        run: |
+          mkdir -p .vercel
+          echo "VITE_SUPABASE_URL=${{ secrets.VITE_SUPABASE_URL }}" >> .vercel/.env.production.local
+          echo "VITE_SUPABASE_ANON_KEY=${{ secrets.VITE_SUPABASE_ANON_KEY }}" >> .vercel/.env.production.local
+
       - name: Build Project Artifacts
         run: npx vercel build --prod --token=$VERCEL_TOKEN
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
 
       - name: Deploy to Vercel (Production)
         id: deploy

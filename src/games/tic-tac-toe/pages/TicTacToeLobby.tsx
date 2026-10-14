@@ -24,7 +24,10 @@ export const TicTacToeLobby: React.FC = () => {
   };
 
   const handleCreateOnline = async () => {
-    if (!isConfigured) return;
+    if (!isConfigured) {
+      setCreateError('Koneksi Multiplayer Online (Supabase) belum terkonfigurasi.');
+      return;
+    }
     setIsCreating(true);
     setCreateError(null);
     try {
@@ -46,6 +49,10 @@ export const TicTacToeLobby: React.FC = () => {
 
   const handleJoinOnline = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isConfigured) {
+      setCreateError('Koneksi Multiplayer Online (Supabase) belum terkonfigurasi.');
+      return;
+    }
     if (roomCode.trim()) {
       navigate(`/tic-tac-toe/m/${roomCode.trim().toUpperCase()}`);
     }
