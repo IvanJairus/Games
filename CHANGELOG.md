@@ -8,6 +8,67 @@ terpisah saat kamu menerbitkan rilis.
 Entri dimulai dari 14 Oktober 2026. Perubahan sebelum tanggal itu ada pada riwayat git dan daftar
 pull request, karena tidak dicatat saat terjadi.
 
+## 2026-10-14 - Lapisan suara hub, angka riwayat, dan RLS (PR #13 sampai #17)
+
+Tiga dari empat game bisu, satu dialog sistem masih tersisa, dan tabel pertandingan
+ditulis tapi tidak pernah dilihat siapa pun.
+
+### Ditambahkan
+
+- `src/games/common/audio.ts`: engine Slap Arena yang ternyata sudah generik (context dibuat
+  malas, tiap cue di-throttle, tanpa aset), dipindah apa adanya lalu ditambah cue untuk game
+  berbasis giliran: `playSelect`, `playPlace`, `playBlocked`, `playHit`, `playMiss`,
+  `playVictory`, `playDefeat`.
+- `src/games/common/haptics.ts` (`buzz`, `buzzTap`, `buzzThud`, `buzzReject`) dan
+  `src/games/common/SoundToggle.tsx` (`useMuted` + tombol ikon). Dipasang di wall-game,
+  tic-tac-toe, dan battleship; Slap Arena tetap memakai tombol bertema sendiri di HUD.
+- `src/games/common/matchStats.ts`: jumlah pertandingan `completed` per game, ditampilkan di
+  kartu hub sebagai "N pertandingan online selesai".
+- `supabase/migrations/003_protect_finished_matches.sql`.
+- `window.__slapDiag` pada mode DEV: `quality`, `shadows`, `pixelRatio`.
+- 11 tes bersih: 5 audio bersama dengan `FakeAudioContext`, 3 jumlah pertandingan, 4
+  play-through Tic Tac Toe lewat UI asli, dikurangi 1 tes audio lama yang pindah tempat.
+
+### Diubah
+
+- Preferensi bisu jadi satu kunci untuk seluruh hub: `slap_muted` menjadi `ij_games_muted`.
+- Cue game board dibangkitkan dari state yang tersinkron, bukan dari handler klik, supaya
+  langkah lawan di room online juga terdengar.
+
+### Diperbaiki
+
+- `alert()` di Tic Tac Toe, satu-satunya dialog sistem di repo ini, diganti notice di dalam
+  dialog kemenangan. Banner error halaman tidak terlihat saat modal terbuka.
+
+### Keamanan
+
+- `matches`: `UPDATE` kini mensyaratkan barisnya belum `completed`, dan `INSERT` mensyaratkan
+  `status = 'waiting'`. Menyelesaikan pertandingan tetap bisa; membalik catatan yang sudah
+  selesai atau menyisipkan kemenangan karangan sendiri tidak.
+- Yang berubah: keluar dari room setelah pertandingan selesai tidak lagi menulis ulang barisnya
+  jadi `abandoned`. Klien tidak memeriksa hasil update itu, jadi alurnya tetap jalan.
+- `SELECT` dan `match_players` tidak diubah. Anon key memang publik, dan membaca adalah
+  fitur halaman ini.
+
+### Terukur
+
+| Metrik | Sebelum | Sesudah |
+| --- | --- | --- |
+| Game yang bersuara | 1 dari 4 | 4 dari 4 |
+| `AudioContext` per sesi main | 1 | 1 |
+| Kunci preferensi bisu | per game | satu untuk hub |
+| Node audio dibuat satu langkah Tic Tac Toe | 0 | 1 oscillator + 1 buffer |
+| Total tes | 165 | 176 |
+| Adaptive quality terlihat bekerja | belum pernah | `high` ke `low` dalam 3,0 s (CPU 20x) |
+| `pixelRatio` saat turun | tidak terukur | 2 ke 1,35, bayangan mati |
+| FPS desktop / mobile setelah modul audio pindah | 60 / 60 | 60 / 60 |
+| Query `matches` yang menampilkan sesuatu | 0 | 1 per game, HEAD, body 0 byte |
+| Baris `completed` yang bisa diubah anon | semua | nol |
+
+Diverifikasi di `www.ivanjairus.xyz` dengan dua konteks browser terisolasi: room dibuat,
+digabung, kedua sisi sampai `BATTLE`, satu ronde tuntas, 0 error halaman. Uji RLS dijalankan
+sebagai role `anon` di dalam transaksi yang di-rollback, dan room uji sudah dihapus.
+
 ## 2026-10-14 - Slap Arena: polish karakter (PR #12)
 
 Karakter prosedural dari PR #8 masih jauh dari arah "bulat cebol" yang dipilih lewat pratinjau.
@@ -160,4 +221,9 @@ produksi sukses, dengan dua sesi browser terisolasi untuk jalur multiplayer.
 - PR #7 `fix(slap-arena): bots can slap, hit-stop stops stuttering, stick releases between rounds`
 - PR #8 `feat(slap-arena): procedural chunky brawler, strict CSP restored`
 - PR #12 `fix(slap-arena): make the brawler readable instead of ugly` (entri polish karakter di atas)
+- PR #13 `fix(tic-tac-toe): report an abandoned room inside the dialog`
+- PR #14 `feat(games): share one sound and haptics layer across the hub`
+- PR #15 `feat(hub): show how many online matches each game has finished`
+- PR #16 `test(slap-arena): prove adaptive quality fires, play tic-tac-toe in the UI`
+- PR #17 `chore(supabase): stop anon writes from rewriting finished matches`
 - Baseline jumlah tes diukur pada `0ac7f76` (main sebelum PR #5) memakai worktree terpisah.
