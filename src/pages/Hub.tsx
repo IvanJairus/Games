@@ -1,8 +1,25 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { GAMES_REGISTRY } from '../games/registry';
+import { CompletedCounts, fetchCompletedCounts } from '../games/common/matchStats';
 
 export const Hub: React.FC = () => {
+  const [counts, setCounts] = React.useState<CompletedCounts>({});
+
+  React.useEffect(() => {
+    let alive = true;
+    fetchCompletedCounts(GAMES_REGISTRY.map((g) => g.id))
+      .then((next) => {
+        if (alive) setCounts(next);
+      })
+      .catch(() => {
+        /* a hub with no numbers still works */
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   return (
     <div style={{ maxWidth: '1000px', margin: 'clamp(20px, 4vw, 36px) auto', padding: '0 clamp(16px, 4.5vw, 24px)' }}>
       <header
@@ -153,6 +170,15 @@ export const Hub: React.FC = () => {
               <span style={{ fontSize: '13px', color: 'var(--ink-dim)', lineHeight: 1.5 }}>
                 {game.description}
               </span>
+
+              {counts[game.id] ? (
+                <span
+                  data-testid={`game-completed-${game.id}`}
+                  style={{ font: '11px/1 var(--mono)', color: 'var(--ink-faint)', letterSpacing: '.04em' }}
+                >
+                  {counts[game.id]} pertandingan online selesai
+                </span>
+              ) : null}
 
               <div
                 style={{
