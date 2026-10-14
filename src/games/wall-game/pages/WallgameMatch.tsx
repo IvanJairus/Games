@@ -30,6 +30,8 @@ import {
   describeMoveFailure,
   MatchSyncData,
 } from '../../common/multiplayer';
+import { watchRoomPeers } from '../../common/roomPresence';
+import { RoomPeersNotice } from '../../../components/RoomPeersNotice';
 import {
   isSupabaseConfigured,
   getStoredPlayerName,
@@ -51,6 +53,7 @@ export const WallgameMatch: React.FC = () => {
   const [isVictoryModalDismissed, setIsVictoryModalDismissed] = useState(false);
   const [opponentLeftNotice, setOpponentLeftNotice] = useState<string | null>(null);
   const [connection, setConnection] = useState<'realtime' | 'fallback'>('realtime');
+  const [peerTabs, setPeerTabs] = useState(0);
 
   const rulesDialogRef = useRef<HTMLDialogElement>(null);
   const channelRef = useRef<any>(null);
@@ -106,6 +109,9 @@ export const WallgameMatch: React.FC = () => {
       sub.unsubscribe();
     };
   }, [roomCode]);
+
+  // Kursi dikenali dari identitas di penyimpanan bersama, jadi dua jendela pada satu browser memakai kursi yang sama.
+  useEffect(() => watchRoomPeers(roomCode, setPeerTabs), [roomCode]);
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(window.location.href);
@@ -636,6 +642,8 @@ export const WallgameMatch: React.FC = () => {
           {actionError}
         </div>
       )}
+
+      <RoomPeersNotice peerCount={peerTabs} />
 
       {connection === 'fallback' && (
         <p
