@@ -13,6 +13,9 @@ import {
 import { Board } from '../components/Board';
 import { WALL_BOT_STYLES, WallBotStyle, chooseWallBotAction, describeWallBotStyle } from '../engine/ai';
 import { VictoryModal } from '../components/VictoryModal';
+import { playBlocked, playPlace, playVictory, unlockAudio } from '../../common/audio';
+import { buzzReject, buzzTap } from '../../common/haptics';
+import { SoundToggle } from '../../common/SoundToggle';
 import { RotateCw, ArrowLeft, HelpCircle } from 'lucide-react';
 
 const botStyleChoiceStyle = (active: boolean): React.CSSProperties => ({
@@ -122,8 +125,13 @@ export const WallgameLocal: React.FC = () => {
     try {
       setActionError(null);
       const nextState = applyMove(game, target);
+      unlockAudio();
+      playPlace();
+      buzzTap();
       setGame(nextState);
     } catch (err: unknown) {
+      playBlocked();
+      buzzReject();
       setActionError((err as Error).message);
     }
   };
@@ -134,11 +142,20 @@ export const WallgameLocal: React.FC = () => {
     try {
       setActionError(null);
       const nextState = applyWall(game, wall);
+      unlockAudio();
+      playPlace();
+      buzzTap();
       setGame(nextState);
     } catch (err: unknown) {
+      playBlocked();
+      buzzReject();
       setActionError((err as Error).message);
     }
   };
+
+  useEffect(() => {
+    if (game?.phase === 'GAME_OVER') playVictory();
+  }, [game?.phase]);
 
   useEffect(() => {
     if (!game || game.phase !== 'ACTION' || !botStyle) return;
@@ -146,6 +163,7 @@ export const WallgameLocal: React.FC = () => {
 
     // The pause is pacing, not search time: it lets a human follow which seat moved.
     const timer = setTimeout(() => {
+      playPlace();
       setGame((prev) => {
         if (!prev || prev.phase !== 'ACTION' || !isBotSeat(prev.activePlayerIndex)) return prev;
         const action = chooseWallBotAction(prev, botStyle);
@@ -228,6 +246,7 @@ export const WallgameLocal: React.FC = () => {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+          <SoundToggle />
           <button
             type="button"
             onClick={() => rulesDialogRef.current?.showModal()}

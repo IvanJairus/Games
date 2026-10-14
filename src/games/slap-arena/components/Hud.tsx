@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import type { ArenaPhase } from '../engine/types';
-import { isMuted, setMuted, unlockAudio } from '../engine/audio';
+import { unlockAudio } from '../../common/audio';
 
 export interface HudPlayer {
   id: string;
@@ -244,13 +244,3 @@ export const ArenaModal: React.FC<ModalProps> = ({ title, body, tone = 'good', a
     </div>
   );
 };
-
-export function useMuted(): [boolean, () => void] {
-  const [muted, setLocal] = React.useState(() => isMuted());
-  const toggle = () => {
-    const next = !muted;
-    setMuted(next);
-    setLocal(next);
-  };
-  return [muted, toggle];
-}

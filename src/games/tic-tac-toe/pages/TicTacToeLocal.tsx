@@ -12,6 +12,9 @@ import {
 } from '../engine';
 import { TicTacToeBoard } from '../components/TicTacToeBoard';
 import { BOT_LEVELS, BotLevel, chooseBotMove } from '../engine/ai';
+import { playBlocked, playPlace, playVictory, unlockAudio } from '../../common/audio';
+import { buzzReject, buzzTap } from '../../common/haptics';
+import { SoundToggle } from '../../common/SoundToggle';
 
 const BOT_SYMBOL: PlayerSymbol = 'O';
 
@@ -42,6 +45,7 @@ export const TicTacToeLocal: React.FC = () => {
 
     // The pause is pacing, not search time: the search itself lands in tens of milliseconds.
     const timer = setTimeout(() => {
+      if (game.status === 'IN_PROGRESS' && game.currentTurn === BOT_SYMBOL) playPlace();
       setGame((prev) => {
         if (prev.status !== 'IN_PROGRESS' || prev.currentTurn !== BOT_SYMBOL) return prev;
         return applyMove(prev, chooseBotMove(prev, botLevel));
@@ -56,11 +60,20 @@ export const TicTacToeLocal: React.FC = () => {
     if (botTurn) return;
     try {
       const next = applyMove(game, index);
+      unlockAudio();
+      playPlace();
+      buzzTap();
       setGame(next);
     } catch {
       // Cell already occupied
+      playBlocked();
+      buzzReject();
     }
   };
+
+  useEffect(() => {
+    if (game.status === 'WIN') playVictory();
+  }, [game.status]);
 
   const handleNextRound = () => {
     victoryDialogRef.current?.close();
@@ -149,6 +162,7 @@ export const TicTacToeLocal: React.FC = () => {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+          <SoundToggle />
           <button
             type="button"
             onClick={() => rulesDialogRef.current?.showModal()}

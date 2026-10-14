@@ -27,6 +27,9 @@ import {
   MatchSyncData,
 } from '../../common/multiplayer';
 import { watchRoomPeers } from '../../common/roomPresence';
+import { playDefeat, playPlace, playVictory } from '../../common/audio';
+import { buzzTap } from '../../common/haptics';
+import { SoundToggle } from '../../common/SoundToggle';
 import { RoomPeersNotice } from '../../../components/RoomPeersNotice';
 import {
   isSupabaseConfigured,
@@ -100,14 +103,32 @@ export const TicTacToeMatch: React.FC = () => {
   // Kursi dikenali dari identitas di penyimpanan bersama, jadi dua jendela pada satu browser memakai kursi yang sama.
   useEffect(() => watchRoomPeers(roomCode, setPeerTabs), [roomCode]);
 
+  const lastSeen = useRef<{ status: string; moves: number } | null>(null);
+
   useEffect(() => {
     const game = syncData?.match?.game_state as TicTacToeState | undefined;
+    const status = game?.status ?? 'IN_PROGRESS';
+    const moves = game?.moveCount ?? 0;
+    const previous = lastSeen.current;
+    // moveCount is the only monotonic signal here: the no-draw rule recycles the
+    // oldest piece, so pieces.length plateaus at six.
+    if (previous && moves > previous.moves) {
+      playPlace();
+      buzzTap();
+    }
+    if (previous && status === 'WIN' && previous.status !== 'WIN') {
+      const mySymbol = syncData?.myPlayerIndex === 0 ? 'X' : syncData?.myPlayerIndex === 1 ? 'O' : null;
+      if (mySymbol && game?.winner !== mySymbol) playDefeat();
+      else playVictory();
+    }
+    lastSeen.current = { status, moves };
+
     if (game?.status === 'WIN') {
       victoryDialogRef.current?.showModal();
     } else {
       victoryDialogRef.current?.close();
     }
-  }, [syncData?.match?.game_state?.status]);
+  }, [syncData?.match?.game_state?.status, syncData?.match?.game_state?.moveCount, syncData?.myPlayerIndex]);
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(window.location.href);
@@ -365,25 +386,28 @@ export const TicTacToeMatch: React.FC = () => {
           </div>
         </div>
 
-        <button
-          onClick={handleCopyLink}
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '6px',
-            padding: '6px 12px',
-            background: copied ? 'var(--gold)' : '#ffffff',
-            border: `1px solid ${copied ? 'var(--gold)' : 'var(--line-strong)'}`,
-            borderRadius: 'var(--r2)',
-            font: '11px/1 var(--mono)',
-            color: copied ? '#ffffff' : 'var(--ink)',
-            cursor: 'pointer',
-            fontWeight: 700,
-          }}
-        >
-          {copied ? <Check size={13} /> : <Share2 size={13} />}
-          {copied ? 'Tersalin' : 'Bagikan Link'}
-        </button>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <SoundToggle />
+          <button
+            onClick={handleCopyLink}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 12px',
+              background: copied ? 'var(--gold)' : '#ffffff',
+              border: `1px solid ${copied ? 'var(--gold)' : 'var(--line-strong)'}`,
+              borderRadius: 'var(--r2)',
+              font: '11px/1 var(--mono)',
+              color: copied ? '#ffffff' : 'var(--ink)',
+              cursor: 'pointer',
+              fontWeight: 700,
+            }}
+          >
+            {copied ? <Check size={13} /> : <Share2 size={13} />}
+            {copied ? 'Tersalin' : 'Bagikan Link'}
+          </button>
+        </div>
       </header>
 
       {actionError && (

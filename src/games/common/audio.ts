@@ -3,7 +3,8 @@ let master: GainNode | null = null;
 let muted = false;
 const lastPlayed = new Map<string, number>();
 
-const MUTE_KEY = 'slap_muted';
+// One preference for the whole hub: muting one game mutes every game.
+const MUTE_KEY = 'ij_games_muted';
 
 function ensure(): AudioContext | null {
   if (typeof window === 'undefined') return null;
@@ -107,6 +108,14 @@ function noise(duration: number, gainValue: number, filterHz: number): void {
   src.start();
 }
 
+function arpeggio(freqs: number[], stepMs: number, duration: number, gain: number): void {
+  freqs.forEach((freq, i) => {
+    window.setTimeout(() => tone({ type: 'triangle', from: freq, to: freq, duration, gain }), i * stepMs);
+  });
+}
+
+/* ------------------------------------------------------------------ Slap Arena */
+
 export function playSlapSound(): void {
   if (!throttle('slap', 45)) return;
   noise(0.07, 0.22, 1800);
@@ -137,14 +146,55 @@ export function playCountTick(final = false): void {
 
 export function playRoundWinSound(): void {
   if (!throttle('win', 200)) return;
-  [523.25, 659.25, 783.99, 1046.5].forEach((freq, i) => {
-    window.setTimeout(() => tone({ type: 'triangle', from: freq, to: freq, duration: 0.24, gain: 0.22 }), i * 95);
-  });
+  arpeggio([523.25, 659.25, 783.99, 1046.5], 95, 0.24, 0.22);
 }
 
 export function playMatchWinSound(): void {
   if (!throttle('matchwin', 400)) return;
-  [392, 523.25, 659.25, 783.99, 1046.5, 1318.5].forEach((freq, i) => {
-    window.setTimeout(() => tone({ type: 'triangle', from: freq, to: freq, duration: 0.3, gain: 0.24 }), i * 110);
-  });
+  arpeggio([392, 523.25, 659.25, 783.99, 1046.5, 1318.5], 110, 0.3, 0.24);
+}
+
+/* ------------------------------------------------- Board games, shared cues */
+
+/** Hovering or picking a cell before it is committed. */
+export function playSelect(): void {
+  if (!throttle('select', 40)) return;
+  tone({ type: 'sine', from: 660, to: 660, duration: 0.05, gain: 0.12 });
+}
+
+/** A move that is now final: the sound of a piece settling. */
+export function playPlace(): void {
+  if (!throttle('place', 50)) return;
+  noise(0.05, 0.14, 420);
+  tone({ type: 'triangle', from: 220, to: 120, duration: 0.09, gain: 0.2 });
+}
+
+/** Something that could not happen: occupied cell, wall on yourself, fired twice. */
+export function playBlocked(): void {
+  if (!throttle('blocked', 120)) return;
+  tone({ type: 'square', from: 150, to: 110, duration: 0.13, gain: 0.14 });
+}
+
+/** Battleship: a shell landing. */
+export function playHit(): void {
+  if (!throttle('hit', 60)) return;
+  noise(0.09, 0.2, 700);
+  tone({ type: 'sawtooth', from: 180, to: 60, duration: 0.16, gain: 0.22 });
+}
+
+/** Battleship: splash, nothing there. */
+export function playMiss(): void {
+  if (!throttle('miss', 60)) return;
+  noise(0.14, 0.1, 2400);
+}
+
+export function playVictory(): void {
+  if (!throttle('victory', 400)) return;
+  arpeggio([523.25, 659.25, 783.99, 1046.5], 105, 0.26, 0.22);
+}
+
+/** Deliberately flatter than victory: this one should not feel like a reward. */
+export function playDefeat(): void {
+  if (!throttle('defeat', 400)) return;
+  arpeggio([392, 349.23, 261.63], 150, 0.3, 0.16);
 }

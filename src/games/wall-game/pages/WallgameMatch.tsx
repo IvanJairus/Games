@@ -32,6 +32,9 @@ import {
 } from '../../common/multiplayer';
 import { watchRoomPeers } from '../../common/roomPresence';
 import { RoomPeersNotice } from '../../../components/RoomPeersNotice';
+import { playDefeat, playPlace, playVictory } from '../../common/audio';
+import { buzzTap } from '../../common/haptics';
+import { SoundToggle } from '../../common/SoundToggle';
 import {
   isSupabaseConfigured,
   getStoredPlayerName,
@@ -112,6 +115,26 @@ export const WallgameMatch: React.FC = () => {
 
   // Kursi dikenali dari identitas di penyimpanan bersama, jadi dua jendela pada satu browser memakai kursi yang sama.
   useEffect(() => watchRoomPeers(roomCode, setPeerTabs), [roomCode]);
+
+  const lastSeen = useRef<{ turn: number; phase: string } | null>(null);
+
+  useEffect(() => {
+    const game = syncData?.match?.game_state as GameState | undefined;
+    if (!game) return;
+    const previous = lastSeen.current;
+    lastSeen.current = { turn: game.activePlayerIndex, phase: game.phase };
+    if (!previous) return;
+    // The seat changing is the one signal that survives every rule: a move, a wall,
+    // or a remote opponent all end with the turn passing.
+    if (game.activePlayerIndex !== previous.turn) {
+      playPlace();
+      buzzTap();
+    }
+    if (game.phase === 'GAME_OVER' && previous.phase !== 'GAME_OVER') {
+      if (syncData?.myPlayerIndex === game.winnerId) playVictory();
+      else playDefeat();
+    }
+  }, [syncData?.match?.game_state, syncData?.myPlayerIndex]);
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(window.location.href);
@@ -414,6 +437,7 @@ export const WallgameMatch: React.FC = () => {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <SoundToggle />
           <button
             type="button"
             onClick={() => rulesDialogRef.current?.showModal()}

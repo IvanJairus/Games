@@ -6,6 +6,9 @@ import { BoardSwitch } from '../components/BoardSwitch';
 import { Placer } from '../components/Placer';
 import { FleetRail } from '../components/FleetRail';
 import { FinishBlock } from '../components/FinishBlock';
+import { playBlocked, playDefeat, playHit, playMiss, playVictory, unlockAudio } from '../../common/audio';
+import { buzzReject, buzzTap, buzzThud } from '../../common/haptics';
+import { SoundToggle } from '../../common/SoundToggle';
 import {
   BattleshipState,
   FLEET,
@@ -102,8 +105,19 @@ export const BattleshipLocal: React.FC = () => {
     const verdict = judgeShot({ placements: fleet.placements, marks: state.marks[defender] }, shot.cell);
     const resolved = resolveShot(state, defender, verdict);
     if (resolved.error) {
+      playBlocked();
+      buzzReject();
       setError(resolved.error);
       return;
+    }
+
+    unlockAudio();
+    if (verdict.mark === 'hit') {
+      playHit();
+      buzzThud();
+    } else {
+      playMiss();
+      buzzTap();
     }
 
     pushLog(
@@ -117,7 +131,14 @@ export const BattleshipLocal: React.FC = () => {
     setSelected(null);
     setLastResolved(shot.cell);
     setState(resolved.state);
-    if (resolved.state.phase === 'FINISHED') setScreen('DONE');
+    if (resolved.state.phase === 'FINISHED') {
+      // Seat 0 is always the human in solo mode; hotseat has no "you", so it gets
+      // the neutral fanfare.
+      const iLost = mode === 'solo' && resolved.state.winner === 1;
+      if (iLost) playDefeat();
+      else playVictory();
+      setScreen('DONE');
+    }
   }, [fleets, pushLog, state]);
 
   useEffect(() => {
@@ -223,6 +244,7 @@ export const BattleshipLocal: React.FC = () => {
       >
         <ArrowLeft size={14} /> /battleship
       </Link>
+      <SoundToggle style={{ marginLeft: 'auto' }} />
     </header>
   ), []);
 
