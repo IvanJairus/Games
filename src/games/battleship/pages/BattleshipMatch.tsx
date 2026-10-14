@@ -30,6 +30,8 @@ import {
   submitOnlineMove,
   subscribeToMatch,
 } from '../../common/multiplayer';
+import { watchRoomPeers } from '../../common/roomPresence';
+import { RoomPeersNotice } from '../../../components/RoomPeersNotice';
 import { getStoredPlayerName, isSupabaseConfigured, setStoredPlayerName } from '../../../lib/supabase';
 
 const seatOf = (index: number): 0 | 1 => (index === 1 ? 1 : 0);
@@ -48,6 +50,7 @@ export const BattleshipMatch: React.FC = () => {
   const [joinError, setJoinError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [connection, setConnection] = useState<'realtime' | 'fallback'>('realtime');
+  const [peerTabs, setPeerTabs] = useState(0);
   const [busy, setBusy] = useState(false);
   const [selected, setSelected] = useState<number | null>(null);
   const [lastResolved, setLastResolved] = useState<number | null>(null);
@@ -95,6 +98,9 @@ export const BattleshipMatch: React.FC = () => {
     channelRef.current = sub.channel;
     return () => sub.unsubscribe();
   }, [roomCode]);
+
+  // Kursi dikenali dari identitas di penyimpanan bersama, jadi dua jendela pada satu browser memakai kursi yang sama.
+  useEffect(() => watchRoomPeers(roomCode, setPeerTabs), [roomCode]);
 
   const game = (syncData?.match.game_state as BattleshipState) || null;
   const mySeat = syncData?.myPlayerIndex ?? -1;
@@ -359,6 +365,8 @@ export const BattleshipMatch: React.FC = () => {
           {syncData.players.map((p) => p.name).join(' vs ')}
         </div>
       </div>
+
+      <RoomPeersNotice peerCount={peerTabs} />
 
       {connection === 'fallback' && (
         <p className="bs-turn" role="status" style={{ marginBottom: '12px' }}>

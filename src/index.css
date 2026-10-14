@@ -545,3 +545,27 @@ dialog::backdrop {
   outline: 2px solid var(--ink);
   outline-offset: 2px;
 }
+
+/* Shared room notice, used by every online match page. */
+.ij-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  padding: 10px 12px;
+  margin: 0 0 14px;
+  border: 1px solid var(--line-strong);
+  border-left: 3px solid var(--terracotta);
+  border-radius: var(--r3);
+  background: var(--terracotta-tint);
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.ij-notice > strong {
+  font: 11px/1.5 var(--mono);
+  letter-spacing: .04em;
+  color: var(--terracotta);
+  white-space: nowrap;
+}

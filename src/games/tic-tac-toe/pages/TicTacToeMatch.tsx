@@ -26,6 +26,8 @@ import {
   describeMoveFailure,
   MatchSyncData,
 } from '../../common/multiplayer';
+import { watchRoomPeers } from '../../common/roomPresence';
+import { RoomPeersNotice } from '../../../components/RoomPeersNotice';
 import {
   isSupabaseConfigured,
   getStoredPlayerName,
@@ -45,6 +47,7 @@ export const TicTacToeMatch: React.FC = () => {
   const [opponentLeftNotice, setOpponentLeftNotice] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [connection, setConnection] = useState<'realtime' | 'fallback'>('realtime');
+  const [peerTabs, setPeerTabs] = useState(0);
 
   const victoryDialogRef = useRef<HTMLDialogElement>(null);
   const channelRef = useRef<any>(null);
@@ -93,6 +96,9 @@ export const TicTacToeMatch: React.FC = () => {
       sub.unsubscribe();
     };
   }, [roomCode]);
+
+  // Kursi dikenali dari identitas di penyimpanan bersama, jadi dua jendela pada satu browser memakai kursi yang sama.
+  useEffect(() => watchRoomPeers(roomCode, setPeerTabs), [roomCode]);
 
   useEffect(() => {
     const game = syncData?.match?.game_state as TicTacToeState | undefined;
@@ -399,6 +405,8 @@ export const TicTacToeMatch: React.FC = () => {
           <span>{actionError}</span>
         </div>
       )}
+
+      <RoomPeersNotice peerCount={peerTabs} />
 
       {connection === 'fallback' && (
         <p
