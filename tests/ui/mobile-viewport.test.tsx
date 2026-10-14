@@ -5,6 +5,8 @@ import { WallgameLocal } from '@/games/wall-game/pages/WallgameLocal';
 import { VictoryModal } from '@/games/wall-game/components/VictoryModal';
 import { ComponentErrorBoundary } from '@/components/ErrorBoundary';
 import { Hub } from '@/pages/Hub';
+import { TicTacToeLobby } from '@/games/tic-tac-toe/pages/TicTacToeLobby';
+import { TicTacToeLocal } from '@/games/tic-tac-toe/pages/TicTacToeLocal';
 
 describe('Mobile Viewport Automation Suite (375px)', () => {
   beforeEach(() => {
@@ -168,5 +170,48 @@ describe('Mobile Viewport Automation Suite (375px)', () => {
     expect(backBtn).toBeInTheDocument();
     expect(backBtn).toHaveAttribute('href', '/');
     expect(backBtn).toHaveClass('hub-back-btn');
+  });
+
+  it('renders Tic Tac Toe Lobby cleanly on mobile (375px)', () => {
+    render(
+      <MemoryRouter>
+        <TicTacToeLobby />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/Tic Tac Toe/);
+    expect(screen.getByText('Anti-Seri')).toBeInTheDocument();
+    expect(screen.getByText('Hotseat Lokal')).toBeInTheDocument();
+    expect(screen.getByText('Multiplayer Online')).toBeInTheDocument();
+    expect(screen.getByTestId('tictactoe-local-play-link')).toHaveAttribute('href', '/tic-tac-toe/local');
+    expect(screen.getByTestId('tictactoe-create-room-btn')).toBeInTheDocument();
+  });
+
+  it('renders Tic Tac Toe Local match header cleanly on mobile without squished wrapping', () => {
+    render(
+      <MemoryRouter>
+        <TicTacToeLocal />
+      </MemoryRouter>
+    );
+
+    // Back link points to /tic-tac-toe (Lobby)
+    const backToLobby = screen.getByRole('link', { name: /Kembali ke Lobby Tic Tac Toe/i });
+    expect(backToLobby).toBeInTheDocument();
+    expect(backToLobby).toHaveAttribute('href', '/tic-tac-toe');
+
+    // Title and badge
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Tic Tac Toe');
+    expect(screen.getByText('Mode No-Draw')).toBeInTheDocument();
+
+    // Only 2 header action buttons: Aturan and Reset
+    expect(screen.getByRole('button', { name: /Aturan/i })).toBeInTheDocument();
+    expect(screen.getByTestId('tictactoe-reset-match-btn')).toBeInTheDocument();
+
+    // Board & Scoreboard render
+    expect(screen.getByTestId('tictactoe-scoreboard')).toBeInTheDocument();
+    expect(screen.getByTestId('tictactoe-board')).toBeInTheDocument();
+
+    // Bottom link back to Lobby
+    expect(screen.getByText(/Kembali ke Lobby & Mode Online/i)).toBeInTheDocument();
   });
 });

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { RotateCw, ArrowLeft, Trophy, HelpCircle, Home, Sparkles, Globe, LogIn, Plus, X } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { RotateCw, ArrowLeft, Trophy, HelpCircle, Home, Sparkles } from 'lucide-react';
 import {
   createTicTacToeGame,
   applyMove,
@@ -10,25 +10,12 @@ import {
   TicTacToeState,
 } from '../engine';
 import { TicTacToeBoard } from '../components/TicTacToeBoard';
-import { createOnlineRoom } from '../../common/multiplayer';
-import {
-  isSupabaseConfigured,
-  getStoredPlayerName,
-  setStoredPlayerName,
-} from '../../../lib/supabase';
 
 export const TicTacToeLocal: React.FC = () => {
-  const navigate = useNavigate();
   const [game, setGame] = useState<TicTacToeState>(() => createTicTacToeGame());
-
-  const [onlineRoomCode, setOnlineRoomCode] = useState('');
-  const [playerName, setPlayerName] = useState(() => getStoredPlayerName() || 'Pemain ' + Math.floor(Math.random() * 900 + 100));
-  const [isCreatingOnline, setIsCreatingOnline] = useState(false);
-  const [onlineError, setOnlineError] = useState<string | null>(null);
 
   const rulesDialogRef = useRef<HTMLDialogElement>(null);
   const victoryDialogRef = useRef<HTMLDialogElement>(null);
-  const onlineDialogRef = useRef<HTMLDialogElement>(null);
 
   // Automatically show victory dialog when a player wins
   useEffect(() => {
@@ -59,43 +46,6 @@ export const TicTacToeLocal: React.FC = () => {
     }
   };
 
-  const handleNameChange = (val: string) => {
-    setPlayerName(val);
-    setStoredPlayerName(val);
-  };
-
-  const handleCreateOnlineRoom = async () => {
-    if (!isSupabaseConfigured()) {
-      setOnlineError('Supabase belum terkonfigurasi');
-      return;
-    }
-    setIsCreatingOnline(true);
-    setOnlineError(null);
-    try {
-      const initialGame = createTicTacToeGame();
-      const { roomCode } = await createOnlineRoom({
-        gameType: 'tic-tac-toe',
-        maxPlayers: 2,
-        hostName: playerName || 'Pemain 1',
-        initialState: initialGame,
-      });
-      onlineDialogRef.current?.close();
-      navigate(`/tic-tac-toe/m/${roomCode}`);
-    } catch (err: any) {
-      setOnlineError(err.message || 'Gagal membuat room');
-    } finally {
-      setIsCreatingOnline(false);
-    }
-  };
-
-  const handleJoinOnlineRoom = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (onlineRoomCode.trim()) {
-      onlineDialogRef.current?.close();
-      navigate(`/tic-tac-toe/m/${onlineRoomCode.trim().toUpperCase()}`);
-    }
-  };
-
   const activePlayerPieces = getPlayerPieces(game.pieces, game.currentTurn);
   const activeOldestPiece = getOldestPiece(game.pieces, game.currentTurn);
 
@@ -114,7 +64,7 @@ export const TicTacToeLocal: React.FC = () => {
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <Link
-            to="/"
+            to="/tic-tac-toe"
             style={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -126,81 +76,64 @@ export const TicTacToeLocal: React.FC = () => {
               background: '#ffffff',
               color: 'var(--ink)',
               textDecoration: 'none',
+              flexShrink: 0,
             }}
-            aria-label="Kembali ke Hub"
+            aria-label="Kembali ke Lobby Tic Tac Toe"
           >
             <ArrowLeft size={16} />
           </Link>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
               <h1
                 style={{
-                  fontSize: '18px',
+                  fontSize: '17px',
                   fontWeight: 700,
                   letterSpacing: '-0.015em',
                   margin: 0,
                   color: 'var(--ink)',
+                  whiteSpace: 'nowrap',
                 }}
               >
-                Tic Tac Toe · Mode No-Draw
+                Tic Tac Toe
               </h1>
               <span
                 style={{
-                  font: '9px/1 var(--mono)',
+                  font: '9.5px/1 var(--mono)',
                   letterSpacing: '.06em',
                   textTransform: 'uppercase',
                   color: 'var(--gold)',
                   background: 'var(--gold-tint)',
                   border: '1px solid var(--gold-border)',
-                  padding: '2px 5px',
+                  padding: '2px 6px',
                   borderRadius: 'var(--r2)',
+                  whiteSpace: 'nowrap',
                 }}
               >
-                Tanpa Seri
+                Mode No-Draw
               </span>
             </div>
-            <div style={{ font: '11px/1 var(--mono)', color: 'var(--ink-faint)', marginTop: '2px' }}>
-              Maks. 3 Bidak Aktif · Bidak Tertua Lenyap Otomatis
+            <div style={{ font: '11px/1.3 var(--mono)', color: 'var(--ink-faint)', marginTop: '2px' }}>
+              Hotseat Lokal · Maksimal 3 Bidak
             </div>
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <button
-            type="button"
-            onClick={() => onlineDialogRef.current?.showModal()}
-            data-testid="tictactoe-online-modal-btn"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '6px 12px',
-              border: '1px solid var(--gold-border)',
-              borderRadius: 'var(--r2)',
-              background: 'var(--gold-tint)',
-              color: 'var(--gold)',
-              font: '11px/1 var(--mono)',
-              cursor: 'pointer',
-              fontWeight: 700,
-            }}
-          >
-            <Globe size={13} /> Main Online
-          </button>
-
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
           <button
             type="button"
             onClick={() => rulesDialogRef.current?.showModal()}
             style={{
               display: 'inline-flex',
               alignItems: 'center',
-              gap: '6px',
-              padding: '6px 12px',
+              gap: '4px',
+              padding: '6px 10px',
               border: '1px solid var(--line-strong)',
               borderRadius: 'var(--r2)',
               background: '#ffffff',
               color: 'var(--ink-dim)',
               font: '11px/1 var(--mono)',
               cursor: 'pointer',
+              whiteSpace: 'nowrap',
             }}
           >
             <HelpCircle size={14} /> Aturan
@@ -213,14 +146,15 @@ export const TicTacToeLocal: React.FC = () => {
             style={{
               display: 'inline-flex',
               alignItems: 'center',
-              gap: '6px',
-              padding: '6px 12px',
+              gap: '4px',
+              padding: '6px 10px',
               border: '1px solid var(--line-strong)',
               borderRadius: 'var(--r2)',
               background: '#ffffff',
               color: 'var(--ink-dim)',
               font: '11px/1 var(--mono)',
               cursor: 'pointer',
+              whiteSpace: 'nowrap',
             }}
           >
             <RotateCw size={13} /> Reset
@@ -369,48 +303,25 @@ export const TicTacToeLocal: React.FC = () => {
         </div>
       )}
 
-      {/* Online Challenge Callout */}
-      <div
-        style={{
-          marginTop: '32px',
-          padding: '16px 20px',
-          background: 'var(--bg-stage)',
-          border: '1px solid var(--line)',
-          borderRadius: 'var(--r3)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: '12px',
-        }}
-      >
-        <div>
-          <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--ink)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <Globe size={16} color="var(--gold)" /> Ingin tanding jarak jauh?
-          </div>
-          <div style={{ fontSize: '12.5px', color: 'var(--ink-dim)', marginTop: '2px' }}>
-            Buat room privat dan bagikan tautan untuk bermain online via smartphone atau PC.
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={() => onlineDialogRef.current?.showModal()}
+      {/* Return to Lobby / Online Navigation */}
+      <div style={{ marginTop: '28px', textAlign: 'center' }}>
+        <Link
+          to="/tic-tac-toe"
           style={{
             display: 'inline-flex',
             alignItems: 'center',
             gap: '6px',
-            padding: '8px 14px',
-            background: 'var(--gold)',
-            color: '#ffffff',
-            border: 'none',
-            borderRadius: 'var(--r2)',
             font: '12px/1 var(--mono)',
-            fontWeight: 700,
-            cursor: 'pointer',
+            color: 'var(--ink-dim)',
+            textDecoration: 'none',
+            padding: '8px 16px',
+            border: '1px solid var(--line)',
+            borderRadius: 'var(--r2)',
+            background: 'var(--bg-stage)',
           }}
         >
-          Buat / Gabung Room Online →
-        </button>
+          ← Kembali ke Lobby & Mode Online
+        </Link>
       </div>
 
       <dialog
@@ -670,151 +581,6 @@ export const TicTacToeLocal: React.FC = () => {
         </div>
       </dialog>
 
-      {/* Online Match Dialog */}
-      <dialog
-        ref={onlineDialogRef}
-        onClick={(e) => {
-          if (e.target === onlineDialogRef.current) {
-            onlineDialogRef.current?.close();
-          }
-        }}
-        aria-labelledby="tictactoe-online-modal-title"
-        style={{
-          margin: 'auto',
-          border: '1px solid var(--line-strong)',
-          borderRadius: 'var(--r4)',
-          background: '#ffffff',
-          padding: '28px 24px',
-          maxWidth: '440px',
-          width: '90vw',
-          boxShadow: '0 20px 48px rgba(0, 0, 0, 0.15)',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Globe size={18} color="var(--gold)" />
-            <h2 id="tictactoe-online-modal-title" style={{ fontSize: '17px', fontWeight: 700, margin: 0 }}>
-              Multiplayer Online
-            </h2>
-          </div>
-          <button
-            type="button"
-            onClick={() => onlineDialogRef.current?.close()}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              cursor: 'pointer',
-              color: 'var(--ink-dim)',
-              display: 'flex',
-              padding: '4px',
-            }}
-            aria-label="Tutup"
-          >
-            <X size={18} />
-          </button>
-        </div>
-
-        <p style={{ fontSize: '13px', color: 'var(--ink-dim)', lineHeight: 1.5, marginBottom: '20px' }}>
-          Bermain Tic Tac Toe No-Draw bersama lawan di perangkat terpisah secara real-time via Supabase.
-        </p>
-
-        {onlineError && (
-          <div style={{ padding: '8px 12px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 'var(--r2)', color: '#991b1b', fontSize: '12px', marginBottom: '16px' }}>
-            {onlineError}
-          </div>
-        )}
-
-        {/* Player Name Input */}
-        <div style={{ marginBottom: '16px' }}>
-          <label style={{ display: 'block', font: '11px/1 var(--mono)', textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--ink-dim)', marginBottom: '6px' }}>
-            Nama Pemain
-          </label>
-          <input
-            type="text"
-            value={playerName}
-            onChange={(e) => handleNameChange(e.target.value)}
-            placeholder="Nama Anda"
-            maxLength={18}
-            style={{
-              width: '100%',
-              padding: '8px 12px',
-              border: '1px solid var(--line-strong)',
-              borderRadius: 'var(--r2)',
-              font: '13px/1.2 var(--mono)',
-              outline: 'none',
-            }}
-          />
-        </div>
-
-        {/* Create Room Button */}
-        <div style={{ marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid var(--line)' }}>
-          <button
-            type="button"
-            onClick={handleCreateOnlineRoom}
-            disabled={isCreatingOnline}
-            style={{
-              width: '100%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '6px',
-              padding: '11px',
-              background: 'var(--gold)',
-              color: '#ffffff',
-              border: 'none',
-              borderRadius: 'var(--r2)',
-              font: '12px/1 var(--mono)',
-              fontWeight: 700,
-              letterSpacing: '.04em',
-              textTransform: 'uppercase',
-              cursor: isCreatingOnline ? 'not-allowed' : 'pointer',
-            }}
-          >
-            <Plus size={14} /> {isCreatingOnline ? 'Membuat Room...' : 'Buat Room Baru'}
-          </button>
-        </div>
-
-        {/* Join Room Form */}
-        <form onSubmit={handleJoinOnlineRoom} style={{ display: 'flex', gap: '8px' }}>
-          <input
-            type="text"
-            placeholder="KODE ROOM"
-            value={onlineRoomCode}
-            onChange={(e) => setOnlineRoomCode(e.target.value)}
-            maxLength={6}
-            style={{
-              flex: 1,
-              padding: '8px 10px',
-              border: '1px solid var(--line-strong)',
-              borderRadius: 'var(--r2)',
-              font: '12px/1 var(--mono)',
-              letterSpacing: '.1em',
-              textAlign: 'center',
-              outline: 'none',
-              textTransform: 'uppercase',
-            }}
-          />
-          <button
-            type="submit"
-            disabled={!onlineRoomCode.trim()}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '4px',
-              padding: '8px 14px',
-              background: onlineRoomCode.trim() ? 'var(--ink)' : 'var(--line)',
-              color: '#ffffff',
-              border: 'none',
-              borderRadius: 'var(--r2)',
-              font: '11px/1 var(--mono)',
-              fontWeight: 700,
-              cursor: onlineRoomCode.trim() ? 'pointer' : 'not-allowed',
-            }}
-          >
-            <LogIn size={13} /> Gabung
-          </button>
-        </form>
-      </dialog>
     </div>
   );
 };
