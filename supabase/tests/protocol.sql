@@ -255,5 +255,15 @@ begin
   end;
 end $$;
 
+-- 14. A player cannot erase a match row, so audit history survives a leaving client.
+do $$
+declare n int;
+begin
+  perform pg_temp.reset_fixture();
+  delete from public.matches where id = 'aaaaaaaa-0000-0000-0000-000000000001';
+  get diagnostics n = row_count;
+  if n <> 0 then raise exception 'ASSERT 14 FAIL: anon deleted % match rows', n; end if;
+end $$;
+
 
 reset role;
