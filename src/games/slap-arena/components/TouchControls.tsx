@@ -9,6 +9,8 @@ interface TouchControlsProps {
   onMove: (x: number, z: number) => void;
   onSlap: () => void;
   onDash: () => void;
+  /** Called on unmount so a lifted-but-unreleased drag cannot outlive the round. */
+  onRelease: () => void;
 }
 
 const STICK_RADIUS = 46;
@@ -25,7 +27,7 @@ function buzz(ms: number): void {
  * Floating stick: the base appears under the thumb instead of waiting in a corner,
  * which is the difference between "works on a phone" and "plays well on a phone".
  */
-export const TouchControls: React.FC<TouchControlsProps> = ({ sim, localId, onMove, onSlap, onDash }) => {
+export const TouchControls: React.FC<TouchControlsProps> = ({ sim, localId, onMove, onSlap, onDash, onRelease }) => {
   const zoneRef = useRef<HTMLDivElement>(null);
   const stickRef = useRef<HTMLDivElement>(null);
   const knobRef = useRef<HTMLDivElement>(null);
@@ -35,6 +37,10 @@ export const TouchControls: React.FC<TouchControlsProps> = ({ sim, localId, onMo
   const dashTxtRef = useRef<HTMLSpanElement>(null);
   const pointerId = useRef<number | null>(null);
   const origin = useRef({ x: 0, y: 0 });
+
+  // This layer unmounts between rounds. Without a release here the last drag
+  // vector stays latched and the next round starts walking on its own.
+  useEffect(() => onRelease, [onRelease]);
 
   // An anchored base from the previous orientation would sit off-screen after a
   // rotation, so hand control back to the CSS defaults whenever the viewport changes.
@@ -132,6 +138,7 @@ export const TouchControls: React.FC<TouchControlsProps> = ({ sim, localId, onMo
     if (e.pointerId !== pointerId.current) return;
     pointerId.current = null;
     onMove(0, 0);
+    onRelease();
     if (knobRef.current) knobRef.current.style.transform = 'translate(0px, 0px)';
     if (stickRef.current) stickRef.current.style.opacity = '0.35';
   };

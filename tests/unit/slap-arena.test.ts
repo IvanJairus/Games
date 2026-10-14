@@ -325,6 +325,43 @@ describe('Slap Arena realtime protocol shape', () => {
   });
 });
 
+describe('SlapSim bot actions reach the world', () => {
+  it('bots actually land slaps when nobody is playing', () => {
+    // All 134 tests passed while bots were generating slap decisions that nothing
+    // ever executed, so the solo game only ever pushed. This pins that path.
+    const sim = new SlapSim({ localId: 'me', authoritative: true, scoreToWin: 3 });
+    sim.addPlayer({ id: 'me', name: 'Me', color: '#4dabf7' });
+    for (let i = 1; i <= 3; i++) sim.addPlayer({ id: `bot_${i}`, name: `Bot ${i}`, color: '#ff5d5d', isBot: true });
+    const botSlaps: string[] = [];
+    const hits: string[] = [];
+    sim.onEvent = (e) => {
+      if (e.kind === 'slap' && e.playerId.startsWith('bot_')) botSlaps.push(e.playerId);
+      if (e.kind === 'hit') hits.push(e.victimId);
+    };
+    sim.startCountdown(0);
+    for (let i = 0; i < 60 * 30 && botSlaps.length === 0; i++) sim.step(1 / 60);
+    expect(botSlaps.length).toBeGreaterThan(0);
+    expect(hits.length).toBeGreaterThan(0);
+  });
+
+  it('a round produces a winner within two minutes of bot warfare', () => {
+    const sim = new SlapSim({ localId: 'me', authoritative: true, scoreToWin: 1 });
+    sim.addPlayer({ id: 'me', name: 'Me', color: '#4dabf7' });
+    for (let i = 1; i <= 3; i++) sim.addPlayer({ id: `bot_${i}`, name: `Bot ${i}`, color: '#ff5d5d', isBot: true });
+    sim.startCountdown(0);
+    const kos: string[] = [];
+    let i0 = 0;
+    sim.onEvent = (e) => { if (e.kind === 'ko') kos.push(`${e.playerId}@${(i0 / 60).toFixed(0)}s`); };
+    for (let i = 0; i < 60 * 120 && sim.state.phase !== 'ROUND_OVER' && sim.state.phase !== 'MATCH_OVER'; i++) {
+      i0++;
+      sim.step(1 / 60);
+    }
+    expect(kos.length).toBeGreaterThan(0);
+    expect(['ROUND_OVER', 'MATCH_OVER']).toContain(sim.state.phase);
+    expect(sim.state.winnerId).toBeTruthy();
+  });
+});
+
 describe('Slap Arena asset loading against the site CSP', () => {
   // The GLB pipeline needs two things a strict default-src 'self' blocks: the
   // meshopt WebAssembly decoder and the blob: URLs three.js creates for embedded

@@ -34,6 +34,7 @@ interface Entry {
   wobble: number;
   renderX: number;
   renderZ: number;
+  markerColor?: string;
 }
 
 const Arena3D = forwardRef<Arena3DHandle, Arena3DProps>(function Arena3D(
@@ -246,7 +247,10 @@ const Arena3D = forwardRef<Arena3DHandle, Arena3DProps>(function Arena3D(
         }
         const speed = Math.hypot(p.vx, p.vz);
         e.wobble += dt * (4 + speed);
-        e.marker.setColor(p.color || PALETTE_FALLBACK);
+        if (e.markerColor !== p.color) {
+          e.markerColor = p.color;
+          e.marker.setColor(p.color || PALETTE_FALLBACK);
+        }
 
         // A client only hears about remote brawlers 20 times a second, so draw them
         // where they should be between snapshots instead of teleporting on arrival.

@@ -157,7 +157,7 @@ export class SlapSim {
 
     for (const p of list) {
       const input = p.isBot ? this.botInput(p, list, dt) : (this.inputs.get(p.id) ?? NO_INPUT);
-      if (!p.isBot && (input.slap || input.dash)) {
+      if (input.slap || input.dash) {
         this.consumeAction(p, list, input, knockScale);
       }
       updatePlayerMovement(p, input.x, input.z, dt);
