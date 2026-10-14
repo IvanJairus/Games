@@ -34,7 +34,54 @@
   --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
   
   --r2: 2px;
+  --r3: 3px;
   --r4: 4px;
+
+  /* --r3 and --terracotta were referenced by six pages before they existed here,
+     so those elements rendered at radius 0 with an inherited icon colour. */
+  --terracotta: #c2410c;
+  --terracotta-tint: rgba(194, 65, 12, 0.08);
+  --miss: #94a3b8;
+  --water: #eef2f6;
+  --water-line: rgba(30, 41, 59, 0.16);
+}
+
+@keyframes ij-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes ij-impact {
+  from {
+    transform: scale(0.55);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes ij-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
 }
 
 * {
@@ -156,4 +203,369 @@ dialog::backdrop {
   .hub-back-label {
     display: none;
   }
+}
+
+/* Battleship: nautical-chart surface, brass for damage, red only for real state. */
+.bs-shell {
+  max-width: 1000px;
+  margin: clamp(16px, 3vw, 32px) auto;
+  padding: 0 clamp(8px, 3vw, 24px);
+}
+
+.bs-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 20px;
+}
+
+.bs-boards {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 880px) {
+  .bs-boards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 28px;
+  }
+}
+
+.bs-board {
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r4);
+  background: #ffffff;
+  padding: 10px clamp(4px, 1.5vw, 12px) 12px;
+}
+
+.bs-board[data-active="true"] {
+  border-color: var(--red);
+}
+
+.bs-board-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font: 11px/1 var(--mono);
+  letter-spacing: .06em;
+  color: var(--ink-dim);
+  margin: 0 0 8px;
+}
+
+.bs-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--water-line);
+  border: 1px solid var(--water-line);
+}
+
+.bs-row {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 1px;
+}
+
+.bs-cell {
+  aspect-ratio: 1 / 1;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--water);
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  transition: background-color 120ms ease;
+}
+
+.bs-cell:disabled {
+  cursor: default;
+}
+
+.bs-cell[data-static="true"] {
+  cursor: default;
+}
+
+.bs-cell:hover:not(:disabled):not([data-static="true"]) {
+  background: var(--bg-tile-hover);
+}
+
+.bs-cell:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: -2px;
+}
+
+.bs-cell[data-cursor="true"] {
+  box-shadow: inset 0 0 0 2px var(--ink);
+}
+
+.bs-cell[data-mark="miss"]::after {
+  content: "";
+  width: 30%;
+  height: 30%;
+  border-radius: 50%;
+  background: var(--miss);
+}
+
+.bs-cell[data-mark="hit"] {
+  background: var(--gold);
+}
+
+.bs-cell[data-mark="hit"]::before,
+.bs-cell[data-mark="hit"]::after {
+  content: "";
+  position: absolute;
+  width: 68%;
+  height: 2px;
+  background: #ffffff;
+}
+
+.bs-cell[data-mark="hit"]::before {
+  transform: rotate(45deg);
+}
+
+.bs-cell[data-mark="hit"]::after {
+  transform: rotate(-45deg);
+}
+
+.bs-cell[data-impact="true"] {
+  animation: ij-impact 180ms ease-out;
+}
+
+.bs-cell[data-ship="true"] {
+  background: var(--wall-placed);
+}
+
+.bs-cell[data-ship="true"][data-mark="hit"] {
+  background: var(--gold-deep);
+}
+
+.bs-cell[data-selected="true"] {
+  box-shadow: inset 0 0 0 2px var(--red);
+  background: var(--red-tint);
+}
+
+.bs-cell[data-sunk="true"] {
+  background: repeating-linear-gradient(
+    135deg,
+    var(--gold) 0 4px,
+    var(--gold-deep) 4px 8px
+  );
+}
+
+.bs-coords {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 1px;
+  margin-top: 4px;
+  font: 9px/1 var(--mono);
+  color: var(--ink-faint);
+  text-align: center;
+}
+
+.bs-rail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.bs-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r2);
+  font: 10px/1 var(--mono);
+  letter-spacing: .04em;
+  color: var(--ink-dim);
+  background: #ffffff;
+}
+
+.bs-chip[data-sunk="true"] {
+  border-color: var(--gold);
+  color: var(--gold);
+  text-decoration: line-through;
+}
+
+.bs-chip[data-picked="true"] {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
+.bs-actions {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 0 12px;
+  background: linear-gradient(to top, #ffffff 60%, rgba(255, 255, 255, 0));
+  box-shadow: 0 -6px 14px rgba(28, 25, 23, 0.06);
+}
+
+.bs-btn {
+  flex: 1;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 16px;
+  border-radius: var(--r2);
+  border: 1px solid var(--line-strong);
+  background: #ffffff;
+  color: var(--ink);
+  font: 12px/1 var(--mono);
+  font-weight: 700;
+  letter-spacing: .04em;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.bs-btn:hover:not(:disabled) {
+  background: var(--bg-tile);
+}
+
+.bs-btn[data-tone="primary"] {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: #ffffff;
+}
+
+.bs-btn[data-tone="primary"]:hover:not(:disabled) {
+  background: #000000;
+}
+
+.bs-btn[data-tone="danger"] {
+  background: var(--red);
+  border-color: var(--red-deep);
+  color: #ffffff;
+}
+
+.bs-btn:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+.bs-btn:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.bs-note {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border: 1px solid var(--line-strong);
+  border-left: 3px solid var(--ink);
+  border-radius: var(--r3);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--bg-paper);
+  margin: 0 0 14px;
+}
+
+.bs-note[data-tone="alert"] {
+  border-left-color: var(--terracotta);
+  background: var(--terracotta-tint);
+}
+
+.bs-note[data-tone="danger"] {
+  border-left-color: var(--red);
+  background: var(--red-tint);
+}
+
+.bs-fade {
+  animation: ij-reveal 200ms ease-out;
+}
+
+.bs-turn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: 11px/1 var(--mono);
+  letter-spacing: .04em;
+  color: var(--ink-dim);
+}
+
+.bs-turn[data-mine="true"] {
+  color: var(--red);
+}
+
+/* Phones cannot fit two 8-column boards, so one board is shown at a time with a named switch. */
+.bs-view-switch {
+  display: none;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+@media (max-width: 879px) {
+  .bs-boards[data-view="own"] .bs-board-target,
+  .bs-boards[data-view="target"] .bs-board-own {
+    display: none;
+  }
+
+  .bs-view-switch {
+    display: flex;
+  }
+}
+
+.bs-view-switch button {
+  flex: 1;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r2);
+  background: #ffffff;
+  color: var(--ink-dim);
+  font: 11px/1 var(--mono);
+  letter-spacing: .04em;
+  cursor: pointer;
+}
+
+.bs-view-switch button[aria-current="true"] {
+  border-color: var(--ink);
+  color: var(--ink);
+  background: var(--bg-tile);
+}
+
+.bs-view-switch button:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* Shared room notice, used by every online match page. */
+.ij-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  padding: 10px 12px;
+  margin: 0 0 14px;
+  border: 1px solid var(--line-strong);
+  border-left: 3px solid var(--terracotta);
+  border-radius: var(--r3);
+  background: var(--terracotta-tint);
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.ij-notice > strong {
+  font: 11px/1.5 var(--mono);
+  letter-spacing: .04em;
+  color: var(--terracotta);
+  white-space: nowrap;
 }

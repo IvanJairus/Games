@@ -85,6 +85,7 @@ export const SlapArenaMatch: React.FC = () => {
   const [notice, setNotice] = useState<string | null>(null);
   const [isHost, setIsHost] = useState(isSolo);
   const [disconnected, setDisconnected] = useState<string | null>(null);
+  const [linkDown, setLinkDown] = useState(false);
 
   const arenaRef = useRef<Arena3DHandle>(null);
   const inputRef = useRef<InputState>({ x: 0, z: 0, slap: false, dash: false });
@@ -238,6 +239,7 @@ export const SlapArenaMatch: React.FC = () => {
         (payload: { playerName?: string }) => {
           setDisconnected(`${payload?.playerName ?? 'Lawan'} keluar dari arena.`);
         },
+        (state) => setLinkDown(state === 'fallback'),
         {
           presence: {
             onChange: () => {
@@ -467,6 +469,12 @@ export const SlapArenaMatch: React.FC = () => {
             inputRef.current.dash = true;
           }}
         />
+      )}
+
+      {linkDown && !fatal && !disconnected && (
+        <div className="sa-float sa-float--top" data-testid="slap-link-down" role="status">
+          Koneksi realtime sedang turun. Gerakan pemain lain bisa tertahan.
+        </div>
       )}
 
       {notice && !fatal && !disconnected && (

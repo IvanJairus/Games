@@ -1,4 +1,6 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { getSafeStorage } from './storage';
+import { randomHex } from './random';
 
 const rawUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const supabaseUrl = rawUrl?.replace(/\/rest\/v1\/?$/, '').replace(/\/+$/, '');
@@ -36,36 +38,19 @@ export const getSupabase = (): SupabaseClient | null => {
 const SESSION_KEY = 'ij_player_session_id';
 const NAME_KEY = 'ij_player_name';
 
-const inMemoryStore: Record<string, string> = {};
-
-const getStorage = () => {
-  try {
-    if (typeof window !== 'undefined' && window.localStorage && typeof window.localStorage.getItem === 'function') {
-      return window.localStorage;
-    }
-  } catch {}
-  return {
-    getItem: (key: string) => inMemoryStore[key] ?? null,
-    setItem: (key: string, val: string) => {
-      inMemoryStore[key] = val;
-    },
-    removeItem: (key: string) => {
-      delete inMemoryStore[key];
-    },
-  };
-};
+const getStorage = getSafeStorage;
 
 export const getPlayerSessionId = (): string => {
   try {
     const storage = getStorage();
     let sessionId = storage.getItem(SESSION_KEY);
     if (!sessionId) {
-      sessionId = 'p_' + Math.random().toString(36).substring(2, 9) + Date.now().toString(36);
+      sessionId = 'p_' + randomHex(8);
       storage.setItem(SESSION_KEY, sessionId);
     }
     return sessionId;
   } catch {
-    return 'p_guest_' + Math.random().toString(36).substring(2, 8);
+    return 'p_guest_' + randomHex(4);
   }
 };
 

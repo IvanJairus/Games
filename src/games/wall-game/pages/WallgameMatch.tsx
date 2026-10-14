@@ -27,8 +27,11 @@ import {
   startOnlineMatch,
   joinOnlineRoom,
   leaveOnlineMatch,
+  describeMoveFailure,
   MatchSyncData,
 } from '../../common/multiplayer';
+import { watchRoomPeers } from '../../common/roomPresence';
+import { RoomPeersNotice } from '../../../components/RoomPeersNotice';
 import {
   isSupabaseConfigured,
   getStoredPlayerName,
@@ -49,12 +52,14 @@ export const WallgameMatch: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isVictoryModalDismissed, setIsVictoryModalDismissed] = useState(false);
   const [opponentLeftNotice, setOpponentLeftNotice] = useState<string | null>(null);
+  const [connection, setConnection] = useState<'realtime' | 'fallback'>('realtime');
+  const [peerTabs, setPeerTabs] = useState(0);
 
   const rulesDialogRef = useRef<HTMLDialogElement>(null);
   const channelRef = useRef<any>(null);
   const joinAttemptedRef = useRef<boolean>(false);
 
-  // Join room on mount with single execution guard
+  // The guard matters: React 19 StrictMode runs this effect twice in development.
   useEffect(() => {
     if (!roomCode || !isSupabaseConfigured() || joinAttemptedRef.current) return;
     joinAttemptedRef.current = true;
@@ -69,7 +74,6 @@ export const WallgameMatch: React.FC = () => {
       })
       .catch((err) => {
         if (isMounted) {
-          // Clean user-friendly message
           setJoinError(err.message || 'Tidak dapat bergabung ke room');
         }
       });
@@ -79,7 +83,6 @@ export const WallgameMatch: React.FC = () => {
     };
   }, [roomCode, playerName]);
 
-  // Subscribe to room updates
   useEffect(() => {
     if (!roomCode || !isSupabaseConfigured()) return;
 
@@ -94,12 +97,11 @@ export const WallgameMatch: React.FC = () => {
           setOpponentLeftNotice(data.match.game_state.abandonedReason);
         }
       },
-      () => {
-        // Move broadcast received
-      },
+      undefined,
       (leavePayload) => {
         setOpponentLeftNotice(`${leavePayload?.playerName || 'Lawan'} telah keluar dari pertandingan.`);
-      }
+      },
+      setConnection
     );
     channelRef.current = sub.channel;
 
@@ -107,6 +109,9 @@ export const WallgameMatch: React.FC = () => {
       sub.unsubscribe();
     };
   }, [roomCode]);
+
+  // Kursi dikenali dari identitas di penyimpanan bersama, jadi dua jendela pada satu browser memakai kursi yang sama.
+  useEffect(() => watchRoomPeers(roomCode, setPeerTabs), [roomCode]);
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(window.location.href);
@@ -133,9 +138,10 @@ export const WallgameMatch: React.FC = () => {
         roomCode,
         playerIndex: syncData.myPlayerIndex,
         playerName,
+        channel: channelRef.current,
       });
     } catch {
-      // Ignore network errors on exit
+      // Exit must not trap the player behind a failed broadcast.
     } finally {
       navigate('/wall-game');
     }
@@ -152,7 +158,11 @@ export const WallgameMatch: React.FC = () => {
         playerNames: syncData.players.map((p) => p.name),
       });
 
-      await startOnlineMatch(syncData.match.id, initialGame);
+      const started = await startOnlineMatch(syncData.match.id, initialGame);
+      if (!started.ok) {
+        setActionError(describeMoveFailure(started));
+        return;
+      }
       setIsVictoryModalDismissed(false);
       setOpponentLeftNotice(null);
     } catch (err: any) {
@@ -174,15 +184,22 @@ export const WallgameMatch: React.FC = () => {
       const nextState = applyMove(game, target);
       const isGameOver = nextState.phase === 'GAME_OVER';
 
-      await submitOnlineMove({
+      const result = await submitOnlineMove({
         matchId: syncData.match.id,
         playerIndex: syncData.myPlayerIndex,
         action: 'MOVE',
         nextState,
         nextTurn: nextState.activePlayerIndex,
+        basedOn: syncData.match.updated_at,
         winnerIndex: isGameOver ? nextState.winnerId : null,
         newStatus: isGameOver ? 'completed' : 'playing',
       });
+
+      if (!result.ok) {
+        setActionError(describeMoveFailure(result));
+        return;
+      }
+      if (result.message) setActionError(result.message);
 
       channelRef.current?.send({
         type: 'broadcast',
@@ -207,13 +224,20 @@ export const WallgameMatch: React.FC = () => {
       setActionError(null);
       const nextState = applyWall(game, wall);
 
-      await submitOnlineMove({
+      const result = await submitOnlineMove({
         matchId: syncData.match.id,
         playerIndex: syncData.myPlayerIndex,
         action: 'WALL',
         nextState,
         nextTurn: nextState.activePlayerIndex,
+        basedOn: syncData.match.updated_at,
       });
+
+      if (!result.ok) {
+        setActionError(describeMoveFailure(result));
+        return;
+      }
+      if (result.message) setActionError(result.message);
 
       channelRef.current?.send({
         type: 'broadcast',
@@ -250,7 +274,11 @@ export const WallgameMatch: React.FC = () => {
         playerNames: syncData.players.map((p) => p.name),
       });
 
-      await startOnlineMatch(syncData.match.id, initialGame);
+      const started = await startOnlineMatch(syncData.match.id, initialGame, ['completed', 'abandoned']);
+      if (!started.ok) {
+        setActionError(describeMoveFailure(started));
+        return;
+      }
       setIsVictoryModalDismissed(false);
       setOpponentLeftNotice(null);
     } catch (err: any) {
@@ -598,6 +626,7 @@ export const WallgameMatch: React.FC = () => {
 
       {actionError && (
         <div
+          role="alert"
           style={{
             padding: '7px 12px',
             borderRadius: 'var(--r2)',
@@ -614,7 +643,22 @@ export const WallgameMatch: React.FC = () => {
         </div>
       )}
 
-      {/* Roster Cards */}
+      <RoomPeersNotice peerCount={peerTabs} />
+
+      {connection === 'fallback' && (
+        <p
+          role="status"
+          style={{
+            font: '11px/1.4 var(--mono)',
+            color: 'var(--ink-dim)',
+            margin: '0 0 10px',
+            textAlign: 'center',
+          }}
+        >
+          Koneksi realtime terputus. Papan disinkronkan ulang setiap 5 detik.
+        </p>
+      )}
+
       {game && (
         <div
           style={{

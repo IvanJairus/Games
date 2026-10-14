@@ -205,7 +205,14 @@ describe('Slap Arena multiplayer wiring', () => {
     vi.mocked(joinOnlineRoom).mockResolvedValueOnce({ matchId: 'm1', playerIndex: 1, isHost: false });
     renderMatch('/slap-arena/m/ABC123');
     await waitFor(() => expect(joinOnlineRoom).toHaveBeenCalledWith({ roomCode: 'ABC123', playerName: expect.any(String) }));
-    expect(subscribeToMatch).toHaveBeenCalledWith('ABC123', expect.any(Function), undefined, expect.any(Function), expect.any(Object));
+    expect(subscribeToMatch).toHaveBeenCalledWith(
+      'ABC123',
+      expect.any(Function),
+      undefined,
+      expect.any(Function),
+      expect.any(Function),
+      expect.objectContaining({ presence: expect.any(Object), onStatus: expect.any(Function) })
+    );
   });
 
   it('surfaces a room error instead of freezing on an empty island', async () => {
@@ -260,7 +267,7 @@ describe('Slap Arena multiplayer wiring', () => {
       presenceState: vi.fn(() => ({})),
     };
     let onStatus: (s: string) => void = () => {};
-    vi.mocked(subscribeToMatch).mockImplementation((_code, _sync, _move, _leave, extras) => {
+    vi.mocked(subscribeToMatch).mockImplementation((_code, _sync, _move, _leave, _conn, extras) => {
       onStatus = extras?.onStatus ?? (() => {});
       return { unsubscribe: vi.fn(), channel: fakeChannel as never };
     });

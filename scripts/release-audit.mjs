@@ -19,14 +19,11 @@ const STAGES = [
     cmd: 'npx vitest run tests/unit',
   },
   {
-    name: 'Desktop Viewport Test (1024px)',
-    desc: 'Simulasi desktop: Hub kartu game, langkah bidak penuh, penempatan dinding langsung 1-klik',
-    cmd: 'npx vitest run tests/ui/desktop-viewport.test.tsx',
-  },
-  {
-    name: 'Mobile Viewport Test (375px)',
-    desc: 'Simulasi layar HP: Reflow responsif, toggle orientasi, popup otomatis Victory Modal, ErrorBoundary',
-    cmd: 'npx vitest run tests/ui/mobile-viewport.test.tsx',
+    // Runs the whole directory on purpose. Naming files one by one silently skips
+    // every suite added later, which is how the Slap Arena UI tests stayed unrun.
+    name: 'UI Suites (desktop + mobile, semua game)',
+    desc: 'Simulasi desktop 1024px dan layar HP 375px untuk setiap game: reflow, kontrol, modal, ErrorBoundary',
+    cmd: 'npx vitest run tests/ui',
   },
   {
     name: 'Production Build Bundle',
@@ -35,8 +32,8 @@ const STAGES = [
   },
   {
     name: 'Security & Domain Guards',
-    desc: 'Memastikan tidak ada kebocoran domain pihak ketiga (*.vercel.app) di kode aktif',
-    cmd: "git grep -nE '\\.vercel\\.app' -- ':!registry/' ':!vercel.json' ':!.github/' || true",
+    desc: 'Memastikan tidak ada domain pratinjau vendor di kode aktif yang shipped',
+    cmd: 'node scripts/guard-check.mjs',
   },
 ];
 

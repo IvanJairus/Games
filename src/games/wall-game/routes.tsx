@@ -1,26 +1,33 @@
+import React, { lazy, Suspense } from 'react';
 import { RouteObject, Navigate } from 'react-router-dom';
-import { WallgameLobby } from './pages/WallgameLobby';
-import { WallgameLocal } from './pages/WallgameLocal';
-import { WallgameMatch } from './pages/WallgameMatch';
+import { RouteFallback } from '../../components/RouteFallback';
 import { RouteErrorBoundary } from '../../components/ErrorBoundary';
+
+const WallgameLobby = lazy(() => import('./pages/WallgameLobby').then((m) => ({ default: m.WallgameLobby })));
+const WallgameLocal = lazy(() => import('./pages/WallgameLocal').then((m) => ({ default: m.WallgameLocal })));
+const WallgameMatch = lazy(() => import('./pages/WallgameMatch').then((m) => ({ default: m.WallgameMatch })));
+
+const page = (node: React.ReactNode): React.ReactNode => (
+  <Suspense fallback={<RouteFallback label="Memuat WallGo" />}>{node}</Suspense>
+);
 
 export const wallGameRoutes: RouteObject[] = [
   {
     path: 'wall-game',
-    element: <WallgameLobby />,
+    element: page(<WallgameLobby />),
     errorElement: <RouteErrorBoundary />,
   },
   {
     path: 'wall-game/local',
-    element: <WallgameLocal />,
+    element: page(<WallgameLocal />),
     errorElement: <RouteErrorBoundary />,
   },
   {
     path: 'wall-game/m/:code',
-    element: <WallgameMatch />,
+    element: page(<WallgameMatch />),
     errorElement: <RouteErrorBoundary />,
   },
-  // Backward compatibility redirects for legacy /wallgame routes
+  // Legacy /wallgame URLs from before the route rename still circulate in shared links.
   {
     path: 'wallgame',
     element: <Navigate to="/wall-game" replace />,
@@ -31,7 +38,7 @@ export const wallGameRoutes: RouteObject[] = [
   },
   {
     path: 'wallgame/m/:code',
-    element: <WallgameMatch />,
+    element: page(<WallgameMatch />),
     errorElement: <RouteErrorBoundary />,
   },
 ];
