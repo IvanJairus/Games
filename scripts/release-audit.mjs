@@ -9,13 +9,15 @@ import process from 'process';
 
 const STAGES = [
   {
+    // --force because `tsc -b` trusts .tsbuildinfo and reports clean without rechecking
+    // a file another stage or editor just touched.
     name: 'TypeScript Typecheck',
     desc: 'Memastikan tidak ada type error di engine, komponen, atau rute',
-    cmd: 'npx tsc -b',
+    cmd: 'npx tsc -b --force',
   },
   {
     name: 'Unit Tests (Game Engines)',
-    desc: 'Verifikasi engine WallGo (anti-trap BFS, quota, lompat bidak) & Tic Tac Toe (3x3 win lines)',
+    desc: 'Verifikasi engine WallGo + bot, Tic Tac Toe + bot, Battleship, lapisan sync room, dan presence',
     cmd: 'npx vitest run tests/unit',
   },
   {
