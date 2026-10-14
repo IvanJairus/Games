@@ -23,6 +23,7 @@ import {
   submitOnlineMove,
   joinOnlineRoom,
   leaveOnlineMatch,
+  describeMoveFailure,
   MatchSyncData,
 } from '../../common/multiplayer';
 import {
@@ -42,16 +43,17 @@ export const TicTacToeMatch: React.FC = () => {
   const [copied, setCopied] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [opponentLeftNotice, setOpponentLeftNotice] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [connection, setConnection] = useState<'realtime' | 'fallback'>('realtime');
 
   const victoryDialogRef = useRef<HTMLDialogElement>(null);
   const channelRef = useRef<any>(null);
 
-  // Join room on mount
   useEffect(() => {
     if (!roomCode || !isSupabaseConfigured()) return;
 
     let isMounted = true;
-    joinOnlineRoom({ roomCode, playerName })
+    joinOnlineRoom({ roomCode, playerName, startWhenFull: true })
       .then(() => {
         if (isMounted) {
           setStoredPlayerName(playerName);
@@ -68,7 +70,6 @@ export const TicTacToeMatch: React.FC = () => {
     };
   }, [roomCode, playerName]);
 
-  // Subscribe to room
   useEffect(() => {
     if (!roomCode || !isSupabaseConfigured()) return;
 
@@ -80,12 +81,11 @@ export const TicTacToeMatch: React.FC = () => {
           setOpponentLeftNotice(data.match.game_state.abandonedReason);
         }
       },
-      () => {
-        // Quick broadcast sync
-      },
+      () => {},
       (leavePayload) => {
         setOpponentLeftNotice(`${leavePayload?.playerName || 'Lawan'} telah keluar dari pertandingan.`);
-      }
+      },
+      setConnection
     );
     channelRef.current = sub.channel;
 
@@ -94,7 +94,6 @@ export const TicTacToeMatch: React.FC = () => {
     };
   }, [roomCode]);
 
-  // Victory dialog visibility
   useEffect(() => {
     const game = syncData?.match?.game_state as TicTacToeState | undefined;
     if (game?.status === 'WIN') {
@@ -127,8 +126,13 @@ export const TicTacToeMatch: React.FC = () => {
         roomCode,
         playerIndex: syncData.myPlayerIndex,
         playerName,
+        channel: channelRef.current,
       });
-    } catch {}
+    } catch (err) {
+      // A seat row left behind by a failed exit is what makes "lawan masih terlihat online" reports
+      // impossible to diagnose after the fact, so keep the reason on the console.
+      console.warn('keluar room gagal diselesaikan', err);
+    }
     navigate('/tic-tac-toe');
   };
 
@@ -143,27 +147,35 @@ export const TicTacToeMatch: React.FC = () => {
 
     try {
       setIsSubmitting(true);
+      setActionError(null);
       const nextGame = applyMove(game, cellIndex);
       const nextTurnIndex = nextGame.currentTurn === 'X' ? 0 : 1;
       const isWon = nextGame.status === 'WIN';
 
-      await submitOnlineMove({
+      const result = await submitOnlineMove({
         matchId: syncData.match.id,
         playerIndex: syncData.myPlayerIndex,
         action: 'MOVE',
         nextState: nextGame,
         nextTurn: nextTurnIndex,
+        basedOn: syncData.match.updated_at,
         winnerIndex: isWon ? syncData.myPlayerIndex : null,
         newStatus: isWon ? 'completed' : 'playing',
       });
+
+      if (!result.ok) {
+        setActionError(describeMoveFailure(result));
+        return;
+      }
+      if (result.message) setActionError(result.message);
 
       channelRef.current?.send({
         type: 'broadcast',
         event: 'game_move',
         payload: { cellIndex },
       });
-    } catch {
-      // Cell occupied or invalid
+    } catch (err: any) {
+      setActionError(err.message || 'Langkah tidak dapat diproses.');
     } finally {
       setIsSubmitting(false);
     }
@@ -185,20 +197,32 @@ export const TicTacToeMatch: React.FC = () => {
 
     try {
       setIsSubmitting(true);
+      setActionError(null);
       victoryDialogRef.current?.close();
       const currentGame = syncData.match.game_state as TicTacToeState;
       const nextGame = resetRound(currentGame);
       const nextTurnIndex = nextGame.currentTurn === 'X' ? 0 : 1;
 
-      await submitOnlineMove({
+      const result = await submitOnlineMove({
         matchId: syncData.match.id,
         playerIndex: syncData.myPlayerIndex,
         action: 'NEXT_ROUND',
         nextState: nextGame,
         nextTurn: nextTurnIndex,
+        basedOn: syncData.match.updated_at,
         winnerIndex: null,
         newStatus: 'playing',
+        expectTurn: false,
+        statusGuard: 'completed',
       });
+
+      if (!result.ok) {
+        setActionError(describeMoveFailure(result));
+      } else if (result.message) {
+        setActionError(result.message);
+      }
+    } catch (err: any) {
+      setActionError(err.message || 'Ronde berikutnya tidak dapat dimulai.');
     } finally {
       setIsSubmitting(false);
     }
@@ -354,7 +378,45 @@ export const TicTacToeMatch: React.FC = () => {
         </button>
       </header>
 
-      {/* Opponent Left / Abandoned Alert */}
+      {actionError && (
+        <div
+          role="alert"
+          style={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: '10px',
+            background: 'var(--terracotta-tint)',
+            border: '1px solid var(--terracotta)',
+            borderRadius: 'var(--r3)',
+            padding: '12px 14px',
+            marginBottom: '18px',
+            fontSize: '13px',
+            lineHeight: 1.5,
+            color: 'var(--ink)',
+          }}
+        >
+          <AlertCircle size={16} color="var(--terracotta)" style={{ flexShrink: 0, marginTop: '1px' }} />
+          <span>{actionError}</span>
+        </div>
+      )}
+
+      {connection === 'fallback' && (
+        <p
+          role="status"
+          style={{
+            font: '11px/1.4 var(--mono)',
+            color: 'var(--ink-dim)',
+            margin: '0 0 16px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+          }}
+        >
+          <Clock size={13} aria-hidden="true" />
+          Koneksi realtime terputus. Papan disinkronkan ulang setiap 5 detik.
+        </p>
+      )}
+
       {isAbandoned && (
         <div
           style={{
