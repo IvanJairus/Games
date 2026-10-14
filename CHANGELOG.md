@@ -8,6 +8,28 @@ terpisah saat kamu menerbitkan rilis.
 Entri dimulai dari 14 Oktober 2026. Perubahan sebelum tanggal itu ada pada riwayat git dan daftar
 pull request, karena tidak dicatat saat terjadi.
 
+## 2026-10-14 - Susulan: tulis yang tak terpakai ditutup, hitungan jadi satu panggilan (PR #18)
+
+### Keamanan
+
+- Policy `UPDATE` pada `match_players` dihapus. Tidak ada satu pun jalur kode yang
+  memperbarui baris pemain: gabung itu INSERT, keluar itu DELETE dengan
+  `match_id + session_id`, dan reconnect menemukan baris lama.
+- Policy `INSERT` pada `match_players` tidak lagi `with check (true)`. Kursi baru harus
+  menempel pada pertandingan yang belum `completed`. Status `playing` dan `abandoned`
+  sengaja tetap boleh, karena tamu yang menulis kursinya tepat saat host memulai
+  pertandingan adalah ras nyata.
+- Dua-duanya diuji sebagai role `anon` di DB produksi: INSERT ke room `waiting` 1 baris,
+  INSERT ke room `completed` ditolak `42501`, UPDATE 0 baris.
+
+### Diubah
+
+- `match_completion_counts()` menggantikan empat request HEAD per game dengan satu RPC.
+  Fungsinya berjalan sebagai pemanggil, jadi RLS tetap yang menentukan baris mana yang
+  ikut dihitung.
+- Permintaan ke `/rest/v1` saat halaman hub dibuka: 8 HEAD + 8 OPTIONS menjadi 2 POST +
+  2 OPTIONS di dev (StrictMode menggandakan efek). Tanpa StrictMode: 8 menjadi 2.
+
 ## 2026-10-14 - Lapisan suara hub, angka riwayat, dan RLS (PR #13 sampai #17)
 
 Tiga dari empat game bisu, satu dialog sistem masih tersisa, dan tabel pertandingan
@@ -226,4 +248,5 @@ produksi sukses, dengan dua sesi browser terisolasi untuk jalur multiplayer.
 - PR #15 `feat(hub): show how many online matches each game has finished`
 - PR #16 `test(slap-arena): prove adaptive quality fires, play tic-tac-toe in the UI`
 - PR #17 `chore(supabase): stop anon writes from rewriting finished matches`
+- PR #18 `chore(supabase): close unused writes and count finished matches in one call`
 - Baseline jumlah tes diukur pada `0ac7f76` (main sebelum PR #5) memakai worktree terpisah.
