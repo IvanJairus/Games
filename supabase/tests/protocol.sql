@@ -1,12 +1,12 @@
 -- Protocol rules for multiplayer rooms, asserted against a real Postgres as the anon role.
 -- Run through: npm run db:verify
 
-create or replace function pg_temp.reset_fixture() returns void
+create or replace function pg_temp.reset_fixture(p_status text default 'playing') returns void
 language sql security definer set search_path = public as $$
   delete from public.match_players where match_id = 'aaaaaaaa-0000-0000-0000-000000000001';
   delete from public.matches where id = 'aaaaaaaa-0000-0000-0000-000000000001';
   insert into public.matches (id, room_code, game_type, status, max_players, current_turn, game_state, updated_at)
-  values ('aaaaaaaa-0000-0000-0000-000000000001', 'TESTA1', 'battleship', 'playing', 2, 0, '{}'::jsonb, '2020-01-01 00:00:00+00');
+  values ('aaaaaaaa-0000-0000-0000-000000000001', 'TESTA1', 'battleship', p_status, 2, 0, '{}'::jsonb, '2020-01-01 00:00:00+00');
   insert into public.match_players (match_id, player_index, session_id, name, is_host)
   values ('aaaaaaaa-0000-0000-0000-000000000001', 0, 'p_alpha', 'Alpha', true),
          ('aaaaaaaa-0000-0000-0000-000000000001', 1, 'p_bravo', 'Bravo', false);
@@ -223,5 +223,37 @@ begin
   get diagnostics n = row_count;
   if n <> 1 then raise exception 'ASSERT 12c FAIL: in-play commit write blocked (%s rows)', n; end if;
 end $$;
+-- 13. A started room cannot go back to waiting, a lobby can be closed, a winner cannot.
+do $$
+begin
+  perform pg_temp.reset_fixture();
+  update public.matches set status = 'playing' where id = 'aaaaaaaa-0000-0000-0000-000000000001';
+  begin
+    update public.matches set status = 'waiting' where id = 'aaaaaaaa-0000-0000-0000-000000000001';
+    raise exception 'ASSERT 13a FAIL: a started room returned to waiting';
+  exception when others then
+    if sqlerrm not like '%cannot return to waiting%' then raise; end if;
+  end;
+end $$;
+
+do $$
+declare n int;
+begin
+  perform pg_temp.reset_fixture('waiting');
+  update public.matches set status = 'abandoned', game_state = '{"reason":"host closed"}'::jsonb
+   where id = 'aaaaaaaa-0000-0000-0000-000000000001' and status = 'waiting';
+  get diagnostics n = row_count;
+  if n <> 1 then raise exception 'ASSERT 13b FAIL: host closing a lobby was blocked (%s rows)', n; end if;
+
+  perform pg_temp.reset_fixture('waiting');
+  begin
+    update public.matches set status = 'completed', winner_index = 0
+     where id = 'aaaaaaaa-0000-0000-0000-000000000001';
+    raise exception 'ASSERT 13c FAIL: winner declared from waiting';
+  exception when others then
+    if sqlerrm not like '%cannot finish before it starts%' then raise; end if;
+  end;
+end $$;
+
 
 reset role;

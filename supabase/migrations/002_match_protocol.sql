@@ -14,7 +14,7 @@ begin
     raise exception 'match status % is not allowed', new_status;
   end if;
 
-  if new_status in ('completed', 'abandoned') and old_status = 'waiting' then
+  if new_status = 'completed' and old_status = 'waiting' then
     raise exception 'a match cannot finish before it starts';
   end if;
 

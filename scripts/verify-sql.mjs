@@ -124,7 +124,8 @@ log('rollback terbukti: pemicu hilang dan aturan tidak lagi menegah');
 psqlFile(join(root, 'supabase/migrations/002_match_protocol.sql'));
 log('pemicu dipasang kembali agar container meninggalkan state yang sama dengan produksi');
 
-log('OK: seluruh assertion protokol (13 blok) lulus di Postgres nyata');
+const blocks = (readFileSync(join(root, 'supabase/tests/protocol.sql'), 'utf8').match(/do \$\$/g) || []).length;
+log(`OK: ${blocks} blok assertion protokol lulus di Postgres nyata`);
 
 if (createdHere) {
   sh('docker', ['rm', '-f', CONTAINER]);
