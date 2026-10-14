@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
   ARENA_RADIUS,
@@ -362,10 +362,11 @@ describe('SlapSim bot actions reach the world', () => {
   });
 });
 
-describe('Slap Arena asset loading against the site CSP', () => {
-  // The GLB pipeline needs two things a strict default-src 'self' blocks: the
-  // meshopt WebAssembly decoder and the blob: URLs three.js creates for embedded
-  // textures. Production shipped broken once because dev has no CSP header at all.
+describe('Slap Arena stays inside the site CSP', () => {
+  // The characters are built from three.js primitives, so the arena needs no
+  // WebAssembly decoder and no blob: object URLs. This asserts that stays true:
+  // re-adding a GLB pipeline would have to widen the policy, and that trade has to
+  // be made on purpose, not by editing a string here.
   const csp = (() => {
     // vitest rewrites import.meta.url, so resolve from the repo root it runs in.
     const raw = readFileSync(resolve(process.cwd(), 'vercel.json'), 'utf8');
@@ -373,21 +374,21 @@ describe('Slap Arena asset loading against the site CSP', () => {
     return entry.value as string;
   })();
 
-  it('allows the WebAssembly decoder used by EXT_meshopt_compression', () => {
-    expect(csp).toMatch(/script-src[^;]*'?wasm-unsafe-eval'?/);
+  it('needs no WebAssembly or blob exception', () => {
+    expect(csp).not.toMatch(/wasm-unsafe-eval/);
+    expect(csp).not.toMatch(/blob:/);
   });
 
-  it('allows blob: for the loader object URLs', () => {
-    expect(csp).toMatch(/connect-src[^;]*blob:/);
-    expect(csp).toMatch(/img-src[^;]*blob:/);
-  });
-
-  it('still refuses arbitrary third-party script origins', () => {
+  it('refuses arbitrary third-party script origins', () => {
     // style-src keeps 'unsafe-inline' on purpose: React writes style attributes
     // throughout the hub, so tightening it here would break unrelated pages.
     const scriptSrc = /script-src([^;]*)/.exec(csp)?.[1] ?? '';
     const origins = [...scriptSrc.matchAll(/https?:\/\/([^\s';]+)/g)].map((m) => m[1]);
     expect(origins).toEqual(['va.vercel-scripts.com']);
+  });
+
+  it('ships no model files', () => {
+    expect(existsSync(resolve(process.cwd(), 'public/models'))).toBe(false);
   });
 });
 

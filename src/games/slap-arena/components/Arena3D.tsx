@@ -2,7 +2,7 @@ import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
 import * as THREE from 'three';
 import type { SlapSim } from '../engine/sim';
 import { ARENA_RADIUS } from '../engine/physics';
-import { BrawlerRig, loadBrawlerSource, type BrawlerSource } from './three/characters';
+import { BrawlerRig, type Pose } from './three/brawler';
 import { ParticleField, createBackdrop, createGroundMarker, createIsland, createSky, type Island } from './three/world';
 
 export interface Arena3DHandle {
@@ -20,9 +20,9 @@ interface Arena3DProps {
   onFps?: (fps: number, quality: 'high' | 'low') => void;
 }
 
-const BASE = import.meta.env.BASE_URL || '/';
-const CHARACTER_URLS = [`${BASE}models/barbarian.glb`, `${BASE}models/knight.glb`];
-const PALETTE_FALLBACK = '#4f8cff';
+const PALETTE_FALLBACK = '#4dabf7';
+const SLAP_SWING = 0.3;
+const DASH_ANIM = 0.22;
 
 interface Entry {
   rig: BrawlerRig;
@@ -35,6 +35,8 @@ interface Entry {
   renderX: number;
   renderZ: number;
   markerColor?: string;
+  slapT: number;
+  dashT: number;
 }
 
 const Arena3D = forwardRef<Arena3DHandle, Arena3DProps>(function Arena3D(
@@ -69,8 +71,6 @@ const Arena3D = forwardRef<Arena3DHandle, Arena3DProps>(function Arena3D(
       return;
     }
 
-    let disposed = false;
-    let contextLost = false;
     const width = container.clientWidth || window.innerWidth;
     const height = container.clientHeight || window.innerHeight;
     let quality: 'high' | 'low' = window.innerWidth < 720 ? 'low' : 'high';
@@ -116,8 +116,6 @@ const Arena3D = forwardRef<Arena3DHandle, Arena3DProps>(function Arena3D(
     scene.add(particles.points);
 
     const entries = new Map<string, Entry>();
-    const sources: BrawlerSource[] = [];
-    let loadError = false;
 
     const shake = { amount: 0, decay: 6 };
     const projected = new THREE.Vector3();
@@ -131,9 +129,9 @@ const Arena3D = forwardRef<Arena3DHandle, Arena3DProps>(function Arena3D(
       return el;
     }
 
-    function addEntry(id: string, name: string, color: string, modelIndex: number): Entry {
+    function addEntry(id: string, name: string, color: string): Entry {
       const group = new THREE.Group();
-      const rig = new BrawlerRig(sources[modelIndex % sources.length], color || PALETTE_FALLBACK);
+      const rig = new BrawlerRig(color || PALETTE_FALLBACK);
       group.add(rig.group);
       const marker = createGroundMarker(color || PALETTE_FALLBACK);
       group.add(marker.group);
@@ -149,6 +147,8 @@ const Arena3D = forwardRef<Arena3DHandle, Arena3DProps>(function Arena3D(
         wobble: Math.random() * 6,
         renderX: p0.x,
         renderZ: p0.z,
+        slapT: -1,
+        dashT: 0,
       };
       entries.set(id, entry);
       return entry;
@@ -212,21 +212,28 @@ const Arena3D = forwardRef<Arena3DHandle, Arena3DProps>(function Arena3D(
     let fpsTimer = 0;
     let slowFrames = 0;
 
-    function pickAnimation(e: Entry, p: { isFalling: boolean; slapCooldown: number; dashCooldown: number; speed: number }): void {
-      if (p.isFalling) {
-        e.rig.once('Death_A');
-        return;
+    /**
+     * Remote brawlers arrive as 20 Hz poses without animation state, so the swing is
+     * detected from the cooldown jumping back up and then played out locally.
+     */
+    function poseFor(e: Entry, p: { isFalling: boolean; slapCooldown: number; dashCooldown: number; hitTimer: number; dashTimer: number; bump: number }, speed: number, cheering: boolean): Pose {
+      if (e.prevSlap - p.slapCooldown > 0.15) e.slapT = 0;
+      else if (e.slapT >= 0) {
+        e.slapT += 1 / 60;
+        if (e.slapT > SLAP_SWING) e.slapT = -1;
       }
-      if (e.prevSlap - p.slapCooldown > 0.15) {
-        e.rig.once(Math.random() > 0.5 ? 'Unarmed_Melee_Attack_Punch_A' : 'Unarmed_Melee_Attack_Punch_B');
-      }
-      if (e.prevDash - p.dashCooldown > 0.5) {
-        e.rig.once('Dodge_Forward');
-      }
-      if (p.speed > 0.7) e.rig.loop('Running_A', Math.min(1.35, 0.7 + p.speed * 0.06));
-      else e.rig.loop('Idle');
+      if (e.prevDash - p.dashCooldown > 0.5) e.dashT = 1;
+      e.dashT = Math.max(0, e.dashT - 1 / 60 / DASH_ANIM);
       e.prevSlap = p.slapCooldown;
       e.prevDash = p.dashCooldown;
+      return {
+        speed,
+        slapT: e.slapT >= 0 ? e.slapT / SLAP_SWING : -1,
+        hitT: p.bump,
+        dashT: e.dashT,
+        falling: p.isFalling,
+        cheering,
+      };
     }
 
     function frame(): void {
@@ -238,13 +245,10 @@ const Arena3D = forwardRef<Arena3DHandle, Arena3DProps>(function Arena3D(
 
       let danger = 0;
       const ids = Object.keys(state.players);
-      ids.forEach((id, index) => {
+      ids.forEach((id) => {
         const p = state.players[id];
         let e = entries.get(id);
-        if (!e) {
-          if (sources.length === 0) return;
-          e = addEntry(id, p.name, p.color, index);
-        }
+        if (!e) e = addEntry(id, p.name, p.color);
         const speed = Math.hypot(p.vx, p.vz);
         e.wobble += dt * (4 + speed);
         if (e.markerColor !== p.color) {
@@ -281,18 +285,12 @@ const Arena3D = forwardRef<Arena3DHandle, Arena3DProps>(function Arena3D(
           if (airborne) danger = Math.max(danger, 1);
         }
 
-        const bump = p.bump;
-        const squash = 1 - bump * 0.16;
-        const stretch = 1 + bump * 0.2;
-        const bob = speed > 0.7 ? Math.abs(Math.sin(e.wobble * 1.6)) * 0.05 : 0;
-        e.group.scale.set(squash, stretch, squash);
-        e.group.position.y = (p.isFalling ? p.fallY : 0) + bob;
-
-        pickAnimation(e, { isFalling: p.isFalling, slapCooldown: p.slapCooldown, dashCooldown: p.dashCooldown, speed });
-        e.rig.update(dt);
+        const celebrating = state.phase !== 'BATTLE' && state.winnerId === id;
+        e.group.position.y = p.isFalling ? p.fallY : 0;
+        e.rig.update(dt, poseFor(e, p, speed, celebrating));
 
         const label = e.label;
-        projected.set(e.renderX, 2.35 + bob, e.renderZ).project(camera);
+        projected.set(e.renderX, 2.95, e.renderZ).project(camera);
         if (projected.z > 1 || p.eliminated) {
           label.style.opacity = '0';
         } else {
@@ -380,33 +378,17 @@ const Arena3D = forwardRef<Arena3DHandle, Arena3DProps>(function Arena3D(
     };
 
     const handleContextLost = (event: Event) => {
+      // Preventing the default is what allows the context to come back at all.
       event.preventDefault();
-      contextLost = true;
       cancelAnimationFrame(animId);
       onError('Kartu grafis melepas koneksi 3D. Muat ulang halaman untuk lanjut main.');
     };
     renderer.domElement.addEventListener('webglcontextlost', handleContextLost);
     window.addEventListener('resize', handleResize);
 
-    (async () => {
-      try {
-        for (const url of CHARACTER_URLS) {
-          const src = await loadBrawlerSource(url);
-          if (disposed) return;
-          sources.push(src);
-        }
-      } catch (err) {
-        loadError = true;
-        console.error('[slap-arena] gagal memuat model karakter', err);
-        onError('Model karakter gagal dimuat. Periksa koneksi lalu muat ulang halaman.');
-        return;
-      }
-      if (disposed || contextLost || loadError) return;
-      frame();
-    })();
+    frame();
 
     return () => {
-      disposed = true;
       cancelAnimationFrame(animId);
       window.removeEventListener('resize', handleResize);
       renderer.domElement.removeEventListener('webglcontextlost', handleContextLost);
