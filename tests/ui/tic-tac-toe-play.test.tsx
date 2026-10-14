@@ -1,7 +1,22 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { TicTacToeLocal } from '@/games/tic-tac-toe/pages/TicTacToeLocal';
+
+// jsdom ships a window.localStorage without its methods, and the app's own guards
+// swallow that failure. Stub the shape so persistence is actually tested.
+beforeEach(() => {
+  const store = new Map<string, string>();
+  Object.defineProperty(window, 'localStorage', {
+    configurable: true,
+    value: {
+      getItem: (k: string) => (store.has(k) ? store.get(k) : null),
+      setItem: (k: string, v: string) => void store.set(k, v),
+      removeItem: (k: string) => void store.delete(k),
+      clear: () => store.clear(),
+    },
+  });
+});
 
 const renderLocal = (entry = '/tic-tac-toe/local') =>
   render(
@@ -22,7 +37,8 @@ describe('Tic Tac Toe played through the real UI', () => {
     play(0, 3, 1, 4, 2);
 
     expect(screen.getByText(/Menang!/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /ronde berikutnya/i })).toBeInTheDocument();
+    // Two of these exist on the page: the scoreboard copy and the dialog's.
+    expect(screen.getByTestId('tictactoe-next-round-btn')).toBeInTheDocument();
   });
 
   it('refuses a second piece on a filled cell by disabling it', () => {

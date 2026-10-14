@@ -131,9 +131,19 @@ const Arena3D = forwardRef<Arena3DHandle, Arena3DProps>(function Arena3D(
     // Dev-only: lets the visual probe hold the camera still and frame one brawler,
     // which is the only way to review the character model up close.
     if (import.meta.env.DEV) {
-      const w = window as unknown as { __slapCam?: THREE.Camera; __slapCamHold?: CamHold | null };
+      const w = window as unknown as {
+        __slapCam?: THREE.Camera;
+        __slapCamHold?: CamHold | null;
+        __slapDiag?: { quality: () => string; shadows: () => boolean; pixelRatio: () => number };
+      };
       w.__slapCam = camera;
       camHold = () => w.__slapCamHold ?? null;
+      // Adaptive quality had no observable output, so nothing could prove it ever fired.
+      w.__slapDiag = {
+        quality: () => quality,
+        shadows: () => renderer.shadowMap.enabled,
+        pixelRatio: () => renderer.getPixelRatio(),
+      };
     }
 
     const entries = new Map<string, Entry>();
