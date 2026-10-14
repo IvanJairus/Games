@@ -182,12 +182,14 @@ export const WallgameLocal: React.FC = () => {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '10px 12px',
           marginBottom: '20px',
           borderBottom: '1px solid var(--line)',
           paddingBottom: '14px',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
           <Link
             to="/wall-game"
             style={{
@@ -225,7 +227,7 @@ export const WallgameLocal: React.FC = () => {
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
           <button
             type="button"
             onClick={() => rulesDialogRef.current?.showModal()}
@@ -568,7 +570,7 @@ export const WallgameLocal: React.FC = () => {
               gap: '10px',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
               <div
                 style={{
                   width: '32px',
@@ -643,7 +645,7 @@ export const WallgameLocal: React.FC = () => {
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: `repeat(${game.playerCount}, minmax(0, 1fr))`,
+              gridTemplateColumns: 'repeat(auto-fit, minmax(min(132px, 100%), 1fr))',
               gap: '8px',
               marginTop: '4px',
             }}
