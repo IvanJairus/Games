@@ -1,4 +1,4 @@
-import React, { useRef, useState, useCallback } from 'react';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
 
 interface VirtualJoystickProps {
   onMove: (vector: { x: number; z: number }) => void;
@@ -24,6 +24,22 @@ export const VirtualJoystick: React.FC<VirtualJoystickProps> = ({
   const [knobPos, setKnobPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [isSlapPressed, setIsSlapPressed] = useState(false);
   const [isDashPressed, setIsDashPressed] = useState(false);
+  const [isTouchDevice, setIsTouchDevice] = useState(false);
+
+  // Detect whether device has touch or coarse pointer capabilities
+  useEffect(() => {
+    const detectTouch = () => {
+      const hasTouch =
+        'ontouchstart' in window ||
+        navigator.maxTouchPoints > 0 ||
+        window.matchMedia('(pointer: coarse)').matches;
+      setIsTouchDevice(hasTouch);
+    };
+
+    detectTouch();
+    window.addEventListener('resize', detectTouch);
+    return () => window.removeEventListener('resize', detectTouch);
+  }, []);
 
   const radius = 55; // Max displacement radius in pixels
 
@@ -101,6 +117,66 @@ export const VirtualJoystick: React.FC<VirtualJoystickProps> = ({
   const slapProgress = slapCooldown > 0 ? slapCooldown / maxSlapCooldown : 0;
   const dashProgress = dashCooldown > 0 ? dashCooldown / maxDashCooldown : 0;
 
+  // DESKTOP VIEW: Sleek Keyboard HUD at bottom (no mobile buttons)
+  if (!isTouchDevice) {
+    return (
+      <div
+        style={{
+          position: 'absolute',
+          bottom: '24px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '14px',
+          backgroundColor: 'rgba(15, 23, 42, 0.85)',
+          backdropFilter: 'blur(10px)',
+          border: '1px solid rgba(255, 255, 255, 0.18)',
+          padding: '8px 22px',
+          borderRadius: '999px',
+          color: '#ffffff',
+          boxShadow: '0 8px 24px rgba(0, 0, 0, 0.35)',
+          pointerEvents: 'none',
+          zIndex: 50,
+          userSelect: 'none',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+          <kbd style={{ backgroundColor: '#334155', padding: '3px 7px', borderRadius: '5px', fontFamily: 'monospace', fontWeight: 700, fontSize: '11px', border: '1px solid #64748b' }}>W</kbd>
+          <kbd style={{ backgroundColor: '#334155', padding: '3px 7px', borderRadius: '5px', fontFamily: 'monospace', fontWeight: 700, fontSize: '11px', border: '1px solid #64748b' }}>A</kbd>
+          <kbd style={{ backgroundColor: '#334155', padding: '3px 7px', borderRadius: '5px', fontFamily: 'monospace', fontWeight: 700, fontSize: '11px', border: '1px solid #64748b' }}>S</kbd>
+          <kbd style={{ backgroundColor: '#334155', padding: '3px 7px', borderRadius: '5px', fontFamily: 'monospace', fontWeight: 700, fontSize: '11px', border: '1px solid #64748b' }}>D</kbd>
+          <span style={{ fontSize: '12px', fontWeight: 600, color: '#e2e8f0', marginLeft: '3px' }}>Gerak</span>
+        </div>
+
+        <span style={{ color: 'rgba(255, 255, 255, 0.25)' }}>•</span>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <kbd style={{ backgroundColor: slapCooldown > 0 ? '#78350f' : '#dc2626', padding: '3px 9px', borderRadius: '5px', fontFamily: 'monospace', fontWeight: 800, fontSize: '11px', border: '1px solid #ef4444' }}>SPASI</kbd>
+          <span style={{ fontSize: '12px', fontWeight: 700, color: '#fca5a5' }}>Tampar (SLAP!)</span>
+          {slapCooldown > 0 && (
+            <span style={{ fontSize: '11px', fontFamily: 'monospace', fontWeight: 700, color: '#fbbf24' }}>
+              ({slapCooldown.toFixed(1)}s)
+            </span>
+          )}
+        </div>
+
+        <span style={{ color: 'rgba(255, 255, 255, 0.25)' }}>•</span>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <kbd style={{ backgroundColor: dashCooldown > 0 ? '#451a03' : '#0284c7', padding: '3px 8px', borderRadius: '5px', fontFamily: 'monospace', fontWeight: 800, fontSize: '11px', border: '1px solid #38bdf8' }}>SHIFT</kbd>
+          <span style={{ fontSize: '12px', fontWeight: 700, color: '#7dd3fc' }}>Dash Terjang</span>
+          {dashCooldown > 0 && (
+            <span style={{ fontSize: '11px', fontFamily: 'monospace', fontWeight: 700, color: '#fbbf24' }}>
+              ({dashCooldown.toFixed(1)}s)
+            </span>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // MOBILE / TOUCH VIEW: Virtual Joystick + Large touch buttons
   return (
     <div
       style={{
@@ -141,7 +217,6 @@ export const VirtualJoystick: React.FC<VirtualJoystickProps> = ({
           position: 'relative',
         }}
       >
-        {/* Subtle center crosshair guide */}
         <div
           style={{
             position: 'absolute',
@@ -230,7 +305,6 @@ export const VirtualJoystick: React.FC<VirtualJoystickProps> = ({
               </svg>
             )}
 
-            {/* Cooldown overlay */}
             {dashCooldown > 0 && (
               <div
                 style={{
@@ -284,7 +358,6 @@ export const VirtualJoystick: React.FC<VirtualJoystickProps> = ({
             }}
             aria-label="Slap button"
           >
-            {/* Boxing glove icon */}
             <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
               <path d="M19 8c0-2.2-1.8-4-4-4-1.2 0-2.3.5-3 1.4C11.3 4.5 10.2 4 9 4 6.8 4 5 5.8 5 8c0 1.2.5 2.3 1.4 3C5.5 11.7 5 12.8 5 14c0 2.2 1.8 4 4 4h6c2.2 0 4-1.8 4-4 0-1.2-.5-2.3-1.4-3 .9-.7 1.4-1.8 1.4-3zM8 19h8v2H8v-2z" />
             </svg>
@@ -292,7 +365,6 @@ export const VirtualJoystick: React.FC<VirtualJoystickProps> = ({
               SLAP!
             </span>
 
-            {/* Cooldown overlay */}
             {slapCooldown > 0 && (
               <div
                 style={{

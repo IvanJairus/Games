@@ -481,9 +481,11 @@ export const SlapArenaMatch: React.FC = () => {
   return (
     <div
       style={{
+        position: 'fixed',
+        inset: 0,
         width: '100vw',
         height: '100dvh',
-        position: 'relative',
+        zIndex: 100,
         overflow: 'hidden',
         backgroundColor: '#0f172a',
         userSelect: 'none',

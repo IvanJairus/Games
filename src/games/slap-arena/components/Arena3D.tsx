@@ -316,26 +316,31 @@ export const Arena3D: React.FC<Arena3DProps> = ({ players, localPlayerId }) => {
 
       // 9. Camera Tracking
       const localP = currentPlayers[localPlayerIdRef.current];
-      if (localP && !localP.isFalling) {
-        const isPortrait = height > width;
-        const camDistY = isPortrait ? 22 : 17;
-        const camDistZ = isPortrait ? 20 : 16;
+      const curW = container ? container.clientWidth : width;
+      const curH = container ? container.clientHeight : height;
+      const isPortrait = curH > curW;
 
-        const targetCamX = localP.x * 0.55;
+      if (localP && !localP.isFalling) {
+        // Desktop is closer and more immersive 3rd-person brawler action; Mobile portrait is elevated to see full ring
+        const camDistY = isPortrait ? 18.5 : 9.5;
+        const camDistZ = isPortrait ? 16.0 : 11.5;
+
+        const targetCamX = localP.x * (isPortrait ? 0.4 : 0.7);
         const targetCamY = camDistY;
-        const targetCamZ = localP.z * 0.55 + camDistZ;
+        const targetCamZ = localP.z * (isPortrait ? 0.4 : 0.7) + camDistZ;
 
         camera.position.x += (targetCamX - camera.position.x) * 0.08;
         camera.position.y += (targetCamY - camera.position.y) * 0.08;
         camera.position.z += (targetCamZ - camera.position.z) * 0.08;
-        camera.lookAt(localP.x * 0.6, 1.0, localP.z * 0.6);
+        camera.lookAt(localP.x * (isPortrait ? 0.4 : 0.85), 1.1, localP.z * (isPortrait ? 0.4 : 0.85));
       } else {
         // Fallback to center view
         camera.position.x += (0 - camera.position.x) * 0.05;
-        camera.position.y += (22 - camera.position.y) * 0.05;
-        camera.position.z += (19 - camera.position.z) * 0.05;
+        camera.position.y += (isPortrait ? 20 : 12) - camera.position.y * 0.05;
+        camera.position.z += (isPortrait ? 17 : 13) - camera.position.z * 0.05;
         camera.lookAt(0, 0, 0);
       }
+
 
       renderer.render(scene, camera);
     };
