@@ -13,7 +13,8 @@
     "test:ui": "vitest run tests/ui",
     "test:coverage": "vitest run --coverage",
     "release:check": "node scripts/release-audit.mjs",
-    "guard:check": "git grep -nE '\\.vercel\\.app' -- ':!registry/' ':!vercel.json' ':!.github/' || true"
+    "db:verify": "node scripts/verify-sql.mjs",
+    "guard:check": "node scripts/guard-check.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.3",
