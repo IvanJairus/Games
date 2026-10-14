@@ -247,6 +247,26 @@ export interface Burst {
   life?: number;
 }
 
+/** Soft round sprite: the default square point reads as on-screen noise. */
+function dotTexture(): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 64;
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    const g = ctx.createRadialGradient(32, 32, 2, 32, 32, 30);
+    g.addColorStop(0, 'rgba(255,255,255,1)');
+    g.addColorStop(0.65, 'rgba(255,255,255,0.95)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(32, 32, 32, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
 /** One pooled Points buffer for every impact, dust and confetti in the scene. */
 export class ParticleField {
   readonly points: THREE.Points;
@@ -258,6 +278,7 @@ export class ParticleField {
   private cursor = 0;
   private geo: THREE.BufferGeometry;
   private mat: THREE.PointsMaterial;
+  private static sprite: THREE.Texture | null = null;
   private readonly capacity: number;
 
   constructor(capacity = 420) {
@@ -272,11 +293,13 @@ export class ParticleField {
     this.geo = new THREE.BufferGeometry();
     this.geo.setAttribute('position', new THREE.BufferAttribute(this.positions, 3));
     this.geo.setAttribute('color', new THREE.BufferAttribute(this.colors, 3));
+    if (!ParticleField.sprite) ParticleField.sprite = dotTexture();
     this.mat = new THREE.PointsMaterial({
-      size: 0.26,
+      size: 0.34,
+      map: ParticleField.sprite,
       vertexColors: true,
       transparent: true,
-      opacity: 0.95,
+      opacity: 0.98,
       depthWrite: false,
       sizeAttenuation: true,
     });
