@@ -197,7 +197,9 @@ export const TicTacToeMatch: React.FC = () => {
     );
 
     if (isOpponentGone) {
-      alert('Lawan telah meninggalkan room dan kembali ke lobby. Tidak dapat melanjutkan ronde berikutnya.');
+      // The victory dialog is still open at this point, so a page-level error
+      // banner would render behind it. This state is the only visible surface.
+      setOpponentLeftNotice('Lawan telah meninggalkan room dan kembali ke lobby. Ronde berikutnya tidak dapat dimulai.');
       return;
     }
 
