@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { RotateCw, ArrowLeft, Trophy, HelpCircle, Home, Sparkles } from 'lucide-react';
 import {
   createTicTacToeGame,
@@ -8,14 +8,27 @@ import {
   getPlayerPieces,
   getOldestPiece,
   TicTacToeState,
+  PlayerSymbol,
 } from '../engine';
 import { TicTacToeBoard } from '../components/TicTacToeBoard';
+import { BOT_LEVELS, BotLevel, chooseBotMove } from '../engine/ai';
+
+const BOT_SYMBOL: PlayerSymbol = 'O';
+
+const readBotLevel = (raw: string | null): BotLevel | null =>
+  raw && BOT_LEVELS.some((level) => level.id === raw) ? (raw as BotLevel) : null;
 
 export const TicTacToeLocal: React.FC = () => {
+  const [params] = useSearchParams();
+  const botLevel = readBotLevel(params.get('bot'));
   const [game, setGame] = useState<TicTacToeState>(() => createTicTacToeGame());
 
   const rulesDialogRef = useRef<HTMLDialogElement>(null);
   const victoryDialogRef = useRef<HTMLDialogElement>(null);
+
+  const botTurn = !!botLevel && game.currentTurn === BOT_SYMBOL && game.status === 'IN_PROGRESS';
+  const seatLabel = (symbol: PlayerSymbol | null) =>
+    symbol ? (botLevel && symbol === BOT_SYMBOL ? 'Bot' : `Pemain ${symbol}`) : '';
 
   // Automatically show victory dialog when a player wins
   useEffect(() => {
@@ -24,8 +37,23 @@ export const TicTacToeLocal: React.FC = () => {
     }
   }, [game.status]);
 
+  useEffect(() => {
+    if (!botLevel || !botTurn) return;
+
+    // The pause is pacing, not search time: the search itself lands in tens of milliseconds.
+    const timer = setTimeout(() => {
+      setGame((prev) => {
+        if (prev.status !== 'IN_PROGRESS' || prev.currentTurn !== BOT_SYMBOL) return prev;
+        return applyMove(prev, chooseBotMove(prev, botLevel));
+      });
+    }, 420);
+
+    return () => clearTimeout(timer);
+  }, [botTurn, botLevel, game]);
+
   const handleCellClick = (index: number) => {
     if (game.status !== 'IN_PROGRESS') return;
+    if (botTurn) return;
     try {
       const next = applyMove(game, index);
       setGame(next);
@@ -113,7 +141,9 @@ export const TicTacToeLocal: React.FC = () => {
               </span>
             </div>
             <div style={{ font: '11px/1.3 var(--mono)', color: 'var(--ink-faint)', marginTop: '2px' }}>
-              Hotseat Lokal · Maksimal 3 Bidak
+              {botLevel
+                ? `Lawan Bot · tingkat ${botLevel}`
+                : 'Hotseat Lokal · Maksimal 3 Bidak'}
             </div>
           </div>
         </div>
@@ -185,7 +215,7 @@ export const TicTacToeLocal: React.FC = () => {
         >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', marginBottom: '2px' }}>
             <span style={{ fontSize: '11px', color: '#b45309', fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase' }}>
-              Pemain X
+              {seatLabel('X')}
             </span>
             <span style={{ fontSize: '10px', color: 'var(--ink-faint)' }}>
               ({getPlayerPieces(game.pieces, 'X').length}/3 Bidak)
@@ -205,7 +235,7 @@ export const TicTacToeLocal: React.FC = () => {
         >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', marginBottom: '2px' }}>
             <span style={{ fontSize: '11px', color: '#451a03', fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase' }}>
-              Pemain O
+              {seatLabel('O')}
             </span>
             <span style={{ fontSize: '10px', color: 'var(--ink-faint)' }}>
               ({getPlayerPieces(game.pieces, 'O').length}/3 Bidak)
@@ -233,7 +263,7 @@ export const TicTacToeLocal: React.FC = () => {
             <div style={{ font: '13px/1.3 var(--mono)', color: 'var(--ink)', fontWeight: 600 }}>
               Giliran Aktif:{' '}
               <strong style={{ color: game.currentTurn === 'X' ? '#b45309' : '#451a03', fontSize: '15px' }}>
-                Pemain {game.currentTurn}
+                {seatLabel(game.currentTurn)}
               </strong>{' '}
               · Bidak ke-{activePlayerPieces.length + 1}
             </div>
@@ -259,7 +289,7 @@ export const TicTacToeLocal: React.FC = () => {
 
         {game.status === 'WIN' && (
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', color: 'var(--gold)', fontWeight: 700, font: '15px/1 var(--mono)' }}>
-            <Trophy size={18} /> Pemain {game.winner} Memenangkan Ronde Ini!
+            <Trophy size={18} /> {seatLabel(game.winner)} Memenangkan Ronde Ini!
           </div>
         )}
       </div>
@@ -271,7 +301,7 @@ export const TicTacToeLocal: React.FC = () => {
         currentTurn={game.currentTurn}
         winningLine={game.winningLine}
         onCellClick={handleCellClick}
-        disabled={game.status !== 'IN_PROGRESS'}
+        disabled={game.status !== 'IN_PROGRESS' || botTurn}
       />
 
       {/* Next Round Button below board */}
@@ -461,7 +491,7 @@ export const TicTacToeLocal: React.FC = () => {
               letterSpacing: '-0.02em',
             }}
           >
-            Pemain {game.winner} Menang!
+            {seatLabel(game.winner)} Menang!
           </h2>
 
           <div
@@ -497,13 +527,13 @@ export const TicTacToeLocal: React.FC = () => {
           >
             <div>
               <div style={{ fontSize: '10px', color: '#b45309', fontWeight: 700, textTransform: 'uppercase' }}>
-                Skor Pemain X
+                Skor {seatLabel('X')}
               </div>
               <div style={{ fontSize: '18px', fontWeight: 700, color: '#b45309' }}>{game.score.X}</div>
             </div>
             <div>
               <div style={{ fontSize: '10px', color: '#451a03', fontWeight: 700, textTransform: 'uppercase' }}>
-                Skor Pemain O
+                Skor {seatLabel('O')}
               </div>
               <div style={{ fontSize: '18px', fontWeight: 700, color: '#451a03' }}>{game.score.O}</div>
             </div>

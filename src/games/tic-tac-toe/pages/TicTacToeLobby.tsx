@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Globe, LogIn, Plus, Users } from 'lucide-react';
 import { createTicTacToeGame } from '../engine';
+import { BOT_LEVELS } from '../engine/ai';
 import { createOnlineRoom } from '../../common/multiplayer';
 import {
   isSupabaseConfigured,
@@ -198,6 +199,64 @@ export const TicTacToeLobby: React.FC = () => {
             >
               Mulai Main Lokal →
             </Link>
+          </div>
+
+          {/* Bot opponent option */}
+          <div
+            style={{
+              background: 'var(--bg-paper)',
+              border: '1px solid var(--line)',
+              borderRadius: 'var(--r2)',
+              padding: '20px',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+            }}
+          >
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+                  <g stroke="var(--gold)" strokeWidth="1.2" fill="none">
+                    <path d="M5.5 1v14M10.5 1v14M1 5.5h14M1 10.5h14" />
+                  </g>
+                  <g strokeWidth="1.6" fill="none" strokeLinecap="round">
+                    <path d="M2 2l2.4 2.4M4.4 2L2 4.4" stroke="var(--ink)" />
+                    <circle cx="13" cy="13" r="1.6" stroke="var(--gold)" />
+                  </g>
+                </svg>
+                <h2 style={{ fontSize: '15px', fontWeight: 700, margin: 0, color: 'var(--ink)' }}>
+                  Lawan Bot
+                </h2>
+              </div>
+              <p style={{ color: 'var(--ink-dim)', fontSize: '13px', lineHeight: 1.5, marginBottom: '14px' }}>
+                Satu pemain melawan komputer. Anda selalu bidak X dan mulai lebih dulu di setiap ronde.
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {BOT_LEVELS.map((level) => (
+                  <Link
+                    key={level.id}
+                    to={`/tic-tac-toe/local?bot=${level.id}`}
+                    data-testid={`tictactoe-bot-link-${level.id}`}
+                    style={{
+                      display: 'block',
+                      padding: '9px 11px',
+                      border: '1px solid var(--line-strong)',
+                      borderRadius: 'var(--r2)',
+                      background: '#ffffff',
+                      color: 'var(--ink)',
+                      textDecoration: 'none',
+                    }}
+                  >
+                    <span style={{ font: '12px/1 var(--mono)', fontWeight: 700, letterSpacing: '.04em' }}>
+                      {level.label}
+                    </span>
+                    <span style={{ display: 'block', fontSize: '11.5px', lineHeight: 1.4, color: 'var(--ink-dim)', marginTop: '3px' }}>
+                      {level.note}
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            </div>
           </div>
 
           {/* Multiplayer Online Option */}
