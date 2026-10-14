@@ -32,3 +32,5 @@ coverage
 !.env.example
 .vercel
 .env*
+
+.cache/

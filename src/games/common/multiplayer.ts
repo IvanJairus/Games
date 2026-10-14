@@ -2,7 +2,7 @@ import { getSupabase, getPlayerSessionId } from '../../lib/supabase';
 import { randomBytes } from '../../lib/random';
 import { RealtimeChannel } from '@supabase/supabase-js';
 
-export type GameType = 'wall-game' | 'tic-tac-toe' | 'battleship';
+export type GameType = 'wall-game' | 'tic-tac-toe' | 'battleship' | 'slap-arena';
 
 export type MatchStatus = 'waiting' | 'playing' | 'completed' | 'abandoned';
 
@@ -447,12 +447,26 @@ export async function leaveOnlineMatch(params: {
   }
 }
 
+export interface MatchSubscriptionExtras {
+  /**
+   * Extra broadcast events to bind. They must be registered before subscribe():
+   * postgres_changes filters are sent to the server at join time, and keeping every
+   * binding in one place avoids games silently missing events after the channel opens.
+   */
+  broadcast?: Record<string, (payload: any) => void>;
+  /** Presence metadata tracked on join, so a closed tab is noticed without a goodbye message. */
+  presence?: { onChange?: () => void };
+  /** Called with the channel join status so callers know when track()/send() are safe. */
+  onStatus?: (status: string) => void;
+}
+
 export function subscribeToMatch(
   roomCode: string,
   onSync: (sync: MatchSyncData) => void,
   onBroadcastMove?: (payload: any) => void,
   onBroadcastLeave?: (payload: any) => void,
-  onConnectionChange?: (state: 'realtime' | 'fallback') => void
+  onConnectionChange?: (state: 'realtime' | 'fallback') => void,
+  extras?: MatchSubscriptionExtras
 ): MatchSubscription {
   const supabase = getSupabase();
   if (!supabase) {
@@ -516,6 +530,14 @@ export function subscribeToMatch(
     config: { broadcast: { self: false } },
   });
 
+  for (const [event, handler] of Object.entries(extras?.broadcast ?? {})) {
+    channel.on('broadcast', { event }, (msg: { payload: unknown }) => handler(msg.payload));
+  }
+
+  if (extras?.presence) {
+    channel.on('presence', { event: 'sync' }, () => extras.presence?.onChange?.());
+  }
+
   channel
     .on('broadcast', { event: 'game_move' }, (event) => {
       if (closed) return;
@@ -545,7 +567,10 @@ export function subscribeToMatch(
     )
     .subscribe((status) => {
       realtimeUp = status === 'SUBSCRIBED';
-      if (!closed) onConnectionChange?.(realtimeUp ? 'realtime' : 'fallback');
+      if (!closed) {
+        onConnectionChange?.(realtimeUp ? 'realtime' : 'fallback');
+        extras?.onStatus?.(status);
+      }
     });
 
   void sync();
