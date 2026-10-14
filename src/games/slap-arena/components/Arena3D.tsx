@@ -5,6 +5,15 @@ import { ARENA_RADIUS } from '../engine/physics';
 import { BrawlerRig, type Pose } from './three/brawler';
 import { ParticleField, createBackdrop, createGroundMarker, createIsland, createSky, type Island } from './three/world';
 
+interface CamHold {
+  x: number;
+  y: number;
+  z: number;
+  lx: number;
+  ly: number;
+  lz: number;
+}
+
 export interface Arena3DHandle {
   impact(x: number, z: number, color: string, strength: number, label?: string): void;
   koBurst(x: number, z: number, color: string): void;
@@ -90,7 +99,9 @@ const Arena3D = forwardRef<Arena3DHandle, Arena3DProps>(function Arena3D(
     const camera = new THREE.PerspectiveCamera(46, width / height, 0.1, 500);
     camera.position.set(0, 14, 18);
 
-    const hemi = new THREE.HemisphereLight('#ffffff', '#6fcf7c', 1.15);
+    // A green ground bounce is what turned every face olive: the sky colour must
+    // not be the only thing feeding the underside of a character.
+    const hemi = new THREE.HemisphereLight('#ffffff', '#cfd6dd', 1.35);
     scene.add(hemi);
     const sun = new THREE.DirectionalLight('#fff4d6', 1.5);
     sun.position.set(12, 24, 10);
@@ -114,6 +125,16 @@ const Arena3D = forwardRef<Arena3DHandle, Arena3DProps>(function Arena3D(
     scene.add(backdrop.group);
     const particles = new ParticleField();
     scene.add(particles.points);
+
+    let camHold: () => CamHold | null = () => null;
+
+    // Dev-only: lets the visual probe hold the camera still and frame one brawler,
+    // which is the only way to review the character model up close.
+    if (import.meta.env.DEV) {
+      const w = window as unknown as { __slapCam?: THREE.Camera; __slapCamHold?: CamHold | null };
+      w.__slapCam = camera;
+      camHold = () => w.__slapCamHold ?? null;
+    }
 
     const entries = new Map<string, Entry>();
 
@@ -312,6 +333,7 @@ const Arena3D = forwardRef<Arena3DHandle, Arena3DProps>(function Arena3D(
         .sort((a, b) => b.score - a.score)
         .find((p) => !p.isFalling && !p.eliminated);
       const follow = me && !me.isFalling ? me : leader ?? me;
+      const hold = camHold();
       const w = stage.clientWidth;
       const h = stage.clientHeight;
       const aspect = w / Math.max(1, h);
@@ -319,7 +341,9 @@ const Arena3D = forwardRef<Arena3DHandle, Arena3DProps>(function Arena3D(
       // distance is derived from whichever axis is the tight fit.
       const fovRad = (camera.fov * Math.PI) / 180;
       const needV = (ARENA_RADIUS + 1.6) / Math.tan(fovRad / 2);
-      const needH = (ARENA_RADIUS + 1.6) / (Math.tan(fovRad / 2) * aspect);
+      // A tall viewport can never fit the whole disc horizontally without shrinking
+      // the brawlers to ants, so the lip is allowed to crop and the camera follows.
+      const needH = ((ARENA_RADIUS + 1.6) * 0.78) / (Math.tan(fovRad / 2) * aspect);
       const fit = Math.max(needV, needH);
       const wide = aspect > 1.4;
       const dist = fit * (wide ? 1.06 : 0.87);
@@ -328,16 +352,22 @@ const Arena3D = forwardRef<Arena3DHandle, Arena3DProps>(function Arena3D(
       const fz = follow ? follow.z * 0.5 : 0;
       const k = 1 - Math.pow(0.0015, dt);
 
-      camera.position.x += (fx - camera.position.x) * k;
-      camera.position.y += (high - camera.position.y) * k;
-      camera.position.z += (fz + dist - camera.position.z) * k;
+      if (hold) {
+        camera.position.set(hold.x, hold.y, hold.z);
+        camera.lookAt(hold.lx, hold.ly, hold.lz);
+      }
+      if (!hold) {
+        camera.position.x += (fx - camera.position.x) * k;
+        camera.position.y += (high - camera.position.y) * k;
+        camera.position.z += (fz + dist - camera.position.z) * k;
+      }
 
       if (shake.amount > 0.001) {
         camera.position.x += (Math.random() - 0.5) * shake.amount;
         camera.position.y += (Math.random() - 0.5) * shake.amount;
         shake.amount = Math.max(0, shake.amount - dt * shake.decay * shake.amount * 3 - dt * 0.12);
       }
-      camera.lookAt(fx * 0.6, 1.1, fz * 0.6);
+      if (!hold) camera.lookAt(fx * 0.6, 1.1, fz * 0.6);
 
       renderer.render(scene, camera);
 
