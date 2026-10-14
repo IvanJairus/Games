@@ -92,18 +92,22 @@ export const SlapArenaMatch: React.FC = () => {
   const stickRef = useRef({ x: 0, y: 0 });
   const keysRef = useRef<Record<string, boolean>>({});
   const fxQueue = useRef<SimEvent[]>([]);
-  const hitStopUntil = useRef(0);
   const matchIdRef = useRef<string | null>(null);
   const lastCount = useRef(0);
   const netStatsRef = useRef<ArenaNet | null>(null);
+  const hitStopUntil = useRef(0);
+
+  // Chained hits must not stack into one long freeze.
+  const hitStop = useCallback(() => {
+    const now = performance.now();
+    if (now > hitStopUntil.current) hitStopUntil.current = now + HIT_STOP_MS;
+  }, []);
 
   const sim = useMemo(() => {
     const s = new SlapSim({ localId, authoritative: isSolo, scoreToWin: 3 });
     s.onEvent = (event) => {
       if (s.authoritative) fxQueue.current.push(event);
-      handleSimEvent(event, s, arenaRef.current, reducedMotion, () => {
-        hitStopUntil.current = performance.now() + HIT_STOP_MS;
-      });
+      handleSimEvent(event, s, arenaRef.current, reducedMotion, hitStop);
     };
     return s;
   }, [localId, isSolo, reducedMotion]);
@@ -292,12 +296,7 @@ export const SlapArenaMatch: React.FC = () => {
                   sim.applySnapshot(snap);
                   setHud((prev) => ({ ...prev, peers: snap.players.length }));
                 },
-                onFx: (events) =>
-                  events.forEach((ev) =>
-                    handleSimEvent(ev, sim, arenaRef.current, reducedMotion, () => {
-                      hitStopUntil.current = performance.now() + HIT_STOP_MS;
-                    })
-                  ),
+                onFx: (events) => events.forEach((ev) => handleSimEvent(ev, sim, arenaRef.current, reducedMotion, hitStop)),
               });
               net.start();
               netStatsRef.current = net;
@@ -342,10 +341,11 @@ export const SlapArenaMatch: React.FC = () => {
       inputRef.current.x = x;
       inputRef.current.z = z;
 
-      if (now >= hitStopUntil.current) {
-        sim.setInput(localId, inputRef.current);
-        sim.step(dt);
-      }
+      // Freeze with a zero step rather than skipping the call: skipping leaves the
+      // next frame to integrate the whole paused span at once, which reads as a
+      // stutter on desktop where hits land in bursts.
+      sim.setInput(localId, inputRef.current);
+      sim.step(now < hitStopUntil.current ? 0 : dt);
       inputRef.current.slap = false;
       inputRef.current.dash = false;
     };
@@ -408,6 +408,10 @@ export const SlapArenaMatch: React.FC = () => {
     return () => clearTimeout(t);
   }, [hud.phase, hud.round, disconnected, fatal, isHost, isSolo, advance]);
 
+  const releaseStick = useCallback(() => {
+    stickRef.current = { x: 0, y: 0 };
+  }, []);
+
   const exitToLobby = useCallback(async () => {
     if (!isSolo && matchIdRef.current && roomCode) {
       try {
@@ -462,6 +466,7 @@ export const SlapArenaMatch: React.FC = () => {
           onMove={(x, y) => {
             stickRef.current = { x, y };
           }}
+          onRelease={releaseStick}
           onSlap={() => {
             inputRef.current.slap = true;
           }}
