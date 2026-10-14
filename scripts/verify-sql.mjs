@@ -100,6 +100,30 @@ try {
   fail('asserti protokol gagal', String(err.stderr || err.stdout || err.message));
 }
 
+log('menguji rollback: pemicu harus benar-benar hilang');
+psqlFile(join(root, 'supabase/rollback/002_match_protocol.sql'));
+
+const after = psql(`
+  do $$ begin
+    if exists (select 1 from pg_trigger where tgname = 'enforce_match_protocol') then
+      raise exception 'ROLLBACK FAIL: the trigger is still attached';
+    end if;
+    -- Tanpa pemicu, aturan lama harus bisa ditulisi lagi.
+    perform pg_temp.reset_fixture();
+    update public.matches set status = 'finished' where id = 'aaaaaaaa-0000-0000-0000-000000000001';
+    if (select status from public.matches where id = 'aaaaaaaa-0000-0000-0000-000000000001') <> 'finished' then
+      raise exception 'ROLLBACK FAIL: status rule still enforced';
+    end if;
+  end $$;
+  select count(*) as trigger_count from pg_trigger where tgname = 'enforce_match_protocol';
+`, ['-q', '-t', '-A']);
+
+if (!/\n0\s*$/.test('\n' + after.trim())) fail('rollback tidak menghabiskan pemicu', after);
+log('rollback terbukti: pemicu hilang dan aturan tidak lagi menegah');
+
+psqlFile(join(root, 'supabase/migrations/002_match_protocol.sql'));
+log('pemicu dipasang kembali agar container meninggalkan state yang sama dengan produksi');
+
 log('OK: seluruh assertion protokol (13 blok) lulus di Postgres nyata');
 
 if (createdHere) {
