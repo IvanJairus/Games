@@ -370,6 +370,38 @@ export async function startOnlineMatch(
   return { ok: true };
 }
 
+/**
+ * Mark a finished match. The client writes only the room's own state; the history
+ * row that the hub counts is inserted by a database trigger on this transition, so
+ * no client can inflate or erase it. Replaying a match goes through
+ * `startOnlineMatch(id, undefined, ['completed'])`.
+ */
+export async function finishOnlineMatch(params: {
+  matchId: string;
+  winnerIndex: number | null;
+}): Promise<MoveResult> {
+  const supabase = getSupabase();
+  if (!supabase) return { ok: false, failure: 'unconfigured' };
+
+  const { data, error } = await supabase
+    .from('matches')
+    .update({
+      status: 'completed',
+      winner_index: params.winnerIndex,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', params.matchId)
+    .eq('status', 'playing')
+    .select('id');
+
+  if (error) return { ok: false, failure: 'network', message: error.message };
+  if (!data || data.length === 0) {
+    return { ok: false, failure: 'stale', message: 'Pertandingan sudah tercatat selesai' };
+  }
+
+  return { ok: true };
+}
+
 export async function leaveOnlineMatch(params: {
   matchId: string;
   roomCode: string;
