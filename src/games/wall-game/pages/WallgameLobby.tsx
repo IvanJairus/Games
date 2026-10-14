@@ -157,6 +157,7 @@ export const WallgameLobby: React.FC = () => {
               </h2>
               <p style={{ color: 'var(--ink-dim)', fontSize: '13px', lineHeight: 1.5, marginBottom: '20px' }}>
                 Bermain bersama di satu layar bergantian. Pilihan 2 hingga 6 pemain dengan posisi awal simetris.
+                Kursi yang tidak dipakai manusia bisa diisi bot.
               </p>
             </div>
             <Link
