@@ -54,4 +54,70 @@ describe('Multiplayer Core Suite', () => {
       expect(getStoredPlayerName()).toBe('Ksatria Emas');
     });
   });
+
+  describe('leaveOnlineMatch', () => {
+    it('marks match as abandoned when leaving a completed match', async () => {
+      const { leaveOnlineMatch } = await import('../../src/games/common/multiplayer');
+      const supabaseModule = await import('../../src/lib/supabase');
+
+      const updateMock = vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ error: null }) });
+      const deleteMock = vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ error: null }) }) });
+      const singleMock = vi.fn().mockResolvedValue({
+        data: {
+          id: 'test-match-123',
+          status: 'completed',
+          max_players: 2,
+          game_state: { winner: 'O' },
+        },
+      });
+
+      const channelMock = {
+        subscribe: vi.fn().mockResolvedValue({}),
+        send: vi.fn(),
+      };
+
+      const mockClient: any = {
+        from: vi.fn((table: string) => {
+          if (table === 'matches') {
+            return {
+              select: vi.fn().mockReturnValue({
+                eq: vi.fn().mockReturnValue({ single: singleMock }),
+              }),
+              update: updateMock,
+            };
+          }
+          if (table === 'match_players') {
+            return {
+              delete: deleteMock,
+            };
+          }
+          return {};
+        }),
+        channel: vi.fn().mockReturnValue(channelMock),
+      };
+
+      vi.spyOn(supabaseModule, 'getSupabase').mockReturnValue(mockClient);
+
+      await leaveOnlineMatch({
+        matchId: 'test-match-123',
+        roomCode: 'TEST99',
+        playerIndex: 1,
+        playerName: 'Pemain 176',
+      });
+
+      // Verify player deleted from match_players
+      expect(deleteMock).toHaveBeenCalled();
+
+      // Verify match marked as abandoned in matches table
+      expect(updateMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'abandoned',
+          game_state: expect.objectContaining({
+            abandonedBy: 'Pemain 176',
+            abandonedReason: expect.stringContaining('Pemain 176 telah meninggalkan room'),
+          }),
+        })
+      );
+    });
+  });
 });

@@ -292,14 +292,15 @@ export async function leaveOnlineMatch(params: {
         updated_at: new Date().toISOString(),
       })
       .eq('id', params.matchId);
-  } else if (match.status === 'waiting' && params.playerIndex === 0) {
+  } else if (match.status === 'completed' || match.status === 'waiting') {
     await supabase
       .from('matches')
       .update({
         status: 'abandoned',
         game_state: {
           ...(match.game_state || {}),
-          abandonedReason: 'Host telah menutup room ini',
+          abandonedBy: params.playerName,
+          abandonedReason: `${params.playerName} telah meninggalkan room dan kembali ke lobby`,
         },
         updated_at: new Date().toISOString(),
       })
@@ -307,15 +308,18 @@ export async function leaveOnlineMatch(params: {
   }
 
   // Broadcast leave event
-  const channel = supabase.channel(`room:${params.roomCode}`);
-  channel.send({
-    type: 'broadcast',
-    event: 'player_left',
-    payload: {
-      playerIndex: params.playerIndex,
-      playerName: params.playerName,
-    },
-  });
+  try {
+    const channel = supabase.channel(`room:${params.roomCode}`);
+    await channel.subscribe();
+    channel.send({
+      type: 'broadcast',
+      event: 'player_left',
+      payload: {
+        playerIndex: params.playerIndex,
+        playerName: params.playerName,
+      },
+    });
+  } catch {}
 }
 
 export function subscribeToMatch(

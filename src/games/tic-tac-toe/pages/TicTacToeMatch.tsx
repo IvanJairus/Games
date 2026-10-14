@@ -171,6 +171,18 @@ export const TicTacToeMatch: React.FC = () => {
 
   const handleNextRound = async () => {
     if (!syncData || isSubmitting) return;
+
+    const isOpponentGone = Boolean(
+      opponentLeftNotice ||
+      syncData.match.status === 'abandoned' ||
+      syncData.players.length < 2
+    );
+
+    if (isOpponentGone) {
+      alert('Lawan telah meninggalkan room dan kembali ke lobby. Tidak dapat melanjutkan ronde berikutnya.');
+      return;
+    }
+
     try {
       setIsSubmitting(true);
       victoryDialogRef.current?.close();
@@ -272,6 +284,11 @@ export const TicTacToeMatch: React.FC = () => {
 
   const isAbandoned = match.status === 'abandoned';
   const didIWinByAbandon = isAbandoned && match.winner_index === myPlayerIndex;
+  const isOpponentLeft = Boolean(
+    opponentLeftNotice ||
+    isAbandoned ||
+    (match.status !== 'waiting' && players.length < 2)
+  );
 
   return (
     <div style={{ maxWidth: '640px', margin: '24px auto', padding: '0 16px' }}>
@@ -563,53 +580,67 @@ export const TicTacToeMatch: React.FC = () => {
         </div>
 
         <h2 id="ttt-online-victory-title" style={{ fontSize: '22px', fontWeight: 800, margin: '0 0 6px', color: 'var(--ink)' }}>
-          {game.winner === mySymbol ? 'Selamat, Anda Menang!' : `Pemenang: Pemain ${game.winner}!`}
+          {isOpponentLeft
+            ? 'Pertandingan Selesai'
+            : game.winner === mySymbol
+            ? 'Selamat, Anda Menang!'
+            : `Pemenang: Pemain ${game.winner}!`}
         </h2>
 
         <p style={{ fontSize: '13.5px', color: 'var(--ink-dim)', marginBottom: '24px', lineHeight: 1.5 }}>
-          Pemain {game.winner === 'X' ? p1?.name : p2?.name} ({game.winner}) berhasil menyusun 3 bidak segaris.
+          {isOpponentLeft ? (
+            <span style={{ color: 'var(--terracotta)', fontWeight: 600 }}>
+              {opponentLeftNotice || 'Lawan telah meninggalkan room dan kembali ke lobby.'}
+            </span>
+          ) : (
+            `Pemain ${game.winner === 'X' ? p1?.name : p2?.name} (${game.winner}) berhasil menyusun 3 bidak segaris.`
+          )}
         </p>
 
         <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+          {!isOpponentLeft && (
+            <button
+              type="button"
+              onClick={handleNextRound}
+              disabled={isSubmitting}
+              data-testid="ttt-next-round-btn"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '10px 20px',
+                background: 'var(--gold)',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: 'var(--r2)',
+                font: '12px/1 var(--mono)',
+                fontWeight: 700,
+                cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                textTransform: 'uppercase',
+              }}
+            >
+              <RotateCw size={13} /> Ronde Berikutnya
+            </button>
+          )}
           <button
             type="button"
-            onClick={handleNextRound}
-            disabled={isSubmitting}
+            onClick={handleExitRoom}
+            data-testid="ttt-victory-exit-lobby-btn"
             style={{
               display: 'inline-flex',
               alignItems: 'center',
               gap: '6px',
-              padding: '10px 20px',
-              background: 'var(--gold)',
-              color: '#ffffff',
-              border: 'none',
-              borderRadius: 'var(--r2)',
-              font: '12px/1 var(--mono)',
-              fontWeight: 700,
-              cursor: isSubmitting ? 'not-allowed' : 'pointer',
-              textTransform: 'uppercase',
-            }}
-          >
-            <RotateCw size={13} /> Ronde Berikutnya
-          </button>
-          <button
-            type="button"
-            onClick={() => navigate('/tic-tac-toe')}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '10px 16px',
-              background: '#ffffff',
-              color: 'var(--ink)',
-              border: '1px solid var(--line-strong)',
+              padding: '10px 18px',
+              background: isOpponentLeft ? 'var(--gold)' : '#ffffff',
+              color: isOpponentLeft ? '#ffffff' : 'var(--ink)',
+              border: isOpponentLeft ? 'none' : '1px solid var(--line-strong)',
               borderRadius: 'var(--r2)',
               font: '12px/1 var(--mono)',
               fontWeight: 700,
               cursor: 'pointer',
             }}
           >
-            <Home size={13} /> Lobby
+            <Home size={13} /> {isOpponentLeft ? 'Kembali ke Lobby' : 'Lobby'}
           </button>
         </div>
       </dialog>

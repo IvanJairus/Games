@@ -229,6 +229,18 @@ export const WallgameMatch: React.FC = () => {
 
   const handleRestartMatch = async () => {
     if (!syncData) return;
+
+    const isOpponentGone = Boolean(
+      opponentLeftNotice ||
+      syncData.match.status === 'abandoned' ||
+      syncData.players.length < 2
+    );
+
+    if (isOpponentGone) {
+      setActionError('Pemain lawan telah meninggalkan room. Tidak dapat mengulang pertandingan.');
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       const pCount = syncData.players.length;
