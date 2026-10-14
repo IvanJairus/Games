@@ -1,4 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import {
   ARENA_RADIUS,
   PLAYER_RADIUS,
@@ -320,6 +322,35 @@ describe('Slap Arena realtime protocol shape', () => {
     expect(isSnapshot({ players: [], phase: 'BATTLE' })).toBe(false);
     expect(isFxBatch([{ kind: 'ko' }])).toBe(true);
     expect(isFxBatch({ kind: 'ko' })).toBe(false);
+  });
+});
+
+describe('Slap Arena asset loading against the site CSP', () => {
+  // The GLB pipeline needs two things a strict default-src 'self' blocks: the
+  // meshopt WebAssembly decoder and the blob: URLs three.js creates for embedded
+  // textures. Production shipped broken once because dev has no CSP header at all.
+  const csp = (() => {
+    // vitest rewrites import.meta.url, so resolve from the repo root it runs in.
+    const raw = readFileSync(resolve(process.cwd(), 'vercel.json'), 'utf8');
+    const entry = JSON.parse(raw).headers.flatMap((h: any) => h.headers ?? []).find((h: any) => h.key === 'Content-Security-Policy');
+    return entry.value as string;
+  })();
+
+  it('allows the WebAssembly decoder used by EXT_meshopt_compression', () => {
+    expect(csp).toMatch(/script-src[^;]*'?wasm-unsafe-eval'?/);
+  });
+
+  it('allows blob: for the loader object URLs', () => {
+    expect(csp).toMatch(/connect-src[^;]*blob:/);
+    expect(csp).toMatch(/img-src[^;]*blob:/);
+  });
+
+  it('still refuses arbitrary third-party script origins', () => {
+    // style-src keeps 'unsafe-inline' on purpose: React writes style attributes
+    // throughout the hub, so tightening it here would break unrelated pages.
+    const scriptSrc = /script-src([^;]*)/.exec(csp)?.[1] ?? '';
+    const origins = [...scriptSrc.matchAll(/https?:\/\/([^\s';]+)/g)].map((m) => m[1]);
+    expect(origins).toEqual(['va.vercel-scripts.com']);
   });
 });
 
