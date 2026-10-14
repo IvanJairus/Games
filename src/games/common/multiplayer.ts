@@ -1,11 +1,16 @@
 import { getSupabase, getPlayerSessionId } from '../../lib/supabase';
+import { randomBytes } from '../../lib/random';
 import { RealtimeChannel } from '@supabase/supabase-js';
+
+export type GameType = 'wall-game' | 'tic-tac-toe' | 'battleship';
+
+export type MatchStatus = 'waiting' | 'playing' | 'completed' | 'abandoned';
 
 export interface MatchRow {
   id: string;
   room_code: string;
-  game_type: 'wall-game' | 'tic-tac-toe';
-  status: 'waiting' | 'playing' | 'completed' | 'abandoned';
+  game_type: GameType;
+  status: MatchStatus;
   max_players: number;
   current_turn: number;
   game_state: any;
@@ -32,17 +37,71 @@ export interface MatchSyncData {
   isHost: boolean;
 }
 
-const CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+type MatchWithPlayers = MatchRow & { match_players?: PlayerRow[] | null };
+
+export type MoveFailure = 'turn' | 'stale' | 'network' | 'unconfigured';
+
+export interface MoveResult {
+  ok: boolean;
+  failure?: MoveFailure;
+  message?: string;
+}
+
+export interface MatchSubscription {
+  unsubscribe: () => void;
+  channel: RealtimeChannel | null;
+}
+
+const ROOM_CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+// A room code is the only thing standing between an anon key and somebody else's match.
 export const generateRoomCode = (): string => {
-  let result = '';
-  for (let i = 0; i < 6; i++) {
-    result += CHARS.charAt(Math.floor(Math.random() * CHARS.length));
-  }
-  return result;
+  const bytes = randomBytes(6);
+  return Array.from(bytes, (b) => ROOM_CODE_CHARS[b % ROOM_CODE_CHARS.length]).join('');
 };
 
+const normCode = (code: string): string => code.trim().toUpperCase();
+
+const toMatchRow = (row: MatchWithPlayers): MatchRow => ({
+  id: row.id,
+  room_code: row.room_code,
+  game_type: row.game_type,
+  status: row.status,
+  max_players: row.max_players,
+  current_turn: row.current_turn,
+  game_state: row.game_state,
+  winner_index: row.winner_index,
+  created_at: row.created_at,
+  updated_at: row.updated_at,
+});
+
+// One round trip: PostgREST embeds the roster through the match_players.match_id foreign key.
+async function fetchRoom(roomCode: string): Promise<MatchSyncData | null> {
+  const supabase = getSupabase();
+  if (!supabase) return null;
+
+  const { data, error } = await supabase
+    .from('matches')
+    .select('*, match_players(*)')
+    .eq('room_code', normCode(roomCode))
+    .single();
+
+  if (error || !data) return null;
+
+  const row = data as MatchWithPlayers;
+  const players = [...(row.match_players || [])].sort((a, b) => a.player_index - b.player_index);
+  const me = players.find((p) => p.session_id === getPlayerSessionId());
+
+  return {
+    match: toMatchRow(row),
+    players,
+    myPlayerIndex: me ? me.player_index : -1,
+    isHost: me ? me.is_host : false,
+  };
+}
+
 export async function createOnlineRoom(params: {
-  gameType: 'wall-game' | 'tic-tac-toe';
+  gameType: GameType;
   maxPlayers: number;
   hostName: string;
   initialState: any;
@@ -90,32 +149,21 @@ export async function createOnlineRoom(params: {
 export async function joinOnlineRoom(params: {
   roomCode: string;
   playerName: string;
+  startWhenFull?: boolean;
 }): Promise<{ matchId: string; playerIndex: number; isHost: boolean }> {
   const supabase = getSupabase();
   if (!supabase) throw new Error('Supabase belum terkonfigurasi');
 
   const sessionId = getPlayerSessionId();
-  const code = params.roomCode.trim().toUpperCase();
+  const current = await fetchRoom(params.roomCode);
 
-  const { data: match, error: matchErr } = await supabase
-    .from('matches')
-    .select('*')
-    .eq('room_code', code)
-    .single();
-
-  if (matchErr || !match) {
+  if (!current) {
     throw new Error('Room tidak ditemukan. Pastikan kode room benar.');
   }
 
-  const { data: players, error: playersErr } = await supabase
-    .from('match_players')
-    .select('*')
-    .eq('match_id', match.id)
-    .order('player_index', { ascending: true });
+  const { match, players } = current;
 
-  if (playersErr) throw new Error(playersErr.message);
-
-  const existingPlayer = players?.find((p) => p.session_id === sessionId);
+  const existingPlayer = players.find((p) => p.session_id === sessionId);
   if (existingPlayer) {
     return {
       matchId: match.id,
@@ -124,7 +172,7 @@ export async function joinOnlineRoom(params: {
     };
   }
 
-  if (players && players.length >= match.max_players) {
+  if (players.length >= match.max_players) {
     throw new Error('Room sudah penuh');
   }
 
@@ -132,52 +180,39 @@ export async function joinOnlineRoom(params: {
     throw new Error('Permainan di room ini sudah berlangsung');
   }
 
-  const takenIndices = new Set(players?.map((p) => p.player_index) || []);
+  const takenIndices = new Set(players.map((p) => p.player_index));
   let nextIndex = 0;
   while (takenIndices.has(nextIndex)) {
     nextIndex++;
   }
 
-  const isHost = nextIndex === 0;
-  const { error: insertErr } = await supabase.from('match_players').insert({
-    match_id: match.id,
-    player_index: nextIndex,
-    session_id: sessionId,
-    name: params.playerName || `Pemain ${nextIndex + 1}`,
-    is_host: isHost,
-    connected: true,
-  });
+  const insertSeat = (index: number, asHost: boolean) =>
+    supabase.from('match_players').insert({
+      match_id: match.id,
+      player_index: index,
+      session_id: sessionId,
+      name: params.playerName || `Pemain ${index + 1}`,
+      is_host: asHost,
+      connected: true,
+    });
+
+  const { error: insertErr } = await insertSeat(nextIndex, nextIndex === 0);
 
   if (insertErr) {
-    const { data: recheckPlayers } = await supabase
-      .from('match_players')
-      .select('*')
-      .eq('match_id', match.id);
+    const latest = await fetchRoom(params.roomCode);
+    const me = latest?.players.find((p) => p.session_id === sessionId);
 
-    const me = recheckPlayers?.find((p) => p.session_id === sessionId);
     if (me) {
-      return {
-        matchId: match.id,
-        playerIndex: me.player_index,
-        isHost: me.is_host,
-      };
+      return { matchId: match.id, playerIndex: me.player_index, isHost: me.is_host };
     }
 
-    if (insertErr.code === '23505') {
-      const occupied = new Set(recheckPlayers?.map((p) => p.player_index) || []);
+    if (insertErr.code === '23505' && latest) {
+      const occupied = new Set(latest.players.map((p) => p.player_index));
       let retryIdx = 0;
       while (occupied.has(retryIdx)) retryIdx++;
 
       if (retryIdx < match.max_players) {
-        const { error: retryErr } = await supabase.from('match_players').insert({
-          match_id: match.id,
-          player_index: retryIdx,
-          session_id: sessionId,
-          name: params.playerName || `Pemain ${retryIdx + 1}`,
-          is_host: false,
-          connected: true,
-        });
-
+        const { error: retryErr } = await insertSeat(retryIdx, false);
         if (!retryErr) {
           return { matchId: match.id, playerIndex: retryIdx, isHost: false };
         }
@@ -187,14 +222,16 @@ export async function joinOnlineRoom(params: {
     throw new Error('Gagal bergabung ke room. Room mungkin sudah penuh atau sedang diproses.');
   }
 
-  if (match.game_type === 'tic-tac-toe' && (players?.length || 0) + 1 >= match.max_players) {
+  // Two joiners can each count the room as one seat short, so the start needs its own row guard.
+  if (params.startWhenFull && players.length + 1 >= match.max_players) {
     await supabase
       .from('matches')
       .update({ status: 'playing', updated_at: new Date().toISOString() })
-      .eq('id', match.id);
+      .eq('id', match.id)
+      .eq('status', 'waiting');
   }
 
-  return { matchId: match.id, playerIndex: nextIndex, isHost };
+  return { matchId: match.id, playerIndex: nextIndex, isHost: nextIndex === 0 };
 }
 
 export async function submitOnlineMove(params: {
@@ -205,9 +242,13 @@ export async function submitOnlineMove(params: {
   nextTurn: number;
   winnerIndex?: number | null;
   newStatus?: 'playing' | 'completed';
-}): Promise<void> {
+  moveSummary?: Record<string, unknown>;
+  expectTurn?: boolean;
+  statusGuard?: MatchStatus;
+  basedOn?: string;
+}): Promise<MoveResult> {
   const supabase = getSupabase();
-  if (!supabase) return;
+  if (!supabase) return { ok: false, failure: 'unconfigured' };
 
   const updates: Partial<MatchRow> = {
     game_state: params.nextState,
@@ -222,31 +263,111 @@ export async function submitOnlineMove(params: {
     updates.status = params.newStatus;
   }
 
-  await Promise.all([
-    supabase.from('matches').update(updates).eq('id', params.matchId),
-    supabase.from('match_moves').insert({
-      match_id: params.matchId,
-      player_index: params.playerIndex,
-      action: params.action,
-      payload: params.nextState,
-    }),
-  ]);
+  // Postgres re-checks these predicates under a row lock, so two players firing at the same
+  // moment cannot both land. The loser gets zero rows back instead of overwriting the win.
+  let query = supabase.from('matches').update(updates).eq('id', params.matchId);
+  if (params.expectTurn !== false) {
+    query = query.eq('current_turn', params.playerIndex);
+  }
+  if (params.statusGuard) {
+    query = query.eq('status', params.statusGuard);
+  }
+  // The turn predicate alone is not enough: after player A moves, the row legitimately belongs to
+  // player B, so B's stale board would still pass. updated_at is the token tying a move to the
+  // exact row version it was computed from.
+  if (params.basedOn) {
+    query = query.eq('updated_at', params.basedOn);
+  }
+
+  const { data, error } = await query.select('id');
+
+  if (error) {
+    return { ok: false, failure: 'network', message: error.message };
+  }
+
+  if (!data || data.length === 0) {
+    const { data: current } = await supabase
+      .from('matches')
+      .select('current_turn, status, updated_at')
+      .eq('id', params.matchId)
+      .single();
+
+    if (!current) {
+      return { ok: false, failure: 'network', message: 'Room tidak ditemukan' };
+    }
+    if (params.basedOn && current.updated_at !== params.basedOn) {
+      return { ok: false, failure: 'stale' };
+    }
+    if (params.statusGuard && current.status !== params.statusGuard) {
+      return { ok: false, failure: 'turn', message: `Status room sudah berubah menjadi ${current.status}` };
+    }
+    if (params.expectTurn !== false && current.current_turn !== params.playerIndex) {
+      return { ok: false, failure: 'turn' };
+    }
+    return { ok: false, failure: 'network', message: 'Langkah tidak diterima server' };
+  }
+
+  const { error: logError } = await supabase.from('match_moves').insert({
+    match_id: params.matchId,
+    player_index: params.playerIndex,
+    action: params.action,
+    payload: params.moveSummary ?? params.nextState,
+  });
+
+  return {
+    ok: true,
+    message: logError
+      ? `Langkah tersimpan, log langkah gagal ditulis: ${logError.message}`
+      : undefined,
+  };
 }
 
-export async function startOnlineMatch(matchId: string, initialState?: any): Promise<void> {
-  const supabase = getSupabase();
-  if (!supabase) return;
+export const describeMoveFailure = (result: MoveResult): string => {
+  if (result.ok) return '';
+  if (result.failure === 'turn') {
+    return 'Langkah tidak diterima karena giliran sudah berpindah. Papan disesuaikan otomatis.';
+  }
+  if (result.failure === 'stale') {
+    return 'Papan sudah berubah sebelum langkah Anda tercatat. Papan disinkronkan ulang, coba lagi.';
+  }
+  if (result.failure === 'unconfigured') {
+    return 'Koneksi multiplayer online (Supabase) belum terkonfigurasi.';
+  }
+  return result.message || 'Langkah gagal dikirim. Periksa koneksi lalu coba lagi.';
+};
 
-  const updates: any = {
+export async function startOnlineMatch(
+  matchId: string,
+  initialState?: any,
+  allowedFrom: MatchStatus[] = ['waiting']
+): Promise<MoveResult> {
+  const supabase = getSupabase();
+  if (!supabase) return { ok: false, failure: 'unconfigured' };
+
+  const updates: Record<string, unknown> = {
     status: 'playing',
     current_turn: 0,
+    winner_index: null,
     updated_at: new Date().toISOString(),
   };
   if (initialState) {
     updates.game_state = initialState;
   }
 
-  await supabase.from('matches').update(updates).eq('id', matchId);
+  let query = supabase.from('matches').update(updates).eq('id', matchId);
+  query =
+    allowedFrom.length === 1
+      ? query.eq('status', allowedFrom[0])
+      : query.in('status', allowedFrom);
+
+  const { data, error } = await query.select('id');
+
+  if (error) return { ok: false, failure: 'network', message: error.message };
+  if (!data || data.length === 0) {
+    return { ok: false, failure: 'network', message: 'Room tidak dapat dimulai dari statusnya sekarang' };
+  }
+
+  return { ok: true };
 }
 
 export async function leaveOnlineMatch(params: {
@@ -254,13 +375,13 @@ export async function leaveOnlineMatch(params: {
   roomCode: string;
   playerIndex: number;
   playerName: string;
+  channel?: RealtimeChannel | null;
 }): Promise<void> {
   const supabase = getSupabase();
   if (!supabase) return;
 
   const sessionId = getPlayerSessionId();
 
-  // Fetch current match to decide outcome
   const { data: match } = await supabase
     .from('matches')
     .select('*')
@@ -269,14 +390,12 @@ export async function leaveOnlineMatch(params: {
 
   if (!match) return;
 
-  // Remove player from roster
   await supabase
     .from('match_players')
     .delete()
     .eq('match_id', params.matchId)
     .eq('session_id', sessionId);
 
-  // If match was active, award forfeit win to remaining player or mark abandoned
   if (match.status === 'playing') {
     const remainingWinner = match.max_players === 2 ? (params.playerIndex === 0 ? 1 : 0) : null;
     await supabase
@@ -307,10 +426,13 @@ export async function leaveOnlineMatch(params: {
       .eq('id', params.matchId);
   }
 
-  // Broadcast leave event
+  const reusing = Boolean(params.channel);
+  const channel = reusing
+    ? (params.channel as RealtimeChannel)
+    : supabase.channel(`room:${params.roomCode}`);
+
   try {
-    const channel = supabase.channel(`room:${params.roomCode}`);
-    await channel.subscribe();
+    if (!reusing) await channel.subscribe();
     channel.send({
       type: 'broadcast',
       event: 'player_left',
@@ -319,50 +441,76 @@ export async function leaveOnlineMatch(params: {
         playerName: params.playerName,
       },
     });
-  } catch {}
+  } finally {
+    // A throwaway channel that is never removed keeps accumulating across re-joins.
+    if (!reusing) await supabase.removeChannel(channel);
+  }
 }
 
 export function subscribeToMatch(
   roomCode: string,
   onSync: (sync: MatchSyncData) => void,
   onBroadcastMove?: (payload: any) => void,
-  onBroadcastLeave?: (payload: any) => void
-): { unsubscribe: () => void; channel: RealtimeChannel | null } {
+  onBroadcastLeave?: (payload: any) => void,
+  onConnectionChange?: (state: 'realtime' | 'fallback') => void
+): MatchSubscription {
   const supabase = getSupabase();
   if (!supabase) {
     return { unsubscribe: () => {}, channel: null };
   }
 
-  const sessionId = getPlayerSessionId();
-  const code = roomCode.trim().toUpperCase();
+  const code = normCode(roomCode);
+  let closed = false;
+  let realtimeUp = false;
+  let inFlight = false;
+  let again = false;
+  let rosterChannel: RealtimeChannel | null = null;
+  let watchedMatchId = '';
 
-  const fetchFullState = async () => {
-    const { data: match } = await supabase
-      .from('matches')
-      .select('*')
-      .eq('room_code', code)
-      .single();
+  const sync = async (): Promise<void> => {
+    if (closed) return;
 
-    if (!match) return;
+    // One move lands through broadcast and postgres_changes in the same tick.
+    if (inFlight) {
+      again = true;
+      return;
+    }
 
-    const { data: players } = await supabase
-      .from('match_players')
-      .select('*')
-      .eq('match_id', match.id)
-      .order('player_index', { ascending: true });
-
-    const playerList = (players || []) as PlayerRow[];
-    const me = playerList.find((p) => p.session_id === sessionId);
-
-    onSync({
-      match: match as MatchRow,
-      players: playerList,
-      myPlayerIndex: me ? me.player_index : -1,
-      isHost: me ? me.is_host : false,
-    });
+    inFlight = true;
+    try {
+      const data = await fetchRoom(code);
+      if (data && !closed) {
+        onSync(data);
+        watchRoster(data.match.id);
+      }
+    } finally {
+      inFlight = false;
+      if (again && !closed) {
+        again = false;
+        void sync();
+      }
+    }
   };
 
-  fetchFullState();
+  const watchRoster = (matchId: string) => {
+    if (closed || watchedMatchId === matchId) return;
+    watchedMatchId = matchId;
+    rosterChannel = supabase.channel(`room:${code}:roster`);
+    rosterChannel
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'match_players',
+          filter: `match_id=eq.${matchId}`,
+        },
+        () => {
+          void sync();
+        }
+      )
+      .subscribe();
+  };
 
   const channel = supabase.channel(`room:${code}`, {
     config: { broadcast: { self: false } },
@@ -370,16 +518,18 @@ export function subscribeToMatch(
 
   channel
     .on('broadcast', { event: 'game_move' }, (event) => {
+      if (closed) return;
       if (onBroadcastMove) {
         onBroadcastMove(event.payload);
       }
-      fetchFullState();
+      void sync();
     })
     .on('broadcast', { event: 'player_left' }, (event) => {
+      if (closed) return;
       if (onBroadcastLeave) {
         onBroadcastLeave(event.payload);
       }
-      fetchFullState();
+      void sync();
     })
     .on(
       'postgres_changes',
@@ -390,29 +540,35 @@ export function subscribeToMatch(
         filter: `room_code=eq.${code}`,
       },
       () => {
-        fetchFullState();
+        void sync();
       }
     )
-    .on(
-      'postgres_changes',
-      {
-        event: '*',
-        schema: 'public',
-        table: 'match_players',
-      },
-      () => {
-        fetchFullState();
-      }
-    )
-    .subscribe();
+    .subscribe((status) => {
+      realtimeUp = status === 'SUBSCRIBED';
+      if (!closed) onConnectionChange?.(realtimeUp ? 'realtime' : 'fallback');
+    });
 
-  const intervalId = setInterval(fetchFullState, 3000);
+  void sync();
+
+  const onVisible = () => {
+    if (!document.hidden) void sync();
+  };
+  document.addEventListener('visibilitychange', onVisible);
+
+  // Fallback only: realtime carries the state while it is up and the tab is in front.
+  const intervalId = setInterval(() => {
+    if (closed || realtimeUp || document.hidden) return;
+    void sync();
+  }, 5000);
 
   return {
-    unsubscribe: () => {
-      clearInterval(intervalId);
-      supabase.removeChannel(channel);
-    },
     channel,
+    unsubscribe: () => {
+      closed = true;
+      clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', onVisible);
+      if (rosterChannel) void supabase.removeChannel(rosterChannel);
+      void supabase.removeChannel(channel);
+    },
   };
 }

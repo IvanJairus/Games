@@ -2,9 +2,11 @@ import React from 'react';
 import { RouteObject } from 'react-router-dom';
 import { wallGameRoutes } from './wall-game/routes';
 import { ticTacToeRoutes } from './tic-tac-toe/routes';
+import { battleshipRoutes } from './battleship/routes';
+import { GameType } from './common/multiplayer';
 
 export interface GameMetadata {
-  id: string;
+  id: GameType;
   title: string;
   subtitle: string;
   description: string;
@@ -57,15 +59,49 @@ export const GAMES_REGISTRY: GameMetadata[] = [
           <line x1="75" y1="108" x2="245" y2="108" />
         </g>
         <g strokeWidth="2.5" strokeLinecap="round">
-          {/* X symbol in top-left */}
           <line x1="90" y1="46" x2="110" y2="62" stroke="#b45309" />
           <line x1="110" y1="46" x2="90" y2="62" stroke="#b45309" />
-          {/* O symbol in center */}
           <circle cx="160" cy="90" r="11" fill="none" stroke="#451a03" />
-          {/* X symbol in bottom-right */}
           <line x1="210" y1="118" x2="230" y2="134" stroke="#b45309" />
           <line x1="230" y1="118" x2="210" y2="134" stroke="#b45309" />
         </g>
+      </svg>
+    ),
+  },
+  {
+    id: 'battleship',
+    title: 'Battleship · Kapal Tersembunyi',
+    subtitle: 'Commit-reveal, lawan tidak bisa mengintip',
+    description: 'Papan 8x8 dengan lima kapal. Susunan kapal tinggal di perangkat Anda, hanya hash-nya yang dikirim, lalu dibuktikan ulang setelah pertandingan selesai.',
+    playerRange: '2 Pemain',
+    statusLabel: 'Lokal & Online',
+    route: '/battleship',
+    routes: battleshipRoutes,
+    thumbnail: (
+      <svg viewBox="0 0 320 180" style={{ width: '100%', height: '100%' }} aria-hidden="true">
+        <g stroke="rgba(30, 41, 59, 0.16)" strokeWidth="1">
+          {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+            <line key={`v${i}`} x1={72 + i * 22} y1="24" x2={72 + i * 22} y2="156" />
+          ))}
+          {[0, 1, 2, 3, 4, 5, 6].map((i) => (
+            <line key={`h${i}`} x1="72" y1={24 + i * 22} x2="258" y2={24 + i * 22} />
+          ))}
+        </g>
+        <rect x="94" y="68" width="66" height="22" fill="#1e293b" opacity="0.85" />
+        <rect x="182" y="112" width="44" height="22" fill="#1e293b" opacity="0.5" />
+        <rect
+          x="160"
+          y="68"
+          width="44"
+          height="22"
+          fill="none"
+          stroke="rgba(28, 25, 23, 0.35)"
+          strokeWidth="1.2"
+          strokeDasharray="4 3"
+        />
+        <circle cx="138" cy="79" r="9" fill="none" stroke="var(--gold)" strokeWidth="1.6" />
+        <line x1="138" y1="66" x2="138" y2="92" stroke="var(--gold)" strokeWidth="1.2" />
+        <line x1="125" y1="79" x2="151" y2="79" stroke="var(--gold)" strokeWidth="1.2" />
       </svg>
     ),
   },

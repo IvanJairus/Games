@@ -20,6 +20,11 @@ Koleksi mini game taktis dan strategi web modern di portal `ivanjairus.xyz/games
    - Papan dinamis dengan indikator bidak tertua yang akan memudar.
    - Mode Hotseat Lokal dan Online Multiplayer.
 
+3. **Battleship: Kapal Tersembunyi**
+   - Papan 8x8, lima kapal (Battleship 4, Cruiser 3, Frigate 3, Submarine 2, Patrol 2).
+   - Mode Solo lawan AI, Hotseat dua pemain, dan Online 2 perangkat.
+   - Susunan kapal tidak pernah dikirim ke server. Yang dikirim hanya hash SHA-256 atas seed dan susunan, lalu dibuktikan ulang setelah pertandingan selesai.
+
 ---
 
 ## 🚀 Menjalankan di Lokal
@@ -37,7 +42,10 @@ npm run test
 # 4. Menjalankan release readiness audit (Desktop & Mobile)
 npm run release:check
 
-# 5. Build produksi (output ke dist/games/)
+# 5. Verifikasi aturan protokol room di Postgres nyata (butuh Docker)
+npm run db:verify
+
+# 6. Build produksi (output ke dist/games/)
 npm run build
 ```
 
@@ -51,6 +59,19 @@ npm run build
   - *X-Frame-Options: DENY* (Anti-Clickjacking).
   - *X-Content-Type-Options: nosniff*.
   - *Permissions-Policy* menonaktifkan kamera, mikrofon, dan sensor perangkat yang tidak digunakan.
+
+---
+
+## 🔒 Protokol Room Multiplayer
+
+Kunci anonim Supabase ikut terbawa di bundle publik, jadi setiap klien pada dasarnya tidak dipercaya. Lapisan yang menahan pemain curang:
+
+1. **Compare-and-swap atas versi baris.** Setiap langkah ditulis dengan filter `current_turn` dan token `updated_at` dari baris yang baru dibaca. Dua langkah yang tiba bersamaan: hanya satu yang memenuhi filter, sisanya ditolak dan papan disinkronkan ulang.
+2. **Pemicu di Postgres** (`supabase/migrations/002_match_protocol.sql`) memvalidasi status, rentetan giliran, `winner_index`, identitas room, dan ukuran `game_state` di sisi server, lalu selalu memajukan `updated_at` sehingga token tidak bisa dipalsukan klien.
+3. **Commit-reveal untuk Battleship.** Koordinat kapal disimpan di perangkat pemiliknya. Yang lewat jaringan hanya hash komitmen, hasil tembakan, dan pengungkapan di akhir. Klaim tembakan yang tidak cocok dengan armada yang diungkap ditandai di layar.
+4. **Log langkah diringkas.** `match_moves.payload` berisi ringkasan langkah, bukan salinan penuh state permainan.
+
+Aturan di atas diuji sebagai asserti SQL terhadap Postgres 16 melalui `npm run db:verify`, dan sebagai test integrasi protocol di `tests/integration/`.
 
 ---
 
