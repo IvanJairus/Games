@@ -8,6 +8,39 @@ terpisah saat kamu menerbitkan rilis.
 Entri dimulai dari 14 Oktober 2026. Perubahan sebelum tanggal itu ada pada riwayat git dan daftar
 pull request, karena tidak dicatat saat terjadi.
 
+## 2026-10-14 - Perbaikan regresi: rematch dan riwayat terpisah (PR #19)
+
+### Diperbaiki
+
+- **Regresi yang saya buat sendiri di PR #17.** Larangan UPDATE pada baris `matches` yang sudah
+  `completed` membuat "Ronde Berikutnya" mati diam-diam di semua game online, karena rematch
+  menulis `completed -> playing` pada baris yang sama. Terukur sebagai role `anon`: finish
+  mendarat, rematch mengembalikan nol baris.
+- Slap Arena tidak pernah mencatat pertandingan selesai. `MATCH_OVER` hanya menggerakkan UI,
+  sehingga angka hub untuk game itu akan selalu 0.
+
+### Ditambahkan
+
+- Tabel `match_results`: satu baris per finish, hanya ditulis trigger `SECURITY DEFINER` saat
+  status berpindah ke `completed`. Anon punya SELECT dan tidak ada policy lain, jadi riwayat
+  tidak bisa digembungkan atau dihapus dari klien.
+- `finishOnlineMatch({ matchId, winnerIndex })` dengan penjaga `.eq('status','playing')`,
+  dipanggil host saat MATCH_OVER. "Main lagi" membuka kembali barisnya.
+- Backfill pertandingan yang selesai sebelum tabel itu ada, supaya angka hub tidak turun
+  saat deploy.
+
+### Terukur, di DB produksi sebagai role `anon`
+
+| Uji | Sebelum 005 | Sesudah 005 |
+| --- | --- | --- |
+| Rematch `completed` -> `playing` | 0 baris (rusak) | 1 baris |
+| Finish kedua pada room yang sama | tidak tercatat | 2 baris riwayat |
+| INSERT langsung ke `match_results` | tabel belum ada | ditolak `42501` |
+| UPDATE / DELETE `match_results` | tabel belum ada | 0 baris |
+| RPC sebagai anon | 1 (wall-game) | 1 (wall-game), tidak turun |
+
+177 tes lulus, termasuk satu tes baru untuk `finishOnlineMatch`.
+
 ## 2026-10-14 - Susulan: tulis yang tak terpakai ditutup, hitungan jadi satu panggilan (PR #18)
 
 ### Keamanan
@@ -249,4 +282,5 @@ produksi sukses, dengan dua sesi browser terisolasi untuk jalur multiplayer.
 - PR #16 `test(slap-arena): prove adaptive quality fires, play tic-tac-toe in the UI`
 - PR #17 `chore(supabase): stop anon writes from rewriting finished matches`
 - PR #18 `chore(supabase): close unused writes and count finished matches in one call`
+- PR #19 `fix(supabase): let a rematch reopen a room, keep history in its own table`
 - Baseline jumlah tes diukur pada `0ac7f76` (main sebelum PR #5) memakai worktree terpisah.

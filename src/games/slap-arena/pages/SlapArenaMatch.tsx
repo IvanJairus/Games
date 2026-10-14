@@ -20,6 +20,7 @@ import {
 } from '../../common/audio';
 import { getSupabase, getPlayerSessionId, getStoredPlayerName } from '../../../lib/supabase';
 import {
+  finishOnlineMatch,
   joinOnlineRoom,
   leaveOnlineMatch,
   startOnlineMatch,
@@ -94,6 +95,8 @@ export const SlapArenaMatch: React.FC = () => {
   const keysRef = useRef<Record<string, boolean>>({});
   const fxQueue = useRef<SimEvent[]>([]);
   const matchIdRef = useRef<string | null>(null);
+  const seatOf = useRef<Record<string, number>>({});
+  const reported = useRef(false);
   const lastCount = useRef(0);
   const netStatsRef = useRef<ArenaNet | null>(null);
   const hitStopUntil = useRef(0);
@@ -188,6 +191,7 @@ export const SlapArenaMatch: React.FC = () => {
     const applySync = (sync: MatchSyncData) => {
       if (cancelled) return;
       matchIdRef.current = sync.match.id;
+      for (const row of sync.players) seatOf.current[row.session_id] = row.player_index;
       const me = sync.players.find((p) => p.session_id === localId);
       const host = !!me?.is_host;
       setIsHost(host);
@@ -435,7 +439,29 @@ export const SlapArenaMatch: React.FC = () => {
     sim.state.round = 1;
     sim.state.matchWinnerId = null;
     sim.startCountdown(0.5);
-  }, [sim]);
+    reported.current = false;
+    // The row reads 'completed' after a finished match. Reopen it, or the next
+    // match in this room would never be recorded.
+    if (!isSolo && matchIdRef.current) {
+      void startOnlineMatch(matchIdRef.current, undefined, ['completed']).catch((err) =>
+        console.warn('[slap-arena] gagal membuka kembali room', err)
+      );
+    }
+  }, [sim, isSolo]);
+
+  // Only the host owns the world, so only the host reports the result. A database
+  // trigger turns that write into the history row the hub counts.
+  useEffect(() => {
+    if (isSolo || !isHost || hud.phase !== 'MATCH_OVER' || reported.current) return;
+    const matchId = matchIdRef.current;
+    if (!matchId) return;
+    reported.current = true;
+    const winnerId = hud.matchWinnerId;
+    void finishOnlineMatch({
+      matchId,
+      winnerIndex: winnerId ? (seatOf.current[winnerId] ?? null) : null,
+    }).catch((err) => console.warn('[slap-arena] gagal mencatat hasil akhir', err));
+  }, [hud.phase, hud.matchWinnerId, isHost, isSolo]);
 
   const winner = hud.winnerId ? hud.players.find((p) => p.id === hud.winnerId) : null;
   const me = hud.players.find((p) => p.id === localId);

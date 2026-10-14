@@ -381,4 +381,22 @@ describe('Sync layer concurrency guards', () => {
     expect(wrongPhase.ok).toBe(false);
     expect(waiting.row.status).toBe('waiting');
   });
+
+  it('records a finish once and refuses to record a second one over it', async () => {
+    const mod = await import('../../src/lib/supabase');
+    const { finishOnlineMatch } = await import('../../src/games/common/multiplayer');
+
+    const playing = makeFakeSupabase({ ...baseRow(), status: 'playing' });
+    vi.spyOn(mod, 'getSupabase').mockReturnValue(playing.client);
+    const first = await finishOnlineMatch({ matchId: 'm1', winnerIndex: 2 });
+    expect(first.ok).toBe(true);
+    expect(playing.row.status).toBe('completed');
+    expect(playing.row.winner_index).toBe(2);
+
+    const already = makeFakeSupabase({ ...baseRow(), status: 'completed', winner_index: 1 });
+    vi.spyOn(mod, 'getSupabase').mockReturnValue(already.client);
+    const second = await finishOnlineMatch({ matchId: 'm1', winnerIndex: 0 });
+    expect(second.ok).toBe(false);
+    expect(already.row.winner_index).toBe(1);
+  });
 });
