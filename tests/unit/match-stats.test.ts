@@ -5,40 +5,9 @@ import type { GameType } from '../../src/games/common/multiplayer';
 
 const TYPES: GameType[] = ['slap-arena', 'wall-game', 'tic-tac-toe', 'battleship'];
 
-interface FakeResult {
-  count?: number;
-  error?: string;
-}
-
-/** The chain has to be awaitable at its tail, which is what `then` provides here. */
-function fakeClient(perType: Record<string, FakeResult>) {
-  const seen: Array<{ table: string; selectArgs: unknown; filters: string[][] }> = [];
-  const client = {
-    from: (table: string) => {
-      const record = { table, selectArgs: null as unknown, filters: [] as string[][] };
-      seen.push(record);
-      const chain: Record<string, unknown> = {
-        select: (...args: unknown[]) => {
-          record.selectArgs = args;
-          return chain;
-        },
-        eq: (col: string, value: string) => {
-          record.filters.push([col, value]);
-          return chain;
-        },
-        then: (resolve: (value: { count: number | null; error: { message: string } | null }) => unknown) => {
-          const type = record.filters.find(([col]) => col === 'game_type')?.[1] ?? '';
-          const result = perType[type] ?? {};
-          return Promise.resolve({
-            count: result.count ?? null,
-            error: result.error ? { message: result.error } : null,
-          }).then(resolve);
-        },
-      };
-      return chain;
-    },
-  };
-  return { client, seen };
+function fakeRpc(data: unknown, error: unknown = null) {
+  const rpc = vi.fn().mockResolvedValue({ data, error });
+  return { client: { rpc }, rpc };
 }
 
 afterEach(() => {
@@ -46,24 +15,19 @@ afterEach(() => {
 });
 
 describe('hub match counts', () => {
-  it('asks for one completed count per game and reports what came back', async () => {
-    const { client, seen } = fakeClient({
-      'slap-arena': { count: 7 },
-      'wall-game': { count: 1 },
-      'tic-tac-toe': { count: 0 },
-      battleship: { count: 3 },
-    });
+  it('takes every game from one call and fills the games that never finished', async () => {
+    const { client, rpc } = fakeRpc([
+      { game_type: 'slap-arena', completed: '7' },
+      { game_type: 'wall-game', completed: 1 },
+      { game_type: 'games-from-an-old-migration', completed: 99 },
+    ]);
     vi.spyOn(supabaseModule, 'getSupabase').mockReturnValue(client as never);
 
     const counts = await fetchCompletedCounts(TYPES);
 
-    expect(counts).toEqual({ 'slap-arena': 7, 'wall-game': 1, 'tic-tac-toe': 0, battleship: 3 });
-    expect(seen).toHaveLength(4);
-    for (const query of seen) {
-      expect(query.table).toBe('matches');
-      expect(query.filters).toContainEqual(['status', 'completed']);
-    }
-    expect(seen[0].selectArgs).toEqual(['id', { count: 'exact', head: true }]);
+    expect(rpc).toHaveBeenCalledTimes(1);
+    expect(rpc).toHaveBeenCalledWith('match_completion_counts');
+    expect(counts).toEqual({ 'slap-arena': 7, 'wall-game': 1, 'tic-tac-toe': 0, battleship: 0 });
   });
 
   it('returns nothing when Supabase is not configured', async () => {
@@ -71,16 +35,9 @@ describe('hub match counts', () => {
     await expect(fetchCompletedCounts(TYPES)).resolves.toEqual({});
   });
 
-  it('drops a failed game instead of reporting it as zero matches', async () => {
-    const { client } = fakeClient({
-      'wall-game': { count: 2 },
-      'slap-arena': { error: 'relation does not exist' },
-    });
+  it('shows no numbers rather than wrong ones when the call fails', async () => {
+    const { client } = fakeRpc(null, { message: 'function does not exist' });
     vi.spyOn(supabaseModule, 'getSupabase').mockReturnValue(client as never);
-
-    const counts = await fetchCompletedCounts(TYPES);
-
-    expect(counts['wall-game']).toBe(2);
-    expect('slap-arena' in counts).toBe(false);
+    await expect(fetchCompletedCounts(TYPES)).resolves.toEqual({});
   });
 });
