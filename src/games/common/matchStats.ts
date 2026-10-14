@@ -6,26 +6,21 @@ export type CompletedCounts = Partial<Record<GameType, number>>;
 /**
  * How many online matches each game has finished. Aggregate only: the hub must not
  * put anyone's chosen nickname or room code on a public page to prove the backend
- * is used. Head requests return a count without transferring rows.
+ * is used. One RPC carries every game, and the database function runs under the
+ * caller's own row level security, so a visitor only sees counts of rows they may read.
  */
 export async function fetchCompletedCounts(types: GameType[]): Promise<CompletedCounts> {
   const supabase = getSupabase();
   if (!supabase) return {};
 
-  const results = await Promise.all(
-    types.map((type) =>
-      supabase
-        .from('matches')
-        .select('id', { count: 'exact', head: true })
-        .eq('game_type', type)
-        .eq('status', 'completed')
-    )
-  );
+  const { data, error } = await supabase.rpc('match_completion_counts');
+  if (error || !Array.isArray(data)) return {};
 
+  const known = new Set<string>(types);
   const out: CompletedCounts = {};
-  types.forEach((type, i) => {
-    const result = results[i];
-    if (!result.error && typeof result.count === 'number') out[type] = result.count;
-  });
+  for (const type of types) out[type] = 0;
+  for (const row of data as Array<{ game_type: string; completed: number | string }>) {
+    if (known.has(row.game_type)) out[row.game_type as GameType] = Number(row.completed);
+  }
   return out;
 }
