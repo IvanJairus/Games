@@ -123,21 +123,23 @@ export function createIsland({ radius }: IslandOptions): Island {
     group.add(s);
   }
 
-  const trunkGeo = keep(new THREE.CylinderGeometry(0.17, 0.24, 1.5, 8));
-  const blobGeo = keep(new THREE.IcosahedronGeometry(0.95, 0));
+  const trunkGeo = keep(new THREE.CylinderGeometry(0.15, 0.21, 1.3, 8));
+  const blobGeo = keep(new THREE.IcosahedronGeometry(0.78, 0));
   const trees: THREE.Group[] = [];
-  for (let i = 0; i < 3; i++) {
-    const a = (i / 3) * Math.PI * 2 + Math.PI / 4;
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
     const tree = new THREE.Group();
     const stem = new THREE.Mesh(trunkGeo, trunk);
-    stem.position.y = 0.75;
+    stem.position.y = 0.65;
     stem.castShadow = true;
     const crown = new THREE.Mesh(blobGeo, leaf);
-    crown.position.y = 1.85;
+    crown.position.y = 1.6;
     crown.scale.set(1, 0.9, 1);
     crown.castShadow = true;
     tree.add(stem, crown);
-    tree.position.set(Math.cos(a) * radius * 0.8, 0, Math.sin(a) * radius * 0.8);
+    // On the lip, never in the ring. A tree that grows where the fighting happens
+    // hides a brawler behind its crown at exactly the wrong moment.
+    tree.position.set(Math.cos(a) * radius * 0.955, 0, Math.sin(a) * radius * 0.955);
     tree.userData.spin = 0.02 + i * 0.004;
     group.add(tree);
     trees.push(tree);
@@ -147,7 +149,9 @@ export function createIsland({ radius }: IslandOptions): Island {
   const mushroomCap = keep(new THREE.SphereGeometry(0.2, 10, 6, 0, Math.PI * 2, 0, Math.PI * 0.55));
   for (let i = 0; i < 7; i++) {
     const a = i * 2.4;
-    const r = radius * (0.3 + ((i * 37) % 50) / 100);
+    // Keep the spawn circle (about half the radius) clear: a mushroom growing
+    // under a brawler reads as a rendering glitch.
+    const r = radius * (0.62 + ((i * 37) % 34) / 100);
     const m = new THREE.Group();
     const stem = new THREE.Mesh(mushroomStem, capCream);
     stem.position.y = 0.13;
