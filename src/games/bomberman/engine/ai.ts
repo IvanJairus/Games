@@ -62,7 +62,7 @@ export class BombermanBot {
   private cooldown = 0;
   private escape: Coord | null = null;
 
-  constructor(private seat: number, private level: BotLevel) {}
+  constructor(readonly seat: number, private level: BotLevel) {}
 
   /**
    * Decide at most every `think` seconds, but keep returning the held direction in

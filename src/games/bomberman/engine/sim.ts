@@ -270,7 +270,7 @@ export class BombermanSim {
     const power = s.powers[i];
     s.powers.splice(i, 1);
     this.grant(p, power.kind);
-    this.queue.push({ t: 'take', seat: p.seat, kind: power.kind });
+    this.queue.push({ t: 'take', seat: p.seat, kind: power.kind, x: power.x, y: power.y });
   }
 
   private grant(p: PlayerState, kind: PowerKind): void {

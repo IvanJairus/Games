@@ -198,3 +198,60 @@ export function playDefeat(): void {
   if (!throttle('defeat', 400)) return;
   arpeggio([392, 349.23, 261.63], 150, 0.3, 0.16);
 }
+
+/* ------------------------------------------------- Bomberman, arena cues */
+
+/**
+ * A chain reaction fires several blasts inside one frame, and `noise()` builds a fresh
+ * Float32Array per call. One cached buffer per duration is the difference between a
+ * thump and a stutter.
+ */
+const noiseCache = new Map<string, AudioBuffer>();
+
+function cachedNoise(duration: number, gainValue: number, filterHz: number, sweepTo?: number): void {
+  const c = ensure();
+  if (!c || !master || muted) return;
+  const cacheKey = `${duration}:${filterHz}`;
+  let buf = noiseCache.get(cacheKey);
+  if (!buf) {
+    const frames = Math.floor(c.sampleRate * duration);
+    buf = c.createBuffer(1, frames, c.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < frames; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / frames);
+    noiseCache.set(cacheKey, buf);
+  }
+  const src = c.createBufferSource();
+  src.buffer = buf;
+  const filter = c.createBiquadFilter();
+  filter.type = 'bandpass';
+  filter.frequency.setValueAtTime(filterHz, c.currentTime);
+  if (sweepTo) filter.frequency.exponentialRampToValueAtTime(Math.max(20, sweepTo), c.currentTime + duration);
+  const gain = c.createGain();
+  gain.gain.value = gainValue;
+  src.connect(filter).connect(gain).connect(master);
+  src.start();
+}
+
+/** The low body plus a falling filter, so a cascade reads as one event. */
+export function playExplosion(): void {
+  if (!throttle('explosion', 70)) return;
+  cachedNoise(0.42, 0.3, 900, 90);
+  tone({ type: 'sine', from: 120, to: 34, duration: 0.4, gain: 0.32 });
+}
+
+/** A bomb settling onto the floor. */
+export function playBombDrop(): void {
+  if (!throttle('bombdrop', 60)) return;
+  tone({ type: 'triangle', from: 300, to: 130, duration: 0.1, gain: 0.2 });
+  cachedNoise(0.05, 0.1, 500);
+}
+
+export function playPowerup(): void {
+  if (!throttle('powerup', 90)) return;
+  arpeggio([659.25, 880, 1174.66], 60, 0.14, 0.18);
+}
+
+export function playKo(): void {
+  if (!throttle('ko', 150)) return;
+  tone({ type: 'sawtooth', from: 420, to: 70, duration: 0.34, gain: 0.22 });
+}

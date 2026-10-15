@@ -120,7 +120,7 @@ export type SimEvent =
   | { t: 'boom'; x: number; y: number; range: number }
   | { t: 'break'; x: number; y: number }
   | { t: 'power'; x: number; y: number; kind: PowerKind }
-  | { t: 'take'; seat: number; kind: PowerKind }
+  | { t: 'take'; seat: number; kind: PowerKind; x: number; y: number }
   | { t: 'reject'; seat: number; reason: string }
   | { t: 'ko'; seat: number }
   | { t: 'countdown'; value: number }
