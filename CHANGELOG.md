@@ -8,6 +8,31 @@ terpisah saat kamu menerbitkan rilis.
 Entri dimulai dari 14 Oktober 2026. Perubahan sebelum tanggal itu ada pada riwayat git dan daftar
 pull request, karena tidak dicatat saat terjadi.
 
+## 2026-10-15 - Battleship: pop-up hasil dan rematch satu room
+
+### Ditambahkan
+
+- **Pop-up singkat saat pertandingan selesai**, di mode solo, hotseat, dan online: siapa yang menang,
+  alasan berakhir, jumlah tembakan kedua pihak, lalu tiga jalan keluar (Main lagi atau Rematch, Lobi
+  Battleship, Halaman utama). Ada tautan "Lihat bukti armada" untuk menutup pop-up dan membaca detail
+  commit-reveal di bawah papan, jadi pop-up tidak menyembunyikan bukti.
+- **Rematch di room online.** Satu langkah `REMATCH` mengembalikan baris room ke fase `PLACEMENT`
+  dengan pemenang kosong, jadi kedua pemain memakai kode room yang sama tanpa membuat room baru.
+  Perangkat yang menerima perubahan itu menghapus armada lama dari penyimpanan lokal dan memasang
+  kembali penjaga reveal, sehingga pertandingan kedua tetap terbuktikan.
+- `src/games/common/ResultDialog.tsx`: dialog hasil bersama berbasis native `<dialog>` (Escape, fokus
+  awal di aksi pertama, klik backdrop) dengan kelas `.ij-dialog` di `src/index.css`.
+
+### Diubah
+
+- Modal kemenangan WallGo dan dialog kemenangan Tic Tac Toe memakai `ResultDialog`. Teks, lambang, dan
+  `data-testid` lamanya tetap sama, jadi test yang sudah ada tidak berubah. Tombol primary pop-up kini
+  hitam tinta mengikuti Battleship, bukan kuningan.
+- Slap Arena sengaja tidak ikut dipindahkan. Kartu `sa-` punya arah seni sendiri (Fredoka, kartu
+  permen) dan hanya bentuk aksinya yang disamakan.
+- Room yang lawannya sudah keluar tidak menawarkan rematch. Tombolnya berubah menjadi "Keluar dari
+  room", karena restart hanya akan menghasilkan papan yang tidak bisa dimainkan.
+
 ## 2026-10-14 - Perbaikan regresi: rematch dan riwayat terpisah (PR #19)
 
 ### Diperbaiki

@@ -546,6 +546,190 @@ dialog::backdrop {
   outline-offset: 2px;
 }
 
+/* Shared end-of-match popup (ResultDialog). Games keep their own accent by passing
+   their own crest icon; the structure, focus and Escape behaviour stay identical. */
+dialog.ij-dialog {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  padding: 0;
+  border: 1px solid var(--gold-border);
+  border-radius: var(--r4);
+  background: #ffffff;
+  color: var(--ink);
+  box-shadow: 0 20px 40px rgba(180, 83, 9, 0.18), 0 2px 8px rgba(28, 25, 23, 0.08);
+  max-width: 440px;
+  width: calc(100% - 32px);
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+}
+
+dialog.ij-dialog[open] {
+  animation: ij-reveal 200ms ease-out;
+}
+
+dialog.ij-dialog::backdrop {
+  background: rgba(28, 25, 23, 0.45);
+}
+
+.ij-dialog__body {
+  padding: 26px 24px 20px;
+  text-align: center;
+}
+
+.ij-dialog__crest {
+  width: 56px;
+  height: 56px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 2px solid var(--gold);
+  background: var(--bg-stage);
+  color: var(--gold);
+  margin-bottom: 14px;
+}
+
+.ij-dialog__crest[data-tone="lose"] {
+  border-color: var(--red);
+  color: var(--red);
+}
+
+.ij-dialog__crest[data-tone="neutral"] {
+  border-color: var(--line-strong);
+  color: var(--ink-dim);
+}
+
+.ij-dialog__kicker {
+  font: 10px/1 var(--mono);
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--gold);
+  margin-bottom: 6px;
+}
+
+.ij-dialog__kicker[data-tone="lose"] {
+  color: var(--red);
+}
+
+.ij-dialog__kicker[data-tone="neutral"] {
+  color: var(--ink-faint);
+}
+
+.ij-dialog__title {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 0 0 8px;
+}
+
+.ij-dialog__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r2);
+  background: var(--bg-stage);
+  font: 12px/1 var(--mono);
+  color: var(--ink-dim);
+  margin-bottom: 18px;
+}
+
+.ij-dialog__stats {
+  display: grid;
+  gap: 8px;
+  padding: 12px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r2);
+  background: var(--bg-stage);
+  margin: 18px 0 22px;
+  font-family: var(--mono);
+}
+
+.ij-dialog__stat-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--ink-faint);
+}
+
+.ij-dialog__stat-value {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+  margin-top: 2px;
+}
+
+.ij-dialog__stat-value[data-accent="true"] {
+  color: var(--gold);
+}
+
+.ij-dialog__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ij-dialog__pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.ij-dialog__btn {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r2);
+  background: var(--bg-stage);
+  color: var(--ink);
+  font: 12px/1 var(--mono);
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.ij-dialog__btn:hover:not(:disabled) {
+  background: var(--bg-tile-hover);
+}
+
+.ij-dialog__btn[data-tone="primary"] {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: #ffffff;
+}
+
+.ij-dialog__btn[data-tone="primary"]:hover:not(:disabled) {
+  background: #000000;
+}
+
+.ij-dialog__btn:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+.ij-dialog__btn:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.ij-dialog__dismiss {
+  background: none;
+  border: none;
+  margin-top: 6px;
+  color: var(--ink-faint);
+  font: 11px/1 var(--mono);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 /* Shared room notice, used by every online match page. */
 .ij-notice {
   display: flex;
