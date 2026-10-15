@@ -8,6 +8,22 @@ terpisah saat kamu menerbitkan rilis.
 Entri dimulai dari 14 Oktober 2026. Perubahan sebelum tanggal itu ada pada riwayat git dan daftar
 pull request, karena tidak dicatat saat terjadi.
 
+## 2026-10-15 - Battleship: kurung kapal tidak lagi menutupi bar aksi
+
+### Diperbaiki
+
+- **Kurung anotasi kapal digambar di atas bar aksi yang sticky, jadi tombol "Arah", "Acak Ulang",
+  "Undo", dan "Kunci Armada" tertutup saat papan digulung.** Penyebabnya lapisan tumpuk: kurung
+  memakai `z-index: 2` dan tidak ada leluhur yang membuat konteks tumpuk, jadi ia mengalahkan bar
+  sticky yang `z-index: auto`. `.bs-board` sekarang memasang `isolation: isolate`, sehingga
+  `z-index` kurung hanya berlaku di dalam papannya sendiri.
+- Diukur dua arah pada 1400px: di titik tumpang tindih dengan bar, elemen teratas kini `bs-btn`
+  (sebelum perbaikan `bs-chart`), dan di tengah petak kedua kapal tegak elemen teratas tetap
+  `bs-chart__code`, jadi kurung masih menutupi petak barisnya seperti yang diminta.
+- Bug ini dibawa oleh PR #26 dan baru terlihat saat papan lebih tinggi daripada jendela. Test jsdom
+  tidak menangkapnya karena tidak ada layout di sana; gerbang regresi untuk kasus ini adalah
+  pengukuran di browser.
+
 ## 2026-10-15 - Battleship: armada ditandai sebagai anotasi peta
 
 ### Diubah
