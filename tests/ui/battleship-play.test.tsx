@@ -51,10 +51,18 @@ describe('Battleship play through the real UI', () => {
     fireEvent.click(cells[0]);
     fireEvent.click(cells[4]);
     expect(board.querySelectorAll('[data-ship="true"]')).toHaveLength(7);
+    // Satu kurung anotasi per kapal, bukan per petak, dan sandinya menyebut panjangnya.
+    const charts = board.querySelectorAll('.bs-chart');
+    expect(charts).toHaveLength(2);
+    expect(charts[0].getAttribute('data-chart-kind')).toBe('Battleship');
+    expect(charts[0].textContent).toBe('BS 4');
+    expect(charts[0].getAttribute('data-axis')).toBe('h');
 
     fireEvent.click(screen.getByRole('button', { name: /Arah:/i }));
     fireEvent.click(cells[20]);
     expect(board.querySelectorAll('[data-ship="true"]')).toHaveLength(10);
+    expect(board.querySelectorAll('.bs-chart')).toHaveLength(3);
+    expect(board.querySelectorAll('.bs-chart[data-axis="v"]')).toHaveLength(1);
 
     // Nothing fits horizontally from the last column, so the attempt is refused with a reason.
     fireEvent.click(screen.getByRole('button', { name: /Arah:/i }));
@@ -63,6 +71,7 @@ describe('Battleship play through the real UI', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Undo/i }));
     expect(board.querySelectorAll('[data-ship="true"]')).toHaveLength(7);
+    expect(board.querySelectorAll('.bs-chart')).toHaveLength(2);
   });
 
   it('locks a randomized fleet and lets a full solo game run to a winner', () => {
@@ -110,6 +119,9 @@ describe('Battleship play through the real UI', () => {
     expect(boardTitles.filter((t) => t && /Bukti armada/.test(t))).toHaveLength(2);
 
     expect(container.textContent).toContain('diungkap setelah selesai');
+    // Kapal yang habis ditandai dengan kurung putus-putus dan simbol bangkai.
+    expect(container.querySelectorAll('.bs-chart[data-sunk="true"]').length).toBeGreaterThan(0);
+    expect(container.querySelectorAll('.bs-chart__wreck').length).toBeGreaterThan(0);
   });
 
   it('passes the device between the two hotseat players before the battle starts', () => {

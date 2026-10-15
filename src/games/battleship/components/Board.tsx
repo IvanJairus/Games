@@ -27,6 +27,37 @@ export interface BoardProps {
 const stateLabel = (mark: Mark | undefined): string =>
   mark === 'hit' ? 'kena' : mark === 'miss' ? 'meleset' : 'belum ditembak';
 
+const SHIP_CODE: Record<ShipKind, string> = {
+  Battleship: 'BS',
+  Cruiser: 'CR',
+  Frigate: 'FR',
+  Submarine: 'SB',
+  Patrol: 'PT',
+};
+
+interface ChartMark {
+  kind: ShipKind;
+  span: number;
+  axis: 'h' | 'v';
+  sunk: boolean;
+}
+
+// Satu tanda per kapal, digantung di petak pertamanya supaya rentangnya ikut lebar petak.
+const chartMarks = (ships: Placement[] | undefined, sunkKinds: ShipKind[]): Map<number, ChartMark> => {
+  const out = new Map<number, ChartMark>();
+  (ships || []).forEach((p) => {
+    if (p.cells.length === 0) return;
+    const cells = [...p.cells].sort((a, b) => a - b);
+    out.set(cells[0], {
+      kind: p.kind,
+      span: cells.length,
+      axis: cells.length > 1 && cells[1] - cells[0] === BOARD_SIZE ? 'v' : 'h',
+      sunk: sunkKinds.includes(p.kind),
+    });
+  });
+  return out;
+};
+
 export const Board: React.FC<BoardProps> = ({
   label,
   hint,
@@ -75,7 +106,8 @@ export const Board: React.FC<BoardProps> = ({
     if (next !== cursor) focusCell(next);
   };
 
-  const cells = [];
+  const cells: React.ReactNode[] = [];
+  const charts = chartMarks(ships, sunkKinds);
   for (let row = 0; row < BOARD_SIZE; row++) {
     const rowCells = [];
     for (let col = 0; col < BOARD_SIZE; col++) {
@@ -83,6 +115,7 @@ export const Board: React.FC<BoardProps> = ({
       const mark = marks[cellKey(cell)];
       const hasShip = shipCells.has(cell);
       const sunk = sunkCells.has(cell);
+      const chart = charts.get(cell);
 
       rowCells.push(
         <button
@@ -105,7 +138,26 @@ export const Board: React.FC<BoardProps> = ({
             setCursor(cell);
             if (interactive && onPick && !mark) onPick(cell);
           }}
-        />
+        >
+          {chart && (
+            <span
+              className="bs-chart"
+              data-axis={chart.axis}
+              data-sunk={chart.sunk || undefined}
+              data-chart-kind={chart.kind}
+              style={{ '--bs-span': String(chart.span) } as React.CSSProperties}
+              aria-hidden="true"
+            >
+              {chart.sunk ? (
+                <svg className="bs-chart__wreck" viewBox="0 0 14 14" focusable="false">
+                  <path d="M2 11.5h10M7 2v9.5M4 5.5h6" />
+                </svg>
+              ) : (
+                <span className="bs-chart__code">{`${SHIP_CODE[chart.kind]} ${chart.span}`}</span>
+              )}
+            </span>
+          )}
+        </button>
       );
     }
     cells.push(
