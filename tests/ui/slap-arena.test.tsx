@@ -8,9 +8,15 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 // touch reveal, and the lobby's join/create paths.
 const stageStub = vi.hoisted(() => vi.fn());
 vi.mock('@/games/slap-arena/components/Arena3D', () => ({
-  Arena3D: React.forwardRef<unknown, { sim: unknown }>((props, ref) => {
-    stageStub(props.sim);
-    React.useImperativeHandle(ref, () => ({ impact: vi.fn(), koBurst: vi.fn(), confetti: vi.fn(), shake: vi.fn() }));
+  Arena3D: React.forwardRef<unknown, Record<string, unknown>>((props, ref) => {
+    stageStub(props);
+    React.useImperativeHandle(ref, () => ({
+      impact: vi.fn(),
+      koBurst: vi.fn(),
+      confetti: vi.fn(),
+      shake: vi.fn(),
+      freeze: vi.fn(),
+    }));
     return <div data-testid="slap-stage-stub" />;
   }),
 }));
@@ -90,7 +96,95 @@ const renderMatch = (path: string) =>
     </MemoryRouter>
   );
 
+function battleSnapshot() {
+  return {
+    round: 1,
+    phase: 'BATTLE',
+    countdown: 0,
+    scoreToWin: 3,
+    winnerId: null,
+    matchWinnerId: null,
+    t: 1,
+    players: [
+      {
+        id: 'host_one',
+        name: 'Host',
+        color: '#ff5d5d',
+        isBot: false,
+        x: 3,
+        z: 0,
+        vx: 0,
+        vz: 0,
+        angle: 0,
+        score: 0,
+        isFalling: false,
+        eliminated: false,
+        slapCooldown: 0,
+        dashCooldown: 0,
+      },
+    ],
+  };
+}
+
+/**
+ * Renders the page as a guest on a channel that keeps what goes out, and pushes one
+ * battle snapshot in so the client's own prediction loop has a live round to work on.
+ */
+async function mountClient() {
+  const sent: Array<{ event: string; payload: any }> = [];
+  const handlers: Record<string, Array<(m: { payload: unknown }) => void>> = {};
+  vi.mocked(joinOnlineRoom).mockResolvedValueOnce({ matchId: 'm1', playerIndex: 1, isHost: false });
+  const fakeChannel = {
+    on: vi.fn(),
+    send: vi.fn((args: { event: string; payload: unknown }) => {
+      sent.push(args);
+      return Promise.resolve('ok');
+    }),
+    track: vi.fn(),
+    presenceState: vi.fn(() => ({})),
+  };
+  fakeChannel.on.mockImplementation(
+    (
+      _type: string,
+      filter: { event: string },
+      cb: (m: { payload: unknown }) => void
+    ) => {
+      (handlers[filter.event] ??= []).push(cb);
+      return fakeChannel;
+    }
+  );
+  let onStatus: (s: string) => void = () => {};
+  vi.mocked(subscribeToMatch).mockImplementation((_code, _sync, _move, _leave, _conn, extras) => {
+    onStatus = extras?.onStatus ?? (() => {});
+    return { unsubscribe: vi.fn(), channel: fakeChannel as never };
+  });
+
+  renderMatch('/slap-arena/m/ABC123');
+  await waitFor(() => expect(subscribeToMatch).toHaveBeenCalled());
+  act(() => onStatus('SUBSCRIBED'));
+  act(() => (handlers['sa_snap'] ?? []).forEach((h) => h({ payload: battleSnapshot() })));
+
+  return {
+    sent,
+    inputs: () => sent.filter((m) => m.event === 'sa_in'),
+    press: () => act(() => window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Space', key: ' ' }))),
+    lift: () => act(() => window.dispatchEvent(new KeyboardEvent('keyup', { code: 'Space', key: ' ' }))),
+  };
+}
+
 beforeEach(() => {
+  // jsdom ships a window.localStorage without its methods, and the app's own guards
+  // swallow that failure. Stub the shape so the stored preferences are tested for real.
+  const store = new Map<string, string>();
+  Object.defineProperty(window, 'localStorage', {
+    configurable: true,
+    value: {
+      getItem: (k: string) => (store.has(k) ? store.get(k) : null),
+      setItem: (k: string, v: string) => void store.set(k, v),
+      removeItem: (k: string) => void store.delete(k),
+      clear: () => store.clear(),
+    },
+  });
   vi.mocked(createOnlineRoom).mockReset();
   vi.mocked(joinOnlineRoom).mockReset();
   vi.mocked(leaveOnlineMatch).mockReset();
@@ -186,6 +280,26 @@ describe('Slap Arena solo match (desktop)', () => {
     const before = mute.getAttribute('aria-pressed');
     fireEvent.click(mute);
     expect(mute.getAttribute('aria-pressed')).not.toBe(before);
+  });
+
+  it('starts the effects preference on auto', () => {
+    renderMatch('/slap-arena/solo');
+    expect(screen.getByTestId('slap-fx')).toHaveTextContent('AUTO');
+    expect(stageStub.mock.calls.at(-1)?.[0]).toMatchObject({ fxMode: 'auto' });
+  });
+
+  it('reads a stored effects preference and cycles it in place', () => {
+    window.localStorage.setItem('ij_slap_fx', 'low');
+    renderMatch('/slap-arena/solo');
+    const fx = screen.getByTestId('slap-fx');
+    expect(fx).toHaveTextContent('RENDAH');
+    expect(stageStub.mock.calls.at(-1)?.[0]).toMatchObject({ fxMode: 'low' });
+    fireEvent.click(fx);
+    expect(fx).toHaveTextContent('AUTO');
+    expect(window.localStorage.getItem('ij_slap_fx')).toBe('auto');
+    fireEvent.click(fx);
+    expect(fx).toHaveTextContent('TINGGI');
+    expect(window.localStorage.getItem('ij_slap_fx')).toBe('high');
   });
 });
 
@@ -301,6 +415,31 @@ describe('Slap Arena multiplayer wiring', () => {
     act(() => {
       window.dispatchEvent(new KeyboardEvent('keyup', { key: 'd' }));
     });
+  });
+
+  it('sends a banked charge when the slap key is held', async () => {
+    const client = await mountClient();
+    client.press();
+    await new Promise((r) => setTimeout(r, 500));
+    client.lift();
+
+    await waitFor(() => {
+      expect(client.inputs().some((m) => m.payload.slap === true)).toBe(true);
+    });
+    expect(Math.max(...client.inputs().map((m) => m.payload.charge ?? 0))).toBeGreaterThan(0.3);
+    // The wind-up has to reach the host too, or the peer never sees the tell.
+    expect(client.inputs().some((m) => m.payload.held === true)).toBe(true);
+  });
+
+  it('sends no charge for a tap', async () => {
+    const client = await mountClient();
+    client.press();
+    client.lift();
+
+    await waitFor(() => {
+      expect(client.inputs().some((m) => m.payload.slap === true)).toBe(true);
+    });
+    expect(Math.max(...client.inputs().map((m) => m.payload.charge ?? 0))).toBe(0);
   });
 
   it('leaves the room through the shared helper on the way out', async () => {

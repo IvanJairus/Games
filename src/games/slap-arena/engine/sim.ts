@@ -1,5 +1,6 @@
 import type { ArenaState, InputState, PlayerSnapshot, PlayerState, SimEvent, WorldSnapshot } from './types';
 import {
+  CHARGE_MAX_TIME,
   COUNTDOWN_TIME,
   createInitialArena,
   createPlayer,
@@ -9,7 +10,7 @@ import {
   spawnPlayersInCircle,
   updatePlayerMovement,
 } from './physics';
-import { computeBotAi } from './botAi';
+import { botInputToState, computeBotAi } from './botAi';
 
 const FIXED_DT = 1 / 120;
 export const GRACE_SECONDS = 2.5;
@@ -24,6 +25,21 @@ export interface SimOptions {
 }
 
 const NO_INPUT: InputState = { x: 0, z: 0, slap: false, dash: false };
+
+function clamp01(value: number | undefined): number {
+  return Number.isFinite(value) ? Math.max(0, Math.min(1, value as number)) : 0;
+}
+
+/**
+ * A hold only winds up while a slap would actually be allowed, so a brawler who is still
+ * cooling down, stunned, or already in the sea does not build a charge it cannot spend.
+ * Being hit also drops the wind-up, which is what makes a cancelled charge legible.
+ */
+function nextChargeT(player: PlayerState, held: boolean | undefined, dt: number): number {
+  const current = Number.isFinite(player.chargeT) ? player.chargeT : -1;
+  if (!held || player.slapCooldown > 0 || player.isHit || player.isFalling || player.eliminated) return -1;
+  return current < 0 ? 0 : Math.min(CHARGE_MAX_TIME, current + dt);
+}
 
 /** Fallbacks used when two brawlers pick the same colour, so nobody is a clone. */
 const TEAM_PALETTE = ['#4dabf7', '#ff5d5d', '#6fe3b0', '#ffcf5c', '#b197fc', '#ffa94d', '#f783ac', '#74c0fc'];
@@ -160,6 +176,7 @@ export class SlapSim {
       if (input.slap || input.dash) {
         this.consumeAction(p, list, input, knockScale);
       }
+      p.chargeT = nextChargeT(p, input.held, dt);
       updatePlayerMovement(p, input.x, input.z, dt);
       if (p.isFalling && !this.koEmitted.has(p.id)) {
         this.koEmitted.add(p.id);
@@ -174,11 +191,22 @@ export class SlapSim {
   private consumeAction(p: PlayerState, list: PlayerState[], input: InputState, knockScale: number): void {
     if (input.slap) {
       input.slap = false;
-      const hits = executeSlap(p, list, knockScale);
-      this.onEvent({ kind: 'slap', playerId: p.id, x: p.x, z: p.z, angle: p.angle });
+      const charge = clamp01(input.charge);
+      const hits = executeSlap(p, list, knockScale, charge);
+      this.onEvent({ kind: 'slap', playerId: p.id, x: p.x, z: p.z, angle: p.angle, charge });
       for (const h of hits) {
         const victim = this.state.players[h.victimId];
-        if (victim) this.onEvent({ kind: 'hit', victimId: h.victimId, x: victim.x, z: victim.z, angle: p.angle, force: h.force });
+        if (victim)
+          this.onEvent({
+            kind: 'hit',
+            attackerId: h.attackerId,
+            victimId: h.victimId,
+            x: victim.x,
+            z: victim.z,
+            angle: p.angle,
+            force: h.force,
+            charge: h.charge,
+          });
       }
     }
     if (input.dash) {
@@ -189,7 +217,7 @@ export class SlapSim {
 
   private botInput(bot: PlayerState, list: PlayerState[], dt: number): InputState {
     const decision = computeBotAi(bot, list, dt, this.clock, this.roundElapsed);
-    return { x: decision.inputX, z: decision.inputZ, slap: decision.shouldSlap, dash: decision.shouldDash };
+    return botInputToState(decision);
   }
 
   private checkRoundEnd(list: PlayerState[]): void {
@@ -217,12 +245,13 @@ export class SlapSim {
     const input = this.inputs.get(this.localId) ?? NO_INPUT;
     if (input.slap) {
       input.slap = false;
-      this.onEvent({ kind: 'slap', playerId: me.id, x: me.x, z: me.z, angle: me.angle });
+      this.onEvent({ kind: 'slap', playerId: me.id, x: me.x, z: me.z, angle: me.angle, charge: clamp01(input.charge) });
     }
     if (input.dash) {
       input.dash = false;
       if (executeDash(me)) this.onEvent({ kind: 'dash', playerId: me.id, x: me.x, z: me.z, angle: me.angle });
     }
+    me.chargeT = nextChargeT(me, input.held, dt);
     updatePlayerMovement(me, input.x, input.z, dt);
   }
 
@@ -250,6 +279,8 @@ export class SlapSim {
         eliminated: p.eliminated,
         slapCooldown: round2(p.slapCooldown),
         dashCooldown: round2(p.dashCooldown),
+        y: round2(p.y),
+        chargeT: p.chargeT < 0 ? -1 : round2(p.chargeT),
       })),
     };
   }
@@ -288,6 +319,8 @@ export class SlapSim {
       local.vx = p.vx;
       local.vz = p.vz;
       local.angle = p.angle;
+      local.y = p.y ?? 0;
+      local.chargeT = p.chargeT ?? -1;
     }
 
     for (const id of Object.keys(state.players)) {

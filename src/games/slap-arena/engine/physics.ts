@@ -17,6 +17,24 @@ export const HIT_STUN = 0.26;
 export const FALL_KILL_Y = -14;
 export const COUNTDOWN_TIME = 3;
 
+/** Below this a hold is indistinguishable from a tap, so the tap keeps its old feel. */
+export const CHARGE_MIN_TIME = 0.25;
+/** A finger that never lifts still gets its slap; the button auto-fires here. */
+export const CHARGE_MAX_TIME = 0.7;
+/** Knockback multiplier at a full hold is 1 + this. */
+export const CHARGE_FORCE_GAIN = 1.2;
+export const CHARGE_STUN_GAIN = 0.14;
+export const CHARGE_CD_GAIN = 0.3;
+/** Vertical launch speed at a full hold. */
+export const CHARGE_LAUNCH_Y = 4.4;
+export const AIR_GRAVITY = 22;
+
+/** How much of a slap a hold of `heldSeconds` has bought, in 0..1. */
+export function chargeFromHold(heldSeconds: number): number {
+  if (!Number.isFinite(heldSeconds) || heldSeconds < CHARGE_MIN_TIME) return 0;
+  return Math.min(1, (heldSeconds - CHARGE_MIN_TIME) / (CHARGE_MAX_TIME - CHARGE_MIN_TIME));
+}
+
 export function normalizeAngle(angle: number): number {
   let a = angle;
   while (a > Math.PI) a -= 2 * Math.PI;
@@ -45,6 +63,9 @@ export function createPlayer(partial: Partial<PlayerState> & { id: string }): Pl
     isFalling: false,
     fallY: 0,
     fallSpin: 0,
+    y: 0,
+    vy: 0,
+    chargeT: -1,
     score: 0,
     eliminated: false,
     slapAnimT: -1,
@@ -91,6 +112,9 @@ export function spawnPlayersInCircle(players: Record<string, PlayerState>, radiu
     p.isFalling = false;
     p.fallY = 0;
     p.fallSpin = 0;
+    p.y = 0;
+    p.vy = 0;
+    p.chargeT = -1;
     p.eliminated = false;
     p.slapAnimT = -1;
     p.bump = 0;
@@ -133,6 +157,17 @@ export function updatePlayerMovement(
     return;
   }
 
+  // A charged knockback lifts the victim off the grass. Kept out of the x/z path on
+  // purpose: being airborne must not quietly make a brawler travel further.
+  if (player.y > 0 || player.vy > 0) {
+    player.vy -= AIR_GRAVITY * dt;
+    player.y += player.vy * dt;
+    if (player.y <= 0) {
+      player.y = 0;
+      player.vy = 0;
+    }
+  }
+
   const inputMagnitude = Math.hypot(inputX, inputZ);
   if (inputMagnitude > 0.08 && !player.isHit) {
     const normX = inputX / inputMagnitude;
@@ -150,6 +185,10 @@ export function updatePlayerMovement(
   player.z += player.vz * dt;
 
   if (Math.hypot(player.x, player.z) > ARENA_RADIUS) {
+    // Hand the fall over at whatever height the launch reached, or a victim thrown
+    // over the rim would snap down to the sea before sinking.
+    player.fallY = Math.max(0, player.y);
+    player.y = 0;
     player.isFalling = true;
   }
 }
@@ -190,25 +229,32 @@ export interface SlapResult {
   attackerId: string;
   victimId: string;
   force: number;
+  charge: number;
 }
 
 /**
  * `knockScale` lets the sim soften hits during the opening seconds of a round, so a
  * player who is still reading the controls does not get shoved into the sea by three
- * bots before they have moved once.
+ * bots before they have moved once. `charge` is 0..1 from a held slap button: it buys
+ * range through force, not through the hitbox, so who gets hit never changes.
  */
 export function executeSlap(
   attacker: PlayerState,
   allPlayers: PlayerState[],
-  knockScale = 1
+  knockScale = 1,
+  charge = 0
 ): SlapResult[] {
   if (attacker.slapCooldown > 0 || attacker.isFalling || attacker.eliminated || attacker.isHit) {
     return [];
   }
 
+  const c = Math.max(0, Math.min(1, Number.isFinite(charge) ? charge : 0));
+  const force = SLAP_FORCE * (1 + CHARGE_FORCE_GAIN * c) * knockScale;
+
   attacker.isSlapping = true;
   attacker.slapAnimT = 0;
-  attacker.slapCooldown = SLAP_COOLDOWN;
+  attacker.chargeT = -1;
+  attacker.slapCooldown = SLAP_COOLDOWN + CHARGE_CD_GAIN * c;
 
   const results: SlapResult[] = [];
 
@@ -223,13 +269,14 @@ export function executeSlap(
     const angleDiff = Math.abs(normalizeAngle(Math.atan2(dz, dx) - attacker.angle));
     if (angleDiff > SLAP_CONE * 0.5) continue;
 
-    victim.vx += Math.cos(attacker.angle) * SLAP_FORCE * knockScale;
-    victim.vz += Math.sin(attacker.angle) * SLAP_FORCE * knockScale;
+    victim.vx += Math.cos(attacker.angle) * force;
+    victim.vz += Math.sin(attacker.angle) * force;
+    victim.vy = Math.max(victim.vy, CHARGE_LAUNCH_Y * c);
     victim.isHit = true;
-    victim.hitTimer = HIT_STUN;
+    victim.hitTimer = HIT_STUN + CHARGE_STUN_GAIN * c;
     victim.bump = 1;
 
-    results.push({ attackerId: attacker.id, victimId: victim.id, force: SLAP_FORCE });
+    results.push({ attackerId: attacker.id, victimId: victim.id, force, charge: c });
   }
 
   return results;

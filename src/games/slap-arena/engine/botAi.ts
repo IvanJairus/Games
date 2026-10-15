@@ -1,4 +1,4 @@
-import { PlayerState, ARENA_RADIUS, SLAP_RANGE, SLAP_CONE, normalizeAngle } from './physics';
+import { PlayerState, ARENA_RADIUS, SLAP_RANGE, SLAP_CONE, normalizeAngle, chargeFromHold } from './physics';
 import type { InputState } from './types';
 
 export interface BotDecision {
@@ -6,6 +6,10 @@ export interface BotDecision {
   inputZ: number;
   shouldSlap: boolean;
   shouldDash: boolean;
+  /** True while the bot is winding up. The sim owns the clock in `bot.chargeT`. */
+  held: boolean;
+  /** Charge to spend on the frame `shouldSlap` fires. */
+  charge: number;
 }
 
 /** Stable per-bot personality so three bots do not move as one clone. */
@@ -28,7 +32,7 @@ export function computeBotAi(
   roundElapsed = 99
 ): BotDecision {
   if (bot.isFalling || bot.eliminated) {
-    return { inputX: 0, inputZ: 0, shouldSlap: false, shouldDash: false };
+    return { inputX: 0, inputZ: 0, shouldSlap: false, shouldDash: false, held: false, charge: 0 };
   }
 
   const { aggression, jitter } = personality(bot.id);
@@ -43,6 +47,8 @@ export function computeBotAi(
       inputZ: Math.sin(angleToCenter),
       shouldSlap: false,
       shouldDash: needDash,
+      held: false,
+      charge: 0,
     };
   }
 
@@ -77,6 +83,8 @@ export function computeBotAi(
       inputZ: Math.sin(wanderAngle) * 0.5,
       shouldSlap: false,
       shouldDash: false,
+      held: false,
+      charge: 0,
     };
   }
 
@@ -87,12 +95,29 @@ export function computeBotAi(
   const targetAngle = Math.atan2(dz, dx) + orbit * (1 - aggression) + jitter * 0.15 * Math.sin(time * 1.7);
   const angleDiff = Math.abs(normalizeAngle(Math.atan2(dz, dx) - bot.angle));
 
-  const shouldSlap =
-    minDistance <= SLAP_RANGE * 0.95 * aggression && angleDiff <= SLAP_CONE * 0.45 && bot.slapCooldown <= 0;
+  const inPocket =
+    minDistance <= SLAP_RANGE * 0.95 * aggression &&
+    angleDiff <= SLAP_CONE * 0.45 &&
+    bot.slapCooldown <= 0 &&
+    !bot.isHit;
 
+  // A target already near the lip is worth the full wind-up, because one charged slap
+  // ends the round. In the middle of the grass a plain shove gets the same job done
+  // sooner, so the bold bots still swing fast and the wary ones telegraph.
   const targetDistFromCenter = Math.hypot(nearestTarget.x, nearestTarget.z);
+  const wantCharge = targetDistFromCenter > ARENA_RADIUS * 0.55 ? 0.75 : aggression * 0.5;
+  const built = chargeFromHold(bot.chargeT);
+  const charging = bot.chargeT >= 0;
+  const shouldSlap = inPocket && built >= wantCharge;
+  // Bodies get shoved apart the moment they touch, so a wind-up that gave up on every
+  // frame outside the pocket would never once reach the release. It holds until the
+  // target is genuinely out of reach.
+  const withinLeash = minDistance <= SLAP_RANGE * 1.7;
+  const held = shouldSlap ? false : charging ? withinLeash : inPocket;
+
   const shouldDash =
     !shouldSlap &&
+    !held &&
     minDistance > 2.6 &&
     minDistance < 5.0 &&
     targetDistFromCenter > ARENA_RADIUS * 0.6 &&
@@ -104,9 +129,18 @@ export function computeBotAi(
     inputZ: Math.sin(targetAngle),
     shouldSlap,
     shouldDash,
+    held,
+    charge: built,
   };
 }
 
 export function botInputToState(decision: BotDecision): InputState {
-  return { x: decision.inputX, z: decision.inputZ, slap: decision.shouldSlap, dash: decision.shouldDash };
+  return {
+    x: decision.inputX,
+    z: decision.inputZ,
+    slap: decision.shouldSlap,
+    dash: decision.shouldDash,
+    held: decision.held,
+    charge: decision.charge,
+  };
 }

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { FxGates } from '../../engine/fxMode';
 
 const INK = '#2a1b33';
 const SKIN = '#ffd9b3';
@@ -56,6 +57,8 @@ function outlined(mesh: THREE.Mesh, width = 0.085): THREE.Mesh {
   const shell = new THREE.Mesh(mesh.geometry, outlineMat);
   shell.scale.setScalar(1 + width);
   shell.renderOrder = -1;
+  // Doubles the draw calls of the whole cast, so the low tier needs to find these back.
+  shell.userData.outline = true;
   mesh.add(shell);
   return mesh;
 }
@@ -78,9 +81,13 @@ export interface Pose {
   dashT: number;
   falling: boolean;
   cheering: boolean;
+  /** 0..1 through the wind-up, -1 when not holding the button. */
+  charge: number;
+  /** Banked charge 0..1 at the moment the slap lands, for a harder follow-through. */
+  air: number;
 }
 
-const IDLE: Pose = { speed: 0, slapT: -1, hitT: 0, dashT: 0, falling: false, cheering: false };
+const IDLE: Pose = { speed: 0, slapT: -1, hitT: 0, dashT: 0, falling: false, cheering: false, charge: -1, air: 0 };
 
 /**
  * Chunky procedural brawler: head just over half the height, stub legs, oversized
@@ -176,25 +183,39 @@ export class BrawlerRig {
     this.gloveMat.color.set(gloveColor(colorHex));
   }
 
+  /** Toggles the two costs this rig carries: the ink shells and the shadow casters. */
+  setDetail(gates: Pick<FxGates, 'outlines' | 'shadows'>): void {
+    this.group.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh) return;
+      if (m.userData.outline) m.visible = gates.outlines;
+      else m.castShadow = gates.shadows;
+    });
+  }
+
   /** Drives the whole rig from simulation state; no clips, no mixer. */
   update(dt: number, pose: Pose = IDLE): void {
     this.t += dt;
     const moving = pose.speed > 0.6;
+    const charging = pose.charge >= 0;
+    const cr = charging ? Math.min(1, pose.charge) : 0;
     const step = this.t * (6 + pose.speed * 0.9);
 
     // Idle breath and walk bounce share one curve so switching never pops.
     const bounce = moving ? Math.abs(Math.sin(step)) * 0.12 : Math.sin(this.t * 2.1) * 0.03;
-    this.bodyPivot.position.y = bounce;
-    this.head.position.y = bounce * 1.3;
+    this.bodyPivot.position.y = bounce - cr * 0.06;
+    this.head.position.y = bounce * 1.3 - cr * 0.06;
     this.bodyPivot.rotation.x = moving ? -0.12 * Math.min(1, pose.speed / 5) : 0;
 
-    const swing = moving ? Math.sin(step) * 0.6 : Math.sin(this.t * 1.6) * 0.05;
+    // Planting the legs is what sells the pause: a swinging arm on marching legs reads
+    // as running, not as winding up.
+    const swing = charging ? 0 : moving ? Math.sin(step) * 0.6 : Math.sin(this.t * 1.6) * 0.05;
     this.legL.rotation.x = swing;
     this.legR.rotation.x = -swing;
     this.legL.position.z = Math.sin(swing) * 0.13;
     this.legR.position.z = -Math.sin(swing) * 0.13;
 
-    const bob = moving ? Math.cos(step) * 0.07 : 0;
+    const bob = moving && !charging ? Math.cos(step) * 0.07 : 0;
     this.gloveL.position.set(-0.66, 0.74 + bob, 0.1);
     this.gloveR.position.set(0.66, 0.74 - bob, 0.1);
     this.gloveL.rotation.set(0, 0, 0.12);
@@ -209,15 +230,39 @@ export class BrawlerRig {
       this.head.position.y = this.bodyPivot.position.y * 1.15;
     }
 
+    if (charging) {
+      // The glove travels back and the torso turns against it, so the release has
+      // somewhere to come from. Past four fifths the hold shakes.
+      this.gloveR.position.set(0.66 + cr * 0.14, 0.74 + cr * 0.34, 0.1 - cr * 0.66);
+      this.gloveR.scale.setScalar(1 + cr * 0.24);
+      this.bodyPivot.rotation.y = cr * 0.5;
+      this.head.rotation.y = cr * 0.16;
+      if (cr > 0.8) {
+        const tremble = Math.sin(this.t * 46) * (cr - 0.8) * 0.1;
+        this.bodyPivot.position.y += tremble;
+        this.gloveR.position.x += tremble;
+      }
+    }
+
     if (pose.slapT >= 0) {
       // Wind-up, then a fast thrust with the torso following so it reads as a swing.
+      // A banked charge deepens the thrust instead of speeding it up, which is the
+      // difference between a harder hit and a shorter animation.
       const k = pose.slapT;
-      const thrust = k < 0.25 ? -0.16 * (k / 0.25) : 0.9 * Math.sin(((k - 0.25) / 0.75) * Math.PI);
-      this.gloveR.position.set(0.66 - thrust * 0.2, 0.88, 0.1 + thrust * 0.98);
-      this.gloveR.scale.setScalar(1 + thrust * 0.3);
-      this.bodyPivot.rotation.y = -thrust * 0.45;
+      const extra = Math.max(0, Math.min(1, pose.air));
+      const thrust =
+        k < 0.25
+          ? -0.16 * (k / 0.25) * (1 + extra)
+          : (0.9 + extra * 0.45) * Math.sin(((k - 0.25) / 0.75) * Math.PI);
+      this.gloveR.position.set(
+        0.66 - thrust * 0.2,
+        0.88 + extra * 0.1,
+        0.1 + thrust * (0.98 + extra * 0.34)
+      );
+      this.gloveR.scale.setScalar(1 + thrust * (0.3 + extra * 0.4));
+      this.bodyPivot.rotation.y = -thrust * (0.45 + extra * 0.3);
       this.head.rotation.y = -thrust * 0.18;
-    } else {
+    } else if (!charging) {
       this.bodyPivot.rotation.y = 0;
       this.head.rotation.y = 0;
     }

@@ -3,9 +3,16 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
   ARENA_RADIUS,
+  CHARGE_FORCE_GAIN,
+  CHARGE_LAUNCH_Y,
+  CHARGE_MAX_TIME,
+  CHARGE_MIN_TIME,
+  HIT_STUN,
   PLAYER_RADIUS,
   SLAP_COOLDOWN,
   SLAP_FORCE,
+  SLAP_RANGE,
+  chargeFromHold,
   createInitialArena,
   createPlayer,
   executeDash,
@@ -130,6 +137,138 @@ describe('Slap Arena physics & math', () => {
   });
 });
 
+describe('Slap Arena charge', () => {
+  it('maps a hold duration onto the meter', () => {
+    expect(chargeFromHold(-1)).toBe(0);
+    expect(chargeFromHold(NaN)).toBe(0);
+    expect(chargeFromHold(0.2)).toBe(0);
+    expect(chargeFromHold(CHARGE_MIN_TIME)).toBe(0);
+    expect(chargeFromHold(0.475)).toBeCloseTo(0.5, 2);
+    expect(chargeFromHold(CHARGE_MAX_TIME)).toBe(1);
+    expect(chargeFromHold(9)).toBe(1);
+  });
+
+  it('leaves an uncharged slap numerically identical to the old one', () => {
+    const attacker = mockPlayer('p1', 0, 0, 0);
+    const victim = mockPlayer('p2', 1.5, 0, 0);
+    const [hit] = executeSlap(attacker, [attacker, victim]);
+    expect(victim.vx).toBeCloseTo(SLAP_FORCE, 6);
+    expect(victim.vy).toBe(0);
+    expect(victim.y).toBe(0);
+    expect(victim.hitTimer).toBeCloseTo(HIT_STUN, 6);
+    expect(attacker.slapCooldown).toBeCloseTo(SLAP_COOLDOWN, 6);
+    expect(hit.charge).toBe(0);
+  });
+
+  it('a full hold throws harder, stuns longer, and launches upward', () => {
+    const attacker = mockPlayer('p1', 0, 0, 0);
+    const victim = mockPlayer('p2', 1.5, 0, 0);
+    executeSlap(attacker, [attacker, victim], 1, 1);
+    expect(victim.vx).toBeCloseTo(SLAP_FORCE * (1 + CHARGE_FORCE_GAIN), 4);
+    expect(victim.vy).toBeCloseTo(CHARGE_LAUNCH_Y, 6);
+    expect(victim.hitTimer).toBeGreaterThan(HIT_STUN);
+    expect(attacker.slapCooldown).toBeGreaterThan(SLAP_COOLDOWN);
+  });
+
+  it('a hold buys force, never reach or arc', () => {
+    const attacker = mockPlayer('p1', 0, 0, 0);
+    const outOfRange = mockPlayer('p2', SLAP_RANGE + 0.15, 0, 0);
+    const behind = mockPlayer('p3', -1.5, 0, 0);
+    expect(executeSlap(attacker, [attacker, outOfRange, behind], 1, 1)).toHaveLength(0);
+  });
+
+  it('the launch arc peaks under half a metre and cannot steer', () => {
+    const p = mockPlayer('p1', 0, 0, 0);
+    p.vy = CHARGE_LAUNCH_Y;
+    let apex = 0;
+    for (let i = 0; i < 240; i++) {
+      updatePlayerMovement(p, 0, 0, 1 / 120);
+      apex = Math.max(apex, p.y);
+      if (p.y === 0 && p.vy === 0 && i > 2) break;
+    }
+    expect(apex).toBeGreaterThan(0.35);
+    expect(apex).toBeLessThan(0.55);
+    expect(p.y).toBe(0);
+    expect(p.x).toBe(0);
+    expect(p.z).toBe(0);
+  });
+
+  it('a launched brawler that clears the rim keeps falling from its apex', () => {
+    const p = mockPlayer('p1', ARENA_RADIUS - 0.2, 0, 0);
+    p.vx = 30;
+    p.vy = CHARGE_LAUNCH_Y;
+    p.y = 0.3;
+    updatePlayerMovement(p, 0, 0, 1 / 120);
+    expect(p.isFalling).toBe(true);
+    expect(p.fallY).toBeGreaterThan(0);
+  });
+
+  it('the sim banks a hold, releases it, and drops it when stunned', () => {
+    const sim = new SlapSim({ localId: 'me', authoritative: true });
+    sim.addPlayer({ id: 'me' });
+    sim.addPlayer({ id: 'foe', x: 4 });
+    sim.state.phase = 'BATTLE';
+
+    sim.setInput('me', { x: 0, z: 0, slap: false, dash: false, held: true });
+    for (let i = 0; i < 60; i++) sim.step(1 / 60);
+    expect(sim.players.me.chargeT).toBeGreaterThanOrEqual(CHARGE_MAX_TIME - 0.02);
+
+    sim.players.me.isHit = true;
+    sim.players.me.hitTimer = HIT_STUN;
+    sim.step(1 / 60);
+    expect(sim.players.me.chargeT).toBe(-1);
+
+    sim.players.me.isHit = false;
+    sim.players.me.hitTimer = 0;
+    sim.setInput('me', { x: 0, z: 0, slap: false, dash: false, held: false });
+    sim.step(1 / 60);
+    expect(sim.players.me.chargeT).toBe(-1);
+  });
+
+  it('the snapshot carries the launch height and the wind-up', () => {
+    const host = new SlapSim({ localId: 'a', authoritative: true });
+    host.addPlayer({ id: 'a', x: 0 });
+    host.state.phase = 'BATTLE';
+    host.setInput('a', { x: 0, z: 0, slap: false, dash: false, held: true });
+    for (let i = 0; i < 20; i++) host.step(1 / 60);
+    expect(host.snapshot().players[0].chargeT).toBeGreaterThan(0);
+  });
+
+  it('a snapshot from a host without the charge fields lands safely', () => {
+    const client = new SlapSim({ localId: 'guest', authoritative: false });
+    client.addPlayer({ id: 'guest' });
+    client.applySnapshot({
+      round: 1,
+      phase: 'BATTLE',
+      countdown: 0,
+      scoreToWin: 3,
+      winnerId: null,
+      matchWinnerId: null,
+      t: 1,
+      players: [
+        {
+          id: 'host',
+          name: 'H',
+          color: '#ff5d5d',
+          isBot: false,
+          x: 1,
+          z: 1,
+          vx: 0,
+          vz: 0,
+          angle: 0,
+          score: 0,
+          isFalling: false,
+          eliminated: false,
+          slapCooldown: 0,
+          dashCooldown: 0,
+        },
+      ],
+    } as never);
+    expect(client.players.host.y).toBe(0);
+    expect(client.players.host.chargeT).toBe(-1);
+  });
+});
+
 describe('Slap Arena bot AI', () => {
   it('steers bot back inward when dangerously close to island edge', () => {
     const bot = mockPlayer('bot_1', ARENA_RADIUS - 1, 0, 0);
@@ -137,21 +276,36 @@ describe('Slap Arena bot AI', () => {
     expect(computeBotAi(bot, [bot, target]).inputX).toBeLessThan(0);
   });
 
-  it('moves towards opponent and slaps when in range and facing', () => {
+  it('winds up when in range and facing, then slaps once the charge is banked', () => {
     const bot = mockPlayer('bot_1', 0, 0, 0);
     const opponent = mockPlayer('p1', 1.2, 0, 0);
-    const decision = computeBotAi(bot, [bot, opponent]);
-    expect(decision.inputX).toBeGreaterThan(0);
-    expect(decision.shouldSlap).toBe(true);
+    const first = computeBotAi(bot, [bot, opponent]);
+    expect(first.inputX).toBeGreaterThan(0);
+    expect(first.held).toBe(true);
+    expect(first.shouldSlap).toBe(false);
+    // The sim owns the wind-up clock, so the next call sees a partly banked hold.
+    bot.chargeT = 0.6;
+    const second = computeBotAi(bot, [bot, opponent]);
+    expect(second.shouldSlap).toBe(true);
+    expect(second.held).toBe(false);
+  });
+
+  it('keeps winding up while a target drifts just out of the pocket', () => {
+    const bot = mockPlayer('bot_1', 0, 0, 0);
+    bot.chargeT = 0.4;
+    const far = mockPlayer('p1', 3.1, 0, 0);
+    const decision = computeBotAi(bot, [bot, far]);
+    expect(decision.shouldSlap).toBe(false);
+    expect(decision.held).toBe(true);
   });
 
   it('gives each bot a stable, different aggression', () => {
-    const wouldSlap = (id: string) => {
+    const wouldWindUp = (id: string) => {
       const bot = mockPlayer(id, 0, 0, 0);
       const foe = mockPlayer('p1', 2.05, 0, 0);
-      return computeBotAi(bot, [bot, foe]).shouldSlap;
+      return computeBotAi(bot, [bot, foe]).held;
     };
-    const results = ['bot_1', 'bot_2', 'bot_3', 'bot_4', 'bot_5'].map(wouldSlap);
+    const results = ['bot_1', 'bot_2', 'bot_3', 'bot_4', 'bot_5'].map(wouldWindUp);
     expect(results).toContain(true);
     expect(results).toContain(false);
   });
@@ -389,5 +543,16 @@ describe('Slap Arena stays inside the site CSP', () => {
 
   it('ships no model files', () => {
     expect(existsSync(resolve(process.cwd(), 'public/models'))).toBe(false);
+  });
+
+  it('draws the cast from primitives, not from an asset pipeline', () => {
+    // The whole reason the arena is cheap on a phone: no clips to parse, no loaders to
+    // pull from a CDN, no shader programs to compile. New effects have to earn a change
+    // to this list, the same way a widened CSP would.
+    const dir = resolve(process.cwd(), 'src/games/slap-arena/components/three');
+    for (const file of ['brawler.ts', 'world.ts']) {
+      const src = readFileSync(resolve(dir, file), 'utf8');
+      expect(src).not.toMatch(/ShaderMaterial|GLTFLoader|TextureLoader|AnimationMixer|InstancedMesh|\.load\(/);
+    }
   });
 });
