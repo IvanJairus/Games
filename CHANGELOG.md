@@ -82,6 +82,40 @@ lulus 5 tahap.
 Mode dua pemain sungguhan di dua perangkat belum dicoba; jalur protokolnya yang teruji lewat
 harness relay. Dan tombol efek baru diverifikasi di Chrome, bukan di browser kelas bawah.
 
+## 2026-10-15 - WallGo: dinding ditandai dengan warna pemasangnya
+
+### Diubah
+
+- **Dinding yang sudah dipasang kini dicat dengan warna tema kursi yang memasangnya**, bukan lagi
+  netral semua. Sebelumnya papan tidak bisa menjawab "siapa yang menutup jalan saya".
+- Warna dinding mengikuti `PLAYER_GOLD_THEMES` pemiliknya: isi `theme.hex`, garis tepi
+  `theme.border`. Dinding tanpa pemilik (room lama) tetap memakai `--wall-placed` netral.
+
+### Ditambahkan
+
+- Field `owner` pada tipe `Wall`, diisi otomatis oleh `applyWall` dari kursi yang sedang giliran.
+  Tidak ada migrasi database: mode online mengirim `game_state` utuh, jadi field ini ikut mengalir
+  ke perangkat lawan tanpa perubahan sisi server.
+
+### Terukur
+
+- Di browser nyata (dev server, meja 4 kursi, 3 bot tingkat Sedang, 33 putaran): 10 dinding
+  terpasang, 10 di antaranya memakai warna tema, 0 yang masih netral.
+- Engine test membuktikan `owner` terisi sesuai kursi yang bergerak, dan render test Board
+  membuktikan pemetaan `owner` ke warna tema plus fallback netralnya.
+- Dua warna tema perlu diwaspadai, dan ini terlihat di screenshot: kursi 4 "Emas Kuning"
+  `#d97706` berhimpitan dengan aksen emas inti dan dengan "Terracotta" `#c2410c` milik kursi 1 pada
+  bilah dinding setipis 10 px. Kursi 6 "Batu Basalt" `#334155` sama persis dengan token
+  `--wall-placed-border` hari ini, jadi dindingnya hampir tidak bisa dibedakan dari dinding tanpa
+  pemilik. Belum ada perbaikan yang diputuskan.
+
+### Ditemukan sambil lalu
+
+- `supabase/functions/_shared/wallgame/engine.ts` adalah salinan engine yang tidak diimpor siapa pun
+  (tidak ada file fungsi lain yang memanggilnya, dan SQL tidak memvalidasi penempatan dinding).
+  Perubahan `owner` sengaja tidak dicopy ke sana supaya dua engine tidak berubah tanpa alasan; kalau
+  nanti fungsi itu diaktifkan, pen-stamp-an `owner` harus ditambahkan di sana juga.
+
 ## 2026-10-15 - WallGo: tiga tingkat bot dan entrance "Lawan Bot"
 
 ### Diubah

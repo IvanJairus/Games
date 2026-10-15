@@ -9,6 +9,9 @@ export interface Wall {
   orientation: WallOrientation;
   x: number; // Intersection coordinate 0 <= x < gridSize - 1
   y: number; // Intersection coordinate 0 <= y < gridSize - 1
+  // Written by applyWall from the active seat so the board can paint the wall in its owner's
+  // colours. Rooms saved before this field existed have none and stay neutral.
+  owner?: number;
 }
 
 export interface PlayerTheme {

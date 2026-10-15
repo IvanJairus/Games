@@ -309,13 +309,14 @@ export const Board: React.FC<BoardProps> = ({
           })
         )}
 
-        {/* Placed 2-Segment Walls (Deep Slate Stone - No muddy brown) */}
+        {/* Placed 2-Segment Walls, painted in the colour of the seat that placed them */}
         {walls.map((wall, index) => {
           const isH = wall.orientation === 'H';
           const wx = isH ? getCellX(wall.x) : getCellX(wall.x) + cellSize;
           const wy = isH ? getCellY(wall.y) + cellSize : getCellY(wall.y);
           const wWidth = isH ? cellSize * 2 + grooveThickness : grooveThickness;
           const wHeight = isH ? grooveThickness : cellSize * 2 + grooveThickness;
+          const owner = wall.owner === undefined ? undefined : players.find((p) => p.id === wall.owner);
 
           return (
             <g key={`wall-${index}`} data-testid={`placed-wall-${wall.orientation}-${wall.x}-${wall.y}`}>
@@ -333,8 +334,8 @@ export const Board: React.FC<BoardProps> = ({
                 width={wWidth}
                 height={wHeight}
                 rx={1}
-                fill="var(--wall-placed, #1e293b)"
-                stroke="var(--wall-placed-border, #334155)"
+                fill={owner ? owner.theme.hex : 'var(--wall-placed, #1e293b)'}
+                stroke={owner ? owner.theme.border : 'var(--wall-placed-border, #334155)'}
                 strokeWidth="1"
               />
             </g>
