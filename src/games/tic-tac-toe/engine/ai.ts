@@ -1,4 +1,4 @@
-import { applyMove, checkWinner } from './index';
+import { applyMove, checkWinner, getHoldCell, MAX_HOLDS_PER_ROUND } from './index';
 import { PlayerSymbol, TicTacToeState } from './types';
 
 export type BotLevel = 'santai' | 'sedang' | 'sempurna';
@@ -9,6 +9,8 @@ export const BOT_LEVELS: { id: BotLevel; label: string; note: string }[] = [
   { id: 'sempurna', label: 'Sempurna', note: 'Mencari sepuluh langkah ke depan dan mengambil kemenangan tercepat.' },
 ];
 
+// Squares that take a new piece. The hold square is not one of them, so this stays the placement
+// list that the tests and the threat checks reason about.
 export function getValidMoves(state: TicTacToeState): number[] {
   const cells: number[] = [];
   for (let index = 0; index < 9; index++) {
@@ -17,10 +19,19 @@ export function getValidMoves(state: TicTacToeState): number[] {
   return cells;
 }
 
+// Everything the bot may do, hold included. Leaving the hold out of this list would hand the
+// advantage of the new rule to whichever seat is not the bot.
+export function getLegalMoves(state: TicTacToeState): number[] {
+  const hold = getHoldCell(state);
+  return hold === null ? getValidMoves(state) : [...getValidMoves(state), hold];
+}
+
 // Board plus turn is not enough to identify a position: FIFO evicts the oldest piece, so the
 // insertion order changes which cell frees up next.
 function stateKey(state: TicTacToeState): string {
-  return `${state.board.map((c) => c ?? '.').join('')}|${state.currentTurn}|${state.pieces
+  return `${state.board.map((c) => c ?? '.').join('')}|${state.currentTurn}|${
+    state.holdsLeft?.X ?? MAX_HOLDS_PER_ROUND
+  }${state.holdsLeft?.O ?? MAX_HOLDS_PER_ROUND}|${state.pieces
     .map((p) => `${p.player}${p.cellIndex}`)
     .join('')}`;
 }
@@ -38,7 +49,10 @@ function orderedMoves(state: TicTacToeState): number[] {
   const winning = cells.filter(
     (cell) => checkWinner(applyMove(state, cell).board)?.winner === state.currentTurn
   );
-  return [...winning, ...cells.filter((cell) => !winning.includes(cell))];
+  const ordered = [...winning, ...cells.filter((cell) => !winning.includes(cell))];
+  // A hold cannot complete a line, so it never leads the ordering.
+  const hold = getHoldCell(state);
+  return hold === null ? ordered : [...ordered, hold];
 }
 
 function solve(state: TicTacToeState, depth: number, alpha: number, beta: number): number {
@@ -109,8 +123,11 @@ function lookaheadMove(state: TicTacToeState, me: PlayerSymbol, rand: () => numb
   const safe = cells.filter(
     (cell) => winsFor(applyMove({ ...state, currentTurn: me }, cell), other(me)).length === 0
   );
+  if (safe.length) return positionalChoice(safe, rand);
 
-  return positionalChoice(safe.length ? safe : cells, rand);
+  // Nothing is safe, so keep the blocker standing instead of feeding the opponent a piece.
+  const hold = getHoldCell(state);
+  return hold ?? positionalChoice(cells, rand);
 }
 
 // Test hook: exposes the scored root moves so a check can prove the search sees forced wins.
@@ -126,7 +143,7 @@ export function chooseBotMove(
   level: BotLevel,
   rand: () => number = Math.random
 ): number {
-  const cells = getValidMoves(state);
+  const cells = getLegalMoves(state);
   if (cells.length === 0 || state.status !== 'IN_PROGRESS') {
     throw new Error('Tidak ada langkah legal untuk bot');
   }
@@ -136,22 +153,20 @@ export function chooseBotMove(
   if (level === 'santai') return relaxedMove(state, rand);
   if (level === 'sedang') return lookaheadMove(state, me, rand);
 
-  let best = -Infinity;
-  let choices: number[] = [];
-
-  for (const cell of orderedMoves(state)) {
+  const scored = orderedMoves(state).map((cell) => ({
+    cell,
     // Full window at the root: a narrow window returns bounds, and a bound that happens to equal
     // the current best would fake a tie and let a losing move through.
-    const value = -solve(applyMove(state, cell), 1, -Infinity, Infinity);
-    if (value > best) {
-      best = value;
-      choices = [cell];
-    } else if (value === best) {
-      choices.push(cell);
-    }
-  }
+    value: -solve(applyMove(state, cell), 1, -Infinity, Infinity),
+  }));
+  const best = Math.max(...scored.map((s) => s.value));
+  const tied = scored.filter((s) => s.value === best).map((s) => s.cell);
 
-  return pickFrom(choices, rand);
+  // A hold leaves the board untouched, so it is only worth playing when no placement scores the
+  // same. Without this the perfect bot could answer a won position by passing.
+  const hold = getHoldCell(state);
+  const placements = tied.filter((cell) => cell !== hold);
+  return pickFrom(placements.length ? placements : tied, rand);
 }
 
 export function describeBotLevel(level: BotLevel): string {

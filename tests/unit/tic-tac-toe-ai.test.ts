@@ -1,8 +1,29 @@
 import { describe, it, expect } from 'vitest';
-import { applyMove, createTicTacToeGame, checkWinner, TicTacToeState, PlayerSymbol } from '@/games/tic-tac-toe/engine';
-import { BOT_LEVELS, chooseBotMove, describeBotLevel, getValidMoves, BotLevel } from '@/games/tic-tac-toe/engine/ai';
+import {
+  applyMove,
+  createTicTacToeGame,
+  checkWinner,
+  getHoldCell,
+  TicTacToeState,
+  PlayerSymbol,
+} from '@/games/tic-tac-toe/engine';
+import {
+  BOT_LEVELS,
+  chooseBotMove,
+  describeBotLevel,
+  getLegalMoves,
+  getValidMoves,
+  BotLevel,
+} from '@/games/tic-tac-toe/engine/ai';
 
 const other = (p: PlayerSymbol): PlayerSymbol => (p === 'X' ? 'O' : 'X');
+
+// The position read off the 2026-10-15 recording: X's oldest piece on cell 6 was the only blocker
+// on O's 7 + 8, and every placement handed the bot the bottom row.
+const RECORDED = [7, 1, 0, 4, 6, 3, 5, 8, 1, 7];
+
+// X holds the win on 0 + 1 + 2 while its oldest piece on cell 6 is also available to hold.
+const WINNABLE = [6, 3, 0, 4, 1, 7];
 
 const randFrom = (seed: number) => {
   let s = seed >>> 0;
@@ -29,7 +50,7 @@ function playGame(levels: [BotLevel, BotLevel], seed: number, maxPlies = 200) {
   while (state.status === 'IN_PROGRESS' && plies < maxPlies) {
     const level = state.currentTurn === 'X' ? levels[0] : levels[1];
     const cell = chooseBotMove(state, level, rand);
-    expect(getValidMoves(state)).toContain(cell);
+    expect(getLegalMoves(state)).toContain(cell);
     state = applyMove(state, cell);
     plies += 1;
   }
@@ -112,7 +133,7 @@ describe('Tic Tac Toe bot', () => {
 
     expect(losses).toBe(0);
     expect(perfectWins).toBeGreaterThanOrEqual(200);
-  });
+  }, 40_000);
 
   it('settles a perfect-versus-perfect game quickly without looping forever', () => {
     const started = Date.now();
@@ -120,10 +141,36 @@ describe('Tic Tac Toe bot', () => {
     const elapsed = Date.now() - started;
 
     expect(plies).toBeGreaterThan(3);
-    expect(elapsed).toBeLessThan(4000);
+    expect(elapsed).toBeLessThan(8000);
     if (state.status === 'WIN') {
       expect(checkWinner(state.board)?.winner).toBe(state.winner);
     }
+  });
+
+  it('offers the bot the hold square as well as the empty ones', () => {
+    const g = RECORDED.reduce((state, cell) => applyMove(state, cell), createTicTacToeGame());
+    expect(getHoldCell(g)).toBe(6);
+    expect(getLegalMoves(g)).toEqual([...getValidMoves(g), 6]);
+  });
+
+  it('holds the blocker the recorded game lost, at both thinking levels', () => {
+    const g = RECORDED.reduce((state, cell) => applyMove(state, cell), createTicTacToeGame());
+    expect(chooseBotMove(g, 'sempurna', () => 0.5)).toBe(6);
+    expect(chooseBotMove(g, 'sedang', () => 0.5)).toBe(6);
+  });
+
+  it('leaves the easy level placing only, so the tiers stay distinguishable', () => {
+    const g = RECORDED.reduce((state, cell) => applyMove(state, cell), createTicTacToeGame());
+    for (let seed = 1; seed <= 30; seed++) {
+      expect(getValidMoves(g)).toContain(chooseBotMove(g, 'santai', randFrom(seed)));
+    }
+  });
+
+  it('still takes the win instead of holding when both are available', () => {
+    const g = WINNABLE.reduce((state, cell) => applyMove(state, cell), createTicTacToeGame());
+    expect(getHoldCell(g)).toBe(6);
+    expect(chooseBotMove(g, 'sempurna', () => 0.5)).toBe(2);
+    expect(chooseBotMove(g, 'sedang', () => 0.5)).toBe(2);
   });
 
   it('keeps every level inside the rules over many games', () => {

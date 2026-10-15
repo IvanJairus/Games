@@ -117,7 +117,7 @@ export const TicTacToeLobby: React.FC = () => {
             </span>
           </div>
           <p style={{ color: 'var(--ink-dim)', fontSize: '13.5px', margin: '6px 0 0', lineHeight: 1.5 }}>
-            Maksimal 3 bidak aktif per pemain. Bidak ke-4 otomatis melenyapkan bidak tertua (FIFO). Mustahil seri!
+            Maksimal 3 bidak aktif per pemain. Bidak ke-4 otomatis melenyapkan bidak tertua (FIFO). Bidak tertua bisa ditahan 2 kali per ronde. Mustahil seri!
           </p>
         </div>
 

@@ -8,6 +8,142 @@ terpisah saat kamu menerbitkan rilis.
 Entri dimulai dari 14 Oktober 2026. Perubahan sebelum tanggal itu ada pada riwayat git dan daftar
 pull request, karena tidak dicatat saat terjadi.
 
+## 2026-10-15 - Tic Tac Toe: bidak tertua bisa ditahan
+
+Menyusul entri di bawahnya. Laporanannya soal keadilan sudah dijawab di sana: aturannya tidak
+asimetris. Yang masih mengganggu adalah zugzwang-nya, jadi aturan itu kini diubah atas permintaan
+tersurat: **tap petak yang memegang bidak tertua Anda sendiri untuk menahannya**.
+
+### Aturan baru
+
+Bidak tertua bisa ditahan. Tap petaknya, bidaknya tetap berdiri dan menjadi bidak paling baru,
+giliran berpindah, papan tidak berubah. Jatahnya 2 kali per ronde per kursi. Jatah habis, petaknya
+kembali jadi petak terisi biasa.
+
+Yang bisa diselamatkan adalah bidak yang menutup langkah lawan. Pada posisi rekaman 19.33, yang di
+bawah ini disebut zugzwang, X dulu kalah di semua garis: sekarang X menahan petak #7 dan bot tidak
+lagi punya kemenangan instan.
+
+### Kenapa ada jatah
+
+Versi pertama aturan ini tanpa batas, dan diukur langsung: bot sempurna vs bot sempurna naik dari
+16 menjadi 88 langkah rata-rata dalam 400 game self-play, dengan 7,17 tahan per game, dan satu
+run mentok di plafon 400 langkah. Tahan adalah oper yang tidak mengubah papan, jadi dua kursi yang
+sama-sama bisa menahan bisa menunda kemenangan selamanya. Dengan jatah 2 per ronde, game yang sama
+turun ke 26,3 langkah, lebih pendek dari sebelumnya, dan tidak ada yang menggantung.
+
+### Terukur: self-play sebelum dan sesudah
+
+n = 120 game per pasangan (80 untuk sempurna vs sempurna), seed tetap, angka pertama adalah kursi
+yang disebut dulu. `tahan MATI` memaksa `holdsLeft` nol sehingga perilaku lama muncul lagi.
+
+| Pasangan | tahan MATI | tahan HIDUP | Tahan per game |
+| --- | --- | --- | --- |
+| sempurna vs santai | 120 - 0, 5,7 langkah | 120 - 0, 8,7 langkah | 0,09 |
+| sempurna vs sedang | 120 - 0, 11,1 langkah | 105 - 15, 23,3 langkah | 2,57 |
+| sedang vs santai | 107 - 13, 7,8 langkah | 119 - 1, 8,6 langkah | 0,21 |
+| sempurna vs sempurna | 38 - 42, 35,6 langkah | 42 - 38, 26,3 langkah | 2,64 |
+
+Bacaan yang jujur: aturan ini menguntungkan kursi yang tahu kapan harus menahan. Tangga tingkat
+tetap (sempurna 105-120 atas sedang, sedang 119 atas santai) tapi celah sempurna atas sedang menyempit
+dari 120-0 menjadi 105-15, karena heuristik "tahan kalau semua langkah kalah" sudah cukup untuk
+mengalahkan santai dan merepotkan sempurna. Waktu langkah bot terburuk yang terukur 64 ms, masih di
+bawah jeda 1200 ms.
+
+### Terlihat
+
+- Petak yang bisa ditahan memakai border emas putus-putus seperti biasa, ditambah pil `TAHAN` 34x14
+  px di kiri atas, `cursor: pointer`, dan `aria-disabled="false"`. `aria-label`-nya berbunyi "tap
+  untuk menahannya agar tidak lenyap".
+- Setelah menahan, tanda bidak di papan identik sebelum dan sesudah (dibandingkan lewat `aria-label`
+  kesembilan petak di Chrome), hanya antreannya yang berpindah.
+- Notice menahan berwarna emas dengan `data-tone="info"`, bukan merah penolakan. Bot yang menahan
+  bidaknya ikut diumumkan, karena tanpa itu satu frame hilang tanpa penggantian bidak terlihat seperti
+  aplikasi error.
+- Banner, dialog Aturan, lobby, kartu registry, dan README menyebut jatah 2 kali per ronde.
+
+### Papan tidak lagi naik turun
+
+Permintaan susulan dari pemakaian di HP: posisi papan bergeser ke bawah lalu ke atas, bikin pusing.
+Toast memang sudah `position: fixed`, tapi yang bergerak adalah kartu status: ia tumbuh dari 50 px
+menjadi 97 px begitu satu kursi punya tiga bidak, dan itu mendorong papan dari `top` 285 px ke
+332 px, lompatan 47 px. Baris "Bot sedang memikirkan langkah" menambah lompatan kedua setiap giliran.
+
+Perhatian dan penanda giliran bot kini tinggal di slot sendiri dengan `minHeight` 78 px yang selalu
+terpakai, dan kartu status hanya berisi satu baris. Terukur di Chrome pada viewport 598x742 dengan
+isi terpanjang (peringatan tahan penuh plus baris berpikir): `slotHeight` 78 px, `scrollHeight`
+78 px tidak meluap, dan `boardTop` 365 px sebelum, selama, dan sesudah langkah bot. Penjaga regresi
+di `tests/ui/tic-tac-toe-play.test.tsx` menuntut `minHeight` itu tetap ada, karena jsdom tidak punya
+layout engine jadi pergeserannya tidak bisa diuji di sana.
+
+### Batas
+
+- Jatah 2 belum diuji sebagai angka optimal; 1 dan 3 belum diukur. Yang diukur adalah nol lawan tak
+  terbatas.
+- Mode online ikut dapat aturan ini karena `game_state` adalah jsonb milik klien dan kolom baru
+  melewati `{ ...state }` tanpa perubahan. Yang belum diuji adalah dua klien dengan versi berbeda di
+  satu room: klien lama tidak bisa memulai tahan, dan belum dipastikan ia tetap konsisten setelah
+  lawan menahan.
+- Bot `santai` sengaja tidak pernah menahan, supaya tingkat paling rendah tetap kalah.
+
+## 2026-10-15 - Tic Tac Toe: yang akan lenyap itu punya siapa, dan petaknya belum bebas
+
+Berasal dari rekaman HP 15 Oktober 19.33 (1080x2316, 12,4 dtk, bot `sempurna`). Laporanannya: bidak
+berlabel "AKAN LENYAP" tidak bisa di-replace dari sisi pemain, tetapi pada giliran bot hal yang sama
+bisa langsung dilakukan sehingga pemain kalah.
+
+### Hasil replay: aturannya tidak asimetris
+
+Posisi di rekaman disusun ulang lewat engine asli (`tests/unit`, dijalankan lalu dihapus): papan
+`.X./O.X/XOO`, giliran X, bidak tertua X di petak #7. Temuannya:
+
+- Yang tidak bisa ditap adalah bidak **milik sendiri** yang akan lenyap, dan penolakan itu berlaku
+  sama untuk kedua kursi. `applyMove` melempar `already occupied` untuk X maupun O.
+- Ketiga langkah legal X pada posisi itu (petak 1, 3, 5) semuanya mengosongkan petak #7, dan bot
+  sempurna selalu menutup dengan main ke petak #7. Jadi kekalahannya zugzwang, bukan langkah curang.
+- Zugzwang model ini menimpa kedua kursi hampir seimbang: pada 400 game self-play acak terhitung
+  77 posisi buntu untuk X dan 81 untuk O.
+
+### Diperbaiki
+
+- **Peringatan "akan lenyap" kini menyebut pemegang giliran.** Teks lama selalu berbunyi "akan lenyap
+  saat **Anda** melangkah", padahal pada giliran bot yang lenyap adalah bidak bot. Di rekaman
+  0:03 kalimat itu persis yang membuat bot terlihat boleh menimpa. Sekarang memakai nama kursi:
+  "Bidak tertua Bot di petak #9 akan lenyap setelah Bot melangkah."
+- **Satu kalimat tambahan soal petak yang ditinggalkan**, karena itu bagian yang tidak terlihat:
+  petaknya baru bisa ditempati pada giliran berikutnya, dan lawan boleh langsung mengambilnya.
+  Aturan dialog "Aturan" ikut meluruskan hal yang sama.
+- **Tap pada petak terisi tidak lagi dibungkam.** Petak terisi memakai `disabled`, jadi klik tidak
+  pernah sampai ke `handleCellClick` dan pemain hanya mendengar bunyi tolak tanpa sebab, atau diam
+  sama sekali. Sekarang petak terisi memakai `aria-disabled` dan tetap mengirim klik, lalu muncul
+  toast merah yang menyebut nomor petak dan alasannya; bidak tertua milik sendiri dapat penjelasan
+  khusus. `aria-label` petak itu juga ikut menjelaskan.
+- **Jeda bot dinaikkan dari 420 ms menjadi 1200 ms**, plus baris "Bot sedang memikirkan langkah..."
+  selama jeda, supaya lenyapnya satu bidak dan munculnya bidak baru terbaca sebagai dua kejadian,
+  bukan gambar yang berganti sekaligus. Bunyi langkah dipindah ke setelah bidaknya dipasang, karena
+  pada jeda 1,2 detik bunyi yang lebih dulu terdengar mengumumkan langkah yang belum ada.
+
+### Terukur, viewport 598x742 di Chrome
+
+| Sebelum | Sesudah |
+| --- | --- |
+| "akan lenyap saat Anda melangkah" pada giliran bot | teks menyebut nama kursi yang bergerak |
+| tap petak terisi: tidak ada peristiwa klik | toast 460x38 px, `role="status"`, 18 px dari bawah |
+| papan bergeser 50 px saat pesan muncul | `boardShift` 0 px, toast `position: fixed` |
+| jeda bot 420 ms | 1200 ms + penanda "sedang memikirkan" |
+
+Penjaga regresi: `tests/ui/tic-tac-toe-play.test.tsx` menuntut isi toast dan teks per-kursi,
+`tests/ui/tic-tac-toe-bot.test.tsx` menuntut jeda dan teks "Bidak tertua Bot di petak #9".
+
+### Batas
+
+- Tangkapan layar toast tidak diambil: permukaan browser internal sedang tidak terlihat saat itu,
+  jadi bentuknya dibuktikan lewat `getBoundingClientRect` dan `getComputedStyle`, bukan lewat gambar.
+- Aturan FIFO tidak diubah. Kalau yang diinginkan adalah boleh menimpa bidak sendiri yang akan
+  lenyap, itu perubahan aturan dan perlu persetujuan terpisah.
+- Mode online (`TicTacToeMatch`) memakai engine yang sama dan tidak punya banner ini, jadi tidak
+  ikut berubah.
+
 ## 2026-10-15 - Slap Arena: teks terbang tertutup kanvas, dan HP dinilai dari lebar layar
 
 Menyusul dua rekaman layar dari HP Android. Yang pertama (15.19, 608x1312, 27,5 dtk) melaporkan

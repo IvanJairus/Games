@@ -29,7 +29,7 @@ const filled = (symbol: 'X' | 'O') =>
 
 const letBotThink = () =>
   act(() => {
-    vi.advanceTimersByTime(600);
+    vi.advanceTimersByTime(1400);
   });
 
 describe('Tic Tac Toe against the bot', () => {
@@ -94,12 +94,88 @@ describe('Tic Tac Toe against the bot', () => {
     expect(screen.getAllByRole('gridcell').some((cell) => !(cell as HTMLButtonElement).disabled)).toBe(true);
   });
 
-  it('plays a whole game against the perfect bot until somebody wins', () => {
-    const { container } = renderLocal('?bot=sempurna');
+  it('holds a visible pause while the bot moves, so the swap is seen as two events', () => {
+    renderLocal('?bot=sedang');
+    fireEvent.click(screen.getByTestId('cell-0'));
+
+    expect(screen.getByTestId('tictactoe-bot-thinking')).toBeInTheDocument();
+    act(() => {
+      vi.advanceTimersByTime(600);
+    });
+    expect(filled('O')).toHaveLength(0);
+
+    letBotThink();
+    expect(filled('O')).toHaveLength(1);
+    expect(screen.queryByTestId('tictactoe-bot-thinking')).not.toBeInTheDocument();
+  });
+
+  it('names the bot in the vanishing warning when the bot is the one on turn', () => {
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.99);
+    renderLocal('?bot=santai');
+
+    fireEvent.click(screen.getByTestId('cell-0'));
+    letBotThink();
+    fireEvent.click(screen.getByTestId('cell-2'));
+    letBotThink();
+    fireEvent.click(screen.getByTestId('cell-6'));
+    letBotThink();
+    fireEvent.click(screen.getByTestId('cell-3'));
+
+    expect(screen.getByTestId('tictactoe-status-banner')).toHaveTextContent('Giliran Aktif: Bot');
+    expect(screen.getByTestId('tictactoe-hint')).toHaveTextContent(
+      'Bidak tertua Bot di petak #9 akan lenyap'
+    );
+    randomSpy.mockRestore();
+  });
+
+  it('announces a hold as information instead of a refusal', () => {
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.99);
+    renderLocal('?bot=santai');
+
+    fireEvent.click(screen.getByTestId('cell-0'));
+    letBotThink();
+    fireEvent.click(screen.getByTestId('cell-2'));
+    letBotThink();
+    fireEvent.click(screen.getByTestId('cell-6'));
+    letBotThink();
+
+    fireEvent.click(screen.getByTestId('cell-0'));
+
+    const note = screen.getByTestId('tictactoe-notice');
+    expect(note).toHaveAttribute('data-tone', 'info');
+    expect(note).toHaveTextContent('Bidak di petak #1 ditahan');
+    expect(note).toHaveTextContent('Sisa tahan Pemain X: 1/2');
+    // The board did not change, only the queue did.
+    expect(screen.getByTestId('cell-0')).toHaveTextContent('X');
+    randomSpy.mockRestore();
+  });
+
+  it('announces when the bot holds its own blocker', () => {
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.99);
+    renderLocal('?bot=sedang');
+
+    // This line leaves the bot no safe placement, so it keeps the piece that blocks instead.
+    for (const cell of [0, 5, 1, 7]) {
+      fireEvent.click(screen.getByTestId(`cell-${cell}`));
+      letBotThink();
+    }
+
+    expect(screen.getByTestId('tictactoe-notice')).toHaveAttribute('data-tone', 'info');
+    expect(screen.getByTestId('tictactoe-notice')).toHaveTextContent('Bot menahan bidaknya di petak #5');
+    randomSpy.mockRestore();
+  });
+
+  it('plays a whole game against the perfect bot until somebody wins', () => {    const { container } = renderLocal('?bot=sempurna');
     let plies = 0;
 
     while (plies < 40 && !container.textContent?.match(/menang/i)) {
-      const free = screen.getAllByRole('gridcell').find((cell) => !(cell as HTMLButtonElement).disabled);
+      const free = screen
+        .getAllByRole('gridcell')
+        .find(
+          (cell) =>
+            !(cell as HTMLButtonElement).disabled &&
+            (cell.getAttribute('aria-label') || '').includes('kosong')
+        );
       if (!free) break;
       fireEvent.click(free);
       plies += 1;

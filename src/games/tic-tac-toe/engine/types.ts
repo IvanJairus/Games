@@ -27,4 +27,7 @@ export interface TicTacToeState {
   winningLine: WinLine | null;
   moveCount: number;
   score: ScoreBoard;
+  // Holds are a pass that only re-orders the queue, so each seat gets a limited number per round.
+  // Without a limit both seats can hold a blocker forever and the no-draw promise stops being true.
+  holdsLeft: Record<PlayerSymbol, number>;
 }
