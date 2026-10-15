@@ -160,10 +160,14 @@
   letter-spacing: 0.06em;
 }
 
+.sa-topmeta { display: flex; align-items: center; gap: 8px; }
+
 .sa-topactions {
   display: flex;
   gap: 8px;
   pointer-events: auto;
+  /* The header row must not squeeze the buttons and push the round pill onto two lines. */
+  flex-shrink: 0;
 }
 
 /* ---------- scoreboard ---------- */
@@ -414,6 +418,22 @@
 }
 .sa-btn--icon:active { transform: translateY(4px); box-shadow: 0 0 0 var(--sa-ink); }
 .sa-btn--icon[disabled] { box-shadow: 0 4px 0 var(--sa-ink); }
+/* The one control whose label has to be read, not guessed, so it carries text. */
+.sa-btn--fx {
+  height: 42px;
+  padding: 0 11px;
+  border-radius: 13px;
+  background: var(--sa-cream);
+  box-shadow: 0 4px 0 var(--sa-ink);
+  font-size: 12px;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+.sa-btn--fx:hover { background: var(--sa-cream-2); }
+.sa-btn--fx:active { transform: translateY(4px); box-shadow: 0 0 0 var(--sa-ink); }
+/* The word "FX" is the label; the value is the state. On a phone the row has no room
+   for both, and the pill sits between two icons that only make sense as a group. */
+.sa-btn__fx-key { opacity: 0.5; margin-right: 5px; }
 
 /* ---------- touch controls ---------- */
 .sa-pad {
@@ -503,6 +523,18 @@
   pointer-events: none;
   transition: height 0.06s linear;
 }
+/* A ring closing over the button is the only proof on a phone that holding buys
+   something, because the slap itself does not fire until the finger lifts. */
+.sa-action__charge {
+  position: absolute;
+  inset: 5px;
+  border-radius: 50%;
+  border: 5px solid var(--sa-gold);
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.55);
+  transition: opacity 0.08s linear;
+}
 .sa-action__cdtext {
   font-size: 17px;
   font-weight: 700;
@@ -549,6 +581,8 @@
 .sa-keys__group { display: flex; align-items: center; gap: 4px; }
 .sa-keys__sep { width: 1px; height: 18px; background: var(--sa-ink-soft); }
 .sa-keys__cd { font-variant-numeric: tabular-nums; color: var(--sa-red-deep); min-width: 3.4ch; }
+/* A hold-to-charge affordance nobody finds by accident, so the legend says it out loud. */
+.sa-keys__hint { font-size: 12px; font-style: normal; font-weight: 600; color: #6d5a75; }
 
 /* ---------- lobby ---------- */
 .sa-lobby {
@@ -774,6 +808,9 @@
   .sa-chip__name { max-width: 8ch; }
   .sa-keys { display: none; }
   .sa-scores { gap: 5px; }
+  /* Three controls share a 375 px header; the pill is the one that can give ground. */
+  .sa-btn--fx { height: 34px; padding: 0 8px; font-size: 10.5px; border-width: 2.5px; letter-spacing: 0.02em; }
+  .sa-btn__fx-key { display: none; }
 }
 /* Landscape phones: the control bar would eat the play area, so shrink it and
    move the stick up against the safe area. */

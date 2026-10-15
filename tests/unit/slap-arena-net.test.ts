@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { ArenaNet, EV_FX, EV_INPUT, EV_SNAPSHOT } from '../../src/games/slap-arena/engine/net';
+import { ArenaNet, EV_FX, EV_INPUT, EV_SNAPSHOT, makeActionEdge } from '../../src/games/slap-arena/engine/net';
 import { ARENA_RADIUS } from '../../src/games/slap-arena/engine/physics';
 import { SlapSim } from '../../src/games/slap-arena/engine/sim';
 import type { InputState, SimEvent, WorldSnapshot } from '../../src/games/slap-arena/engine/types';
@@ -55,6 +55,7 @@ function makePeer(relay: ReturnType<typeof makeRelay>, id: string, role: 'host' 
     if (sim.authoritative && e.kind !== 'roundStart') queue.push(e);
   };
   const input: InputState = { x: 0, z: 0, slap: false, dash: false };
+  const actionEdge = makeActionEdge();
   const net = new ArenaNet({
     channel: relay.makeChannel(id) as never,
     isHost: () => sim.authoritative,
@@ -66,7 +67,16 @@ function makePeer(relay: ReturnType<typeof makeRelay>, id: string, role: 'host' 
     drainFx: () => queue.splice(0, queue.length),
     onInput: (msg) => {
       if (!sim.players[msg.id]) sim.addPlayer({ id: msg.id, name: msg.name, color: msg.color });
-      sim.setInput(msg.id, { x: msg.x, z: msg.z, slap: msg.slap, dash: msg.dash });
+      // Mirrors the page: the flags are a level, the sequence number is the edge.
+      const edge = actionEdge(msg);
+      sim.setInput(msg.id, {
+        x: msg.x,
+        z: msg.z,
+        slap: edge && !!msg.slap,
+        dash: edge && !!msg.dash,
+        held: !!msg.held,
+        charge: edge ? (msg.charge ?? 0) : 0,
+      });
     },
     onSnapshot: (snap) => sim.applySnapshot(snap),
     onFx: (events) => events.forEach((e) => received.push(e)),
@@ -96,6 +106,42 @@ const snapshot = (over: Partial<WorldSnapshot>): WorldSnapshot => ({
   players: [],
   ...over,
 });
+
+/** Parks the guest beside the host, both on the grass, off cooldown, not reeling. */
+function lineUp(host: Peer) {
+  Object.assign(host.sim.players.guest, {
+    x: 0,
+    z: 0,
+    vx: 0,
+    vz: 0,
+    angle: 0,
+    slapCooldown: 0,
+    dashCooldown: 0,
+    isHit: false,
+    hitTimer: 0,
+    isFalling: false,
+    eliminated: false,
+    y: 0,
+    vy: 0,
+    chargeT: -1,
+  });
+  Object.assign(host.sim.players.host, {
+    x: 1.75,
+    z: 0,
+    vx: 0,
+    vz: 0,
+    isHit: false,
+    hitTimer: 0,
+    isFalling: false,
+    eliminated: false,
+    y: 0,
+    vy: 0,
+  });
+}
+
+function guestInput(over: Record<string, unknown>) {
+  return { id: 'guest', name: 'Guest', color: '#ff5d5d', x: 0, z: 0, slap: false, dash: false, ...over };
+}
 
 afterEach(() => {
   vi.useRealTimers();
@@ -175,6 +221,108 @@ describe('Slap Arena host-authoritative link', () => {
     const before = host.sim.players.guest.x;
     run(1000, [host, guest]);
     expect(host.sim.players.guest.x).toBeGreaterThan(before);
+  });
+
+  it('throws a charged client slap further than a tap', () => {
+    vi.useFakeTimers();
+    const relay = makeRelay();
+    const host = makePeer(relay, 'host', 'host', 'Host', '#4dabf7');
+    const guest = makePeer(relay, 'guest', 'client', 'Guest', '#ff5d5d');
+    host.sim.startCountdown(0);
+    run(4000, [host, guest]);
+
+    const launch = (charge: number, seq: number) => {
+      lineUp(host);
+      relay.dispatch('host', EV_INPUT, guestInput({ slap: true, charge, seq }));
+      run(200, [host, guest]);
+      const h = host.sim.players.host;
+      return Math.hypot(h.x - 1.75, h.z);
+    };
+
+    const light = launch(0, 1);
+    const heavy = launch(1, 2);
+    expect(light).toBeGreaterThan(0.5);
+    expect(heavy).toBeGreaterThan(light * 1.6);
+  });
+
+  it('a charged slap lifts the victim off the grass on the host world', () => {
+    vi.useFakeTimers();
+    const relay = makeRelay();
+    const host = makePeer(relay, 'host', 'host', 'Host', '#4dabf7');
+    const guest = makePeer(relay, 'guest', 'client', 'Guest', '#ff5d5d');
+    host.sim.startCountdown(0);
+    run(4000, [host, guest]);
+
+    lineUp(host);
+    relay.dispatch('host', EV_INPUT, guestInput({ slap: true, charge: 1, seq: 1 }));
+    run(100, [host, guest]);
+    expect(host.sim.players.host.y).toBeGreaterThan(0.1);
+
+    lineUp(host);
+    relay.dispatch('host', EV_INPUT, guestInput({ slap: true, charge: 0, seq: 2 }));
+    run(100, [host, guest]);
+    expect(host.sim.players.host.y).toBe(0);
+  });
+
+  it('still takes a slap from a client that predates the charge fields', () => {
+    vi.useFakeTimers();
+    const relay = makeRelay();
+    const host = makePeer(relay, 'host', 'host', 'Host', '#4dabf7');
+    const guest = makePeer(relay, 'guest', 'client', 'Guest', '#ff5d5d');
+    host.sim.startCountdown(0);
+    run(4000, [host, guest]);
+
+    lineUp(host);
+    relay.dispatch('host', EV_INPUT, {
+      id: 'guest',
+      name: 'Guest',
+      color: '#ff5d5d',
+      x: 0,
+      z: 0,
+      slap: true,
+      dash: false,
+    });
+    run(200, [host, guest]);
+    expect(Math.hypot(host.sim.players.host.x - 1.75, 0)).toBeGreaterThan(0.5);
+    expect(host.sim.players.host.y).toBe(0);
+  });
+
+  it('treats a NaN charge as no charge instead of poisoning the world', () => {
+    vi.useFakeTimers();
+    const relay = makeRelay();
+    const host = makePeer(relay, 'host', 'host', 'Host', '#4dabf7');
+    const guest = makePeer(relay, 'guest', 'client', 'Guest', '#ff5d5d');
+    host.sim.startCountdown(0);
+    run(4000, [host, guest]);
+
+    lineUp(host);
+    relay.dispatch('host', EV_INPUT, guestInput({ slap: true, charge: NaN, seq: 1 }));
+    run(200, [host, guest]);
+    const h = host.sim.players.host;
+    expect(Number.isFinite(h.x)).toBe(true);
+    expect(Number.isFinite(h.vx)).toBe(true);
+    expect(Math.hypot(h.x - 1.75, h.z)).toBeGreaterThan(0.5);
+  });
+
+  it('counts one slap per sequence number, however long the flag stays up', () => {
+    vi.useFakeTimers();
+    const relay = makeRelay();
+    const host = makePeer(relay, 'host', 'host', 'Host', '#4dabf7');
+    const guest = makePeer(relay, 'guest', 'client', 'Guest', '#ff5d5d');
+    host.sim.startCountdown(0);
+    run(4000, [host, guest]);
+    lineUp(host);
+
+    // A released key keeps the flag on the wire; only a new number marks a new action.
+    guest.input.slap = true;
+    guest.input.charge = 0;
+    guest.input.seq = 1;
+    run(900, [host, guest]);
+    expect(guest.received.filter((e) => e.kind === 'slap')).toHaveLength(1);
+
+    guest.input.seq = 2;
+    run(900, [host, guest]);
+    expect(guest.received.filter((e) => e.kind === 'slap')).toHaveLength(2);
   });
 
   it('drops snapshots that arrive after a newer one', () => {

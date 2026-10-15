@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import type { ArenaPhase } from '../engine/types';
+import type { FxLevel, FxMode } from '../engine/fxMode';
 import { unlockAudio } from '../../common/audio';
 
 export interface HudPlayer {
@@ -35,6 +36,15 @@ interface HudProps {
   showKeys: boolean;
   slapCd: number;
   dashCd: number;
+  fxMode: FxMode;
+  fxLevel: FxLevel;
+  onCycleFx: () => void;
+}
+
+/** Short enough to survive a 375 px header, which is where this gets decided. */
+function fxLabel(mode: FxMode, level: FxLevel): string {
+  if (mode === 'auto') return level === 'low' ? 'HEMAT' : 'AUTO';
+  return mode === 'high' ? 'TINGGI' : 'RENDAH';
 }
 
 const Crown: React.FC = () => (
@@ -64,7 +74,18 @@ const Exit: React.FC = () => (
   </svg>
 );
 
-export const Hud: React.FC<HudProps> = ({ hud, muted, onToggleMute, onExit, showKeys, slapCd, dashCd }) => {
+export const Hud: React.FC<HudProps> = ({
+  hud,
+  muted,
+  onToggleMute,
+  onExit,
+  showKeys,
+  slapCd,
+  dashCd,
+  fxMode,
+  fxLevel,
+  onCycleFx,
+}) => {
   const leader = hud.players.reduce<HudPlayer | null>(
     (best, p) => (!p.out && (!best || p.score > best.score) ? p : best),
     null
@@ -81,11 +102,27 @@ export const Hud: React.FC<HudProps> = ({ hud, muted, onToggleMute, onExit, show
             <span className="sa-dot" />
             <span>{hud.scoreToWin} POIN MENANG</span>
           </span>
-          {hud.roomCode && (
-            <span className="sa-pill sa-pill--room" data-testid="slap-room-code">
-              KODE {hud.roomCode}
-            </span>
-          )}
+          <div className="sa-topmeta">
+            {hud.roomCode && (
+              <span className="sa-pill sa-pill--room" data-testid="slap-room-code">
+                KODE {hud.roomCode}
+              </span>
+            )}
+            <button
+              type="button"
+              className="sa-btn sa-btn--fx"
+              aria-label={`Kualitas efek ${fxLabel(fxMode, fxLevel)}. Ketuk untuk beralih ke ${
+                fxMode === 'auto' ? 'tinggi' : fxMode === 'high' ? 'rendah' : 'otomatis'
+              }.`}
+              data-testid="slap-fx"
+              onClick={onCycleFx}
+            >
+              <span className="sa-btn__fx-key" aria-hidden="true">
+                FX
+              </span>
+              {fxLabel(fxMode, fxLevel)}
+            </button>
+          </div>
         </div>
 
         <div className="sa-topactions">
@@ -160,6 +197,10 @@ export const Hud: React.FC<HudProps> = ({ hud, muted, onToggleMute, onExit, show
             <span className="sa-keys__group">
               <kbd>Spasi</kbd> tampar{' '}
               <span className="sa-keys__cd" data-testid="slap-cd">{slapCd > 0 ? `${slapCd.toFixed(1)}s` : 'siap'}</span>
+            </span>
+            <span className="sa-keys__sep" />
+            <span className="sa-keys__group">
+              <em className="sa-keys__hint">tahan Spasi = lempar jauh</em>
             </span>
             <span className="sa-keys__sep" />
             <span className="sa-keys__group">

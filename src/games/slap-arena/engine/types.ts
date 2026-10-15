@@ -19,11 +19,16 @@ export interface PlayerState {
   isFalling: boolean;
   fallY: number;
   fallSpin: number;
+  /** Height above the grass while a charged knockback has the brawler airborne. */
+  y: number;
+  vy: number;
+  /** Seconds this brawler has been holding the slap button. -1 = not charging. */
+  chargeT: number;
   score: number;
   eliminated: boolean;
   /** Seconds since the slap swing started; drives the arm animation. -1 = idle. */
   slapAnimT: number;
-  /** Set by the renderer for squash/stretch; not simulated. */
+  /** 1 on impact, decayed by the sim for actors it owns and by the renderer for the rest. */
   bump: number;
 }
 
@@ -32,6 +37,12 @@ export interface InputState {
   z: number;
   slap: boolean;
   dash: boolean;
+  /** True while the slap button is held down. Optional so older callers stay valid. */
+  held?: boolean;
+  /** 0..1 charge released with the slap. Optional for the same reason. */
+  charge?: number;
+  /** Counts actions, so a peer can tell a fresh slap from a flag still held up. */
+  seq?: number;
 }
 
 export type ArenaPhase = 'WAITING' | 'COUNTDOWN' | 'BATTLE' | 'ROUND_OVER' | 'MATCH_OVER';
@@ -66,8 +77,17 @@ export interface MovePayload {
 }
 
 export type SimEvent =
-  | { kind: 'slap'; playerId: string; x: number; z: number; angle: number }
-  | { kind: 'hit'; victimId: string; x: number; z: number; angle: number; force: number }
+  | { kind: 'slap'; playerId: string; x: number; z: number; angle: number; charge: number }
+  | {
+      kind: 'hit';
+      attackerId: string;
+      victimId: string;
+      x: number;
+      z: number;
+      angle: number;
+      force: number;
+      charge: number;
+    }
   | { kind: 'dash'; playerId: string; x: number; z: number; angle: number }
   | { kind: 'ko'; playerId: string; x: number; z: number }
   | { kind: 'roundEnd'; winnerId: string | null; round: number; matchOver: boolean }
@@ -88,6 +108,9 @@ export interface PlayerSnapshot {
   eliminated: boolean;
   slapCooldown: number;
   dashCooldown: number;
+  /** Airborne height and wind-up. Absent from an older host, so readers default them. */
+  y?: number;
+  chargeT?: number;
 }
 
 export interface WorldSnapshot {

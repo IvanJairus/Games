@@ -249,6 +249,8 @@ export interface Burst {
   spread?: number;
   speed?: number;
   life?: number;
+  /** Fan the debris along a world direction instead of a full circle. */
+  angle?: number;
 }
 
 /** Soft round sprite: the default square point reads as on-screen noise. */
@@ -319,10 +321,12 @@ export class ParticleField {
     const color = new THREE.Color(b.color);
     const tmp = new THREE.Color();
 
+    const base = Number.isFinite(b.angle) ? (b.angle as number) : Math.PI / 2;
+
     for (let i = 0; i < count; i++) {
       const idx = this.cursor;
       this.cursor = (this.cursor + 1) % this.capacity;
-      const a = Math.random() * spread - spread / 2 + Math.PI / 2;
+      const a = Math.random() * spread - spread / 2 + base;
       const up = 0.35 + Math.random() * 0.65;
       const s = speed * (0.55 + Math.random() * 0.75);
       this.positions[idx * 3] = b.x + (Math.random() - 0.5) * 0.3;
@@ -330,7 +334,7 @@ export class ParticleField {
       this.positions[idx * 3 + 2] = b.z + (Math.random() - 0.5) * 0.3;
       this.vel[idx * 3] = Math.cos(a) * s * (1 - up * 0.4);
       this.vel[idx * 3 + 1] = s * up;
-      this.vel[idx * 3 + 2] = Math.sin(a - Math.PI) * s * (1 - up * 0.4);
+      this.vel[idx * 3 + 2] = Math.sin(a) * s * (1 - up * 0.4);
       this.life[idx] = life;
       this.maxLife[idx] = life;
       tmp.copy(color).offsetHSL(0, 0, (Math.random() - 0.5) * 0.18);
