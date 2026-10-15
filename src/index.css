@@ -250,6 +250,10 @@ dialog::backdrop {
   border-radius: var(--r4);
   background: #ffffff;
   padding: 10px clamp(4px, 1.5vw, 12px) 12px;
+  /* Kurung kapal memakai z-index positif supaya tidak tertimbun latar petak di
+     barisnya. Tanpa konteks tumpuk sendiri, ia juga naik di atas bar aksi yang
+     sticky dan menutupi tombolnya. */
+  isolation: isolate;
 }
 
 .bs-board[data-active="true"] {
