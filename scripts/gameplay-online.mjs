@@ -81,8 +81,11 @@ await guest.page.waitForSelector('[data-testid="bomberman-waiting"]', { timeout:
 
 /* The first sync can land before the roster row is readable, so poll for the guest by
    name rather than trusting one snapshot of the chip count. */
+/* polling: 'mutation' and the default rAF both stall in a background tab, and the host
+   tab is backgrounded as soon as the guest page opens. An interval keeps measuring. */
 const rosterSeen = await host.page
-  .waitForFunction(() => document.querySelectorAll('[data-testid="bomberman-roster"] .bm-chip').length >= 2, { timeout: 60000 })
+  .waitForFunction(() => document.querySelectorAll('[data-testid="bomberman-roster"] .bm-chip').length >= 2,
+    { timeout: 60000, polling: 1000 })
   .then(() => true)
   .catch(() => false);
 check('both seats appear in the host roster', rosterSeen);
