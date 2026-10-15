@@ -19,6 +19,10 @@ import { ResultDialog } from '../../common/ResultDialog';
 
 const BOT_SYMBOL: PlayerSymbol = 'O';
 
+// Long enough that the vanishing square and the bot's new square are seen as two events.
+const BOT_THINK_MS = 1200;
+const NOTICE_MS = 3400;
+
 const readBotLevel = (raw: string | null): BotLevel | null =>
   raw && BOT_LEVELS.some((level) => level.id === raw) ? (raw as BotLevel) : null;
 
@@ -27,6 +31,10 @@ export const TicTacToeLocal: React.FC = () => {
   const botLevel = readBotLevel(params.get('bot'));
   const [game, setGame] = useState<TicTacToeState>(() => createTicTacToeGame());
   const [victoryOpen, setVictoryOpen] = useState(false);
+  // The id restarts the dismiss timer when the same message is raised twice in a row.
+  const [notice, setNotice] = useState<{ id: number; text: string } | null>(null);
+  const noticeSeq = useRef(0);
+  const raiseNotice = (text: string) => setNotice({ id: (noticeSeq.current += 1), text });
 
   const rulesDialogRef = useRef<HTMLDialogElement>(null);
 
@@ -42,16 +50,21 @@ export const TicTacToeLocal: React.FC = () => {
     if (!botLevel || !botTurn) return;
 
     // The pause is pacing, not search time: the search itself lands in tens of milliseconds.
+    // The click sound waits for the piece, so it does not announce a move 1.2s early.
     const timer = setTimeout(() => {
-      if (game.status === 'IN_PROGRESS' && game.currentTurn === BOT_SYMBOL) playPlace();
-      setGame((prev) => {
-        if (prev.status !== 'IN_PROGRESS' || prev.currentTurn !== BOT_SYMBOL) return prev;
-        return applyMove(prev, chooseBotMove(prev, botLevel));
-      });
-    }, 420);
+      if (game.status !== 'IN_PROGRESS' || game.currentTurn !== BOT_SYMBOL) return;
+      setGame(applyMove(game, chooseBotMove(game, botLevel)));
+      playPlace();
+    }, BOT_THINK_MS);
 
     return () => clearTimeout(timer);
   }, [botTurn, botLevel, game]);
+
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(null), NOTICE_MS);
+    return () => clearTimeout(timer);
+  }, [notice]);
 
   const handleCellClick = (index: number) => {
     if (game.status !== 'IN_PROGRESS') return;
@@ -61,9 +74,16 @@ export const TicTacToeLocal: React.FC = () => {
       unlockAudio();
       playPlace();
       buzzTap();
+      setNotice(null);
       setGame(next);
     } catch {
-      // Cell already occupied
+      // The square is taken. Name it and say when it frees up instead of only beeping.
+      const expiring = getOldestPiece(game.pieces, game.currentTurn);
+      raiseNotice(
+        expiring?.cellIndex === index
+          ? `Petak #${index + 1} masih terisi bidak Anda sendiri. Bidak itu baru lenyap setelah Anda melangkah, jadi petaknya bebas pada giliran berikutnya.`
+          : `Petak #${index + 1} sudah terisi. Hanya petak kosong yang bisa dipilih.`
+      );
       playBlocked();
       buzzReject();
     }
@@ -293,7 +313,19 @@ export const TicTacToeLocal: React.FC = () => {
                   display: 'inline-block',
                 }}
               >
-                <span style={{ fontWeight: 600 }}>Perhatian:</span> Bidak tertua di petak #{activeOldestPiece.cellIndex + 1} akan lenyap saat Anda melangkah.
+                <span style={{ fontWeight: 600 }}>Perhatian:</span> Bidak tertua{' '}
+                {seatLabel(game.currentTurn)} di petak #{activeOldestPiece.cellIndex + 1} akan lenyap
+                setelah {seatLabel(game.currentTurn)} melangkah. Petak itu baru bisa ditempati pada
+                giliran berikutnya.
+              </div>
+            )}
+
+            {botTurn && (
+              <div
+                data-testid="tictactoe-bot-thinking"
+                style={{ marginTop: '6px', font: '11px/1.3 var(--mono)', color: 'var(--ink-faint)' }}
+              >
+                Bot sedang memikirkan langkah...
               </div>
             )}
           </div>
@@ -305,6 +337,31 @@ export const TicTacToeLocal: React.FC = () => {
           </div>
         )}
       </div>
+
+      {notice && (
+        <div
+          data-testid="tictactoe-notice"
+          role="status"
+          style={{
+            position: 'fixed',
+            left: '50%',
+            bottom: 'calc(18px + env(safe-area-inset-bottom))',
+            transform: 'translateX(-50%)',
+            width: 'min(460px, calc(100% - 32px))',
+            maxWidth: 'calc(100% - 32px)',
+            zIndex: 30,
+            padding: '10px 14px',
+            borderRadius: 'var(--r2)',
+            border: '1px solid var(--red)',
+            background: '#fff',
+            color: 'var(--red-deep)',
+            font: '11px/1.45 var(--mono)',
+            boxShadow: '0 8px 24px rgba(143, 29, 20, 0.18)',
+          }}
+        >
+          {notice.text}
+        </div>
+      )}
 
       {/* 3x3 Board with No-Draw FIFO visual indicators */}
       <TicTacToeBoard
@@ -410,7 +467,10 @@ export const TicTacToeLocal: React.FC = () => {
             <strong>Mustahil Seri (No Draw):</strong> Karena petak papan tidak akan pernah terkunci penuh, hasil seri mustahil terjadi. Pertandingan terus bergerak secara dinamis sampai salah satu pemain berhasil menyusun 3 bidak segaris.
           </li>
           <li>
-            <strong>Taktik & Prediksi:</strong> Bidak tertua yang akan lenyap ditandai dengan garis putus-putus dan label <em>"Akan Lenyap"</em> agar pemain dapat memperhitungkan langkah berikutnya.
+            <strong>Taktik &amp; Prediksi:</strong> Bidak tertua yang akan lenyap ditandai dengan garis putus-putus dan label <em>"Akan Lenyap"</em> agar pemain dapat memperhitungkan langkah berikutnya.
+          </li>
+          <li>
+            <strong>Petak yang ditinggalkan:</strong> Petak bidak tertua tetap terisi sampai Anda melangkah, jadi tidak bisa ditimpa lebih dulu. Ia baru bebas pada giliran berikutnya, dan lawan boleh langsung mengambilnya.
           </li>
         </ul>
         <div style={{ textAlign: 'right' }}>

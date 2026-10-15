@@ -132,7 +132,7 @@ describe('Desktop Viewport Automation Suite (1024px)', () => {
 
     // Now X has 3 pieces (at 0, 1, 8). Cell 0 is the oldest and marked as expiring
     expect(screen.getByTestId('expiring-indicator-0')).toBeInTheDocument();
-    expect(screen.getByText(/Bidak tertua di petak #1 akan lenyap/)).toBeInTheDocument();
+    expect(screen.getByText(/Bidak tertua Pemain X di petak #1 akan lenyap/)).toBeInTheDocument();
 
     // X places 4th piece at cell 6
     fireEvent.click(screen.getByTestId('cell-6'));

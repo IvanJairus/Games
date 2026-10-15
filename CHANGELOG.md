@@ -8,6 +8,64 @@ terpisah saat kamu menerbitkan rilis.
 Entri dimulai dari 14 Oktober 2026. Perubahan sebelum tanggal itu ada pada riwayat git dan daftar
 pull request, karena tidak dicatat saat terjadi.
 
+## 2026-10-15 - Tic Tac Toe: yang akan lenyap itu punya siapa, dan petaknya belum bebas
+
+Berasal dari rekaman HP 15 Oktober 19.33 (1080x2316, 12,4 dtk, bot `sempurna`). Laporanannya: bidak
+berlabel "AKAN LENYAP" tidak bisa di-replace dari sisi pemain, tetapi pada giliran bot hal yang sama
+bisa langsung dilakukan sehingga pemain kalah.
+
+### Hasil replay: aturannya tidak asimetris
+
+Posisi di rekaman disusun ulang lewat engine asli (`tests/unit`, dijalankan lalu dihapus): papan
+`.X./O.X/XOO`, giliran X, bidak tertua X di petak #7. Temuannya:
+
+- Yang tidak bisa ditap adalah bidak **milik sendiri** yang akan lenyap, dan penolakan itu berlaku
+  sama untuk kedua kursi. `applyMove` melempar `already occupied` untuk X maupun O.
+- Ketiga langkah legal X pada posisi itu (petak 1, 3, 5) semuanya mengosongkan petak #7, dan bot
+  sempurna selalu menutup dengan main ke petak #7. Jadi kekalahannya zugzwang, bukan langkah curang.
+- Zugzwang model ini menimpa kedua kursi hampir seimbang: pada 400 game self-play acak terhitung
+  77 posisi buntu untuk X dan 81 untuk O.
+
+### Diperbaiki
+
+- **Peringatan "akan lenyap" kini menyebut pemegang giliran.** Teks lama selalu berbunyi "akan lenyap
+  saat **Anda** melangkah", padahal pada giliran bot yang lenyap adalah bidak bot. Di rekaman
+  0:03 kalimat itu persis yang membuat bot terlihat boleh menimpa. Sekarang memakai nama kursi:
+  "Bidak tertua Bot di petak #9 akan lenyap setelah Bot melangkah."
+- **Satu kalimat tambahan soal petak yang ditinggalkan**, karena itu bagian yang tidak terlihat:
+  petaknya baru bisa ditempati pada giliran berikutnya, dan lawan boleh langsung mengambilnya.
+  Aturan dialog "Aturan" ikut meluruskan hal yang sama.
+- **Tap pada petak terisi tidak lagi dibungkam.** Petak terisi memakai `disabled`, jadi klik tidak
+  pernah sampai ke `handleCellClick` dan pemain hanya mendengar bunyi tolak tanpa sebab, atau diam
+  sama sekali. Sekarang petak terisi memakai `aria-disabled` dan tetap mengirim klik, lalu muncul
+  toast merah yang menyebut nomor petak dan alasannya; bidak tertua milik sendiri dapat penjelasan
+  khusus. `aria-label` petak itu juga ikut menjelaskan.
+- **Jeda bot dinaikkan dari 420 ms menjadi 1200 ms**, plus baris "Bot sedang memikirkan langkah..."
+  selama jeda, supaya lenyapnya satu bidak dan munculnya bidak baru terbaca sebagai dua kejadian,
+  bukan gambar yang berganti sekaligus. Bunyi langkah dipindah ke setelah bidaknya dipasang, karena
+  pada jeda 1,2 detik bunyi yang lebih dulu terdengar mengumumkan langkah yang belum ada.
+
+### Terukur, viewport 598x742 di Chrome
+
+| Sebelum | Sesudah |
+| --- | --- |
+| "akan lenyap saat Anda melangkah" pada giliran bot | teks menyebut nama kursi yang bergerak |
+| tap petak terisi: tidak ada peristiwa klik | toast 460x38 px, `role="status"`, 18 px dari bawah |
+| papan bergeser 50 px saat pesan muncul | `boardShift` 0 px, toast `position: fixed` |
+| jeda bot 420 ms | 1200 ms + penanda "sedang memikirkan" |
+
+Penjaga regresi: `tests/ui/tic-tac-toe-play.test.tsx` menuntut isi toast dan teks per-kursi,
+`tests/ui/tic-tac-toe-bot.test.tsx` menuntut jeda dan teks "Bidak tertua Bot di petak #9".
+
+### Batas
+
+- Tangkapan layar toast tidak diambil: permukaan browser internal sedang tidak terlihat saat itu,
+  jadi bentuknya dibuktikan lewat `getBoundingClientRect` dan `getComputedStyle`, bukan lewat gambar.
+- Aturan FIFO tidak diubah. Kalau yang diinginkan adalah boleh menimpa bidak sendiri yang akan
+  lenyap, itu perubahan aturan dan perlu persetujuan terpisah.
+- Mode online (`TicTacToeMatch`) memakai engine yang sama dan tidak punya banner ini, jadi tidak
+  ikut berubah.
+
 ## 2026-10-15 - Slap Arena: teks terbang tertutup kanvas, dan HP dinilai dari lebar layar
 
 Menyusul dua rekaman layar dari HP Android. Yang pertama (15.19, 608x1312, 27,5 dtk) melaporkan

@@ -43,7 +43,10 @@ export const TicTacToeBoard: React.FC<TicTacToeBoardProps> = ({
       {board.map((cell, idx) => {
         const isWinningCell = winningLine ? winningLine.includes(idx) : false;
         const isExpiringCell = expiringPiece?.cellIndex === idx;
-        const isAvailable = cell === null && !disabled;
+        const isOccupied = cell !== null;
+        // Filled squares stay clickable on purpose: the click is what explains why the square
+        // cannot be used yet, which a truly disabled button would swallow.
+        const isAvailable = !disabled && !isOccupied;
 
         // Find piece info for this cell to display sequence badge if present
         const cellPiece = pieces.find((p) => p.cellIndex === idx);
@@ -59,11 +62,16 @@ export const TicTacToeBoard: React.FC<TicTacToeBoardProps> = ({
             role="gridcell"
             aria-label={`Petak ${idx + 1}, ${
               cell
-                ? `terisi ${cell}${isExpiringCell ? ' (akan lenyap langkah berikutnya)' : ''}`
+                ? `terisi ${cell}${
+                    isExpiringCell
+                      ? ' (bidak tertua, lenyap setelah pemiliknya melangkah, petaknya belum bisa dipilih)'
+                      : ''
+                  }`
                 : 'kosong'
             }`}
             data-testid={`cell-${idx}`}
-            disabled={!isAvailable}
+            disabled={disabled}
+            aria-disabled={disabled || isOccupied}
             onClick={() => onCellClick(idx)}
             style={{
               position: 'relative',
@@ -87,7 +95,7 @@ export const TicTacToeBoard: React.FC<TicTacToeBoardProps> = ({
               fontSize: 'clamp(32px, 8vw, 44px)',
               fontFamily: 'var(--mono)',
               fontWeight: 700,
-              cursor: isAvailable ? 'pointer' : 'default',
+              cursor: isAvailable ? 'pointer' : isOccupied ? 'not-allowed' : 'default',
               transition: 'all 0.15s ease',
               color: cell === 'X' ? '#b45309' : '#451a03',
               boxShadow: isWinningCell
