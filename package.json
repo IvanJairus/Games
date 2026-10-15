@@ -16,7 +16,8 @@
     "db:verify": "node scripts/verify-sql.mjs",
     "guard:check": "node scripts/guard-check.mjs",
     "gameplay:check": "node scripts/gameplay-check.mjs",
-    "floors:build": "node scripts/build-floors.mjs"
+    "floors:build": "node scripts/build-floors.mjs",
+    "gameplay:online": "node scripts/gameplay-online.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.3",

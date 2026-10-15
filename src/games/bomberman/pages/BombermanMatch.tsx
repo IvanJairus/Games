@@ -238,9 +238,19 @@ export function BombermanMatch() {
             onInput: (seat, input) => simRef.current?.setInput(seat, input),
             onWorld: (world) => {
               if (!world.state) return;
-              const sim = simRef.current ?? makeSim(readConfig(world.state)!);
-              simRef.current = sim;
-              sim.applySnapshot(world.state);
+              /* A frame can arrive before this tab's first room sync, so the sim is built
+                 from the world itself rather than from a lifecycle config that may not be
+                 readable yet. Reading the config off a world state used to throw here. */
+              if (!simRef.current) {
+                const st = world.state;
+                simRef.current = new BombermanSim({
+                  seats: st.seats,
+                  seed: st.seed,
+                  floor: st.floor,
+                  players: st.players.map((p) => ({ seat: p.seat, name: p.name, charId: p.charId, bot: p.bot })),
+                });
+              }
+              simRef.current.applySnapshot(world.state);
               for (const e of world.fx) playEvent(e, gatesRef.current.shake);
               if (world.state.phase === 'finished') setResult({ winner: world.state.winner });
             },
