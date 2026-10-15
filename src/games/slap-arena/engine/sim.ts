@@ -1,6 +1,6 @@
 import type { ArenaState, InputState, PlayerSnapshot, PlayerState, SimEvent, WorldSnapshot } from './types';
 import {
-  CHARGE_MAX_TIME,
+  CHARGE_HOLD_LIMIT,
   COUNTDOWN_TIME,
   createInitialArena,
   createPlayer,
@@ -38,7 +38,7 @@ function clamp01(value: number | undefined): number {
 function nextChargeT(player: PlayerState, held: boolean | undefined, dt: number): number {
   const current = Number.isFinite(player.chargeT) ? player.chargeT : -1;
   if (!held || player.slapCooldown > 0 || player.isHit || player.isFalling || player.eliminated) return -1;
-  return current < 0 ? 0 : Math.min(CHARGE_MAX_TIME, current + dt);
+  return current < 0 ? 0 : Math.min(CHARGE_HOLD_LIMIT, current + dt);
 }
 
 /** Fallbacks used when two brawlers pick the same colour, so nobody is a clone. */
@@ -193,7 +193,7 @@ export class SlapSim {
       input.slap = false;
       const charge = clamp01(input.charge);
       const hits = executeSlap(p, list, knockScale, charge);
-      this.onEvent({ kind: 'slap', playerId: p.id, x: p.x, z: p.z, angle: p.angle, charge });
+      this.onEvent({ kind: 'slap', playerId: p.id, x: p.x, z: p.z, angle: p.angle, charge, hitCount: hits.length });
       for (const h of hits) {
         const victim = this.state.players[h.victimId];
         if (victim)

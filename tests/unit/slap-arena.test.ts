@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import {
   ARENA_RADIUS,
   CHARGE_FORCE_GAIN,
+  CHARGE_HOLD_LIMIT,
   CHARGE_LAUNCH_Y,
   CHARGE_MAX_TIME,
   CHARGE_MIN_TIME,
@@ -223,6 +224,52 @@ describe('Slap Arena charge', () => {
     sim.setInput('me', { x: 0, z: 0, slap: false, dash: false, held: false });
     sim.step(1 / 60);
     expect(sim.players.me.chargeT).toBe(-1);
+  });
+
+  it('keeps a held charge building past the full meter, up to the safety limit', () => {
+    const sim = new SlapSim({ localId: 'me', authoritative: true });
+    sim.addPlayer({ id: 'me' });
+    sim.addPlayer({ id: 'foe', x: 4 });
+    sim.state.phase = 'BATTLE';
+    sim.setInput('me', { x: 0, z: 0, slap: false, dash: false, held: true });
+    // Past CHARGE_MAX_TIME the meter is full but the banked force stops growing, so a
+    // longer hold is never secretly stronger; it just waits to be released.
+    for (let i = 0; i < 60; i++) sim.step(1 / 60);
+    const past = sim.players.me.chargeT;
+    expect(past).toBeGreaterThan(CHARGE_MAX_TIME);
+    expect(chargeFromHold(past)).toBe(1);
+    for (let i = 0; i < 240; i++) sim.step(1 / 60);
+    expect(sim.players.me.chargeT).toBeCloseTo(CHARGE_HOLD_LIMIT, 2);
+  });
+
+  it('tells the renderer how many bodies a slap actually caught', () => {
+    const build = () => {
+      const sim = new SlapSim({ localId: 'me', authoritative: true });
+      sim.addPlayer({ id: 'me', x: 0 });
+      sim.addPlayer({ id: 'foe', x: 4 });
+      sim.state.phase = 'BATTLE';
+      return sim;
+    };
+
+    const misses = build();
+    const seenMiss: number[] = [];
+    misses.onEvent = (e) => {
+      if (e.kind === 'slap') seenMiss.push(e.hitCount ?? -1);
+    };
+    misses.setInput('me', { x: 0, z: 0, slap: true, dash: false });
+    misses.step(1 / 60);
+    expect(seenMiss).toEqual([0]);
+
+    const lands = build();
+    const seenHit: number[] = [];
+    lands.onEvent = (e) => {
+      if (e.kind === 'slap') seenHit.push(e.hitCount ?? -1);
+    };
+    lands.players.foe.x = 1.4;
+    lands.players.me.angle = 0;
+    lands.setInput('me', { x: 0, z: 0, slap: true, dash: false });
+    lands.step(1 / 60);
+    expect(seenHit).toEqual([1]);
   });
 
   it('the snapshot carries the launch height and the wind-up', () => {

@@ -77,7 +77,16 @@ export interface MovePayload {
 }
 
 export type SimEvent =
-  | { kind: 'slap'; playerId: string; x: number; z: number; angle: number; charge: number }
+  | {
+      kind: 'slap';
+      playerId: string;
+      x: number;
+      z: number;
+      angle: number;
+      charge: number;
+      /** Absent on a client's own prediction, where only the host knows the outcome. */
+      hitCount?: number;
+    }
   | {
       kind: 'hit';
       attackerId: string;

@@ -33,6 +33,50 @@ pull request, karena tidak dicatat saat terjadi.
 - Room yang lawannya sudah keluar tidak menawarkan rematch. Tombolnya berubah menjadi "Keluar dari
   room", karena restart hanya akan menghasilkan papan yang tidak bisa dimainkan.
 
+## 2026-10-15 - Slap Arena: tampar lepas saat dilepas, dan teks MISS
+
+Menyusul sesi playtest setelah PR #22 tayang. Dua hal yang dilaporkan: bagian slap masih kurang
+umpan balik, dan tahan-tampar "melepas sendiri". Yang kedua benar dan memang kode:
+auto-fire lama duduk tepat di `CHARGE_MAX_TIME` (0,7 dtk), yaitu saat meter baru **penuh**,
+sehingga menahannya terasa direbut.
+
+### Diubah
+
+- **Tampar keluar saat tombol dilepas.** Auto-fire tidak lagi di 0,7 dtk tapi di 1,6 dtk
+  (`CHARGE_HOLD_LIMIT`), murni sebagai pengaman kalau event lepas hilang (notifikasi, alih
+  aplikasi, pointer yang tertelan sistem). Meter tetap penuh di 0,7 dtk dan menahan lebih lama
+  tidak menambah gaya, jadi tidak ada insentif untuk menempel tombol.
+- Event `slap` sekarang membawa `hitCount`, jadi sisi render tahu sebuah tampar mengenai tubuh
+  atau tidak. Prediksi lokal sengaja tidak membawanya, karena di sisi klien hanya tuan rumah
+  yang tahu hasilnya.
+
+### Ditambahkan
+
+- **Teks terbang `MISS`** abu-abu dan lebih kecil di posisi penampar saat tampar meleset. Sebelum
+  ini, tampar yang meleset tidak memunculkan apa pun, sehingga "tidak terjadi apa-apa" dan
+  "input saya dimakan" tidak bisa dibedakan.
+- **Label `MAX`** saat tampar terisi penuh mendarat, berdampingan dengan kata komik seperti biasa.
+- **Cincin pengisi di rumput** di bawah brawler yang sedang menahan, menutup ke dalam menuju
+  posisi penuh. Ini umpan balik tahan-tampar pertama yang terlihat di desktop; cincin pada tombol
+  sentuh sudah ada sebelumnya.
+- Suara tampar tidak lagi dobel di klien: echo dari tuan rumah (`hitCount` terisi) tidak
+  memainkan suara untuk aksi lokal yang sudah berbunyi lebih dulu.
+
+### Terukur, di dev server dan Chrome headless
+
+Tahan 1,0 dtk: `chargeT = 0,99` (lewat ambang penuh 0,7) dan **belum menembak**; setelah dilepas
+baru cooldown terisi dan `MISS` muncul di DOM.
+
+Tahan 0,88 dtk lalu lepas pada target di jarak 1,6 m: korban naik ke `y = 0,40` dan berpindah ke
+`x = 5,3`, dengan `MAX` dan `TAMPAR!` muncul bersamaan.
+
+Uji slap-arena: 59 unit (bertambah 2) dan 22 UI (bertambah 2), termasuk dua regresi baru yaitu
+"menahan melewati meter penuh tidak menembak" dan "tahan 2,4 dtk menembak sendiri".
+
+### Batas
+
+Masih belum diuji: dua perangkat sungguhan, dan HP asli.
+
 ## 2026-10-15 - Slap Arena: gerakan lancar, tampar terisi, dan tombol efek
 
 ### Diperbaiki

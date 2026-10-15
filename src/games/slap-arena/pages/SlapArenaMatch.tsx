@@ -7,7 +7,7 @@ import { useMuted } from '../../common/SoundToggle';
 import { TouchControls } from '../components/TouchControls';
 import { SlapSim } from '../engine/sim';
 import { ArenaNet, makeActionEdge, type InputMessage } from '../engine/net';
-import { chargeFromHold } from '../engine/physics';
+import { CHARGE_HOLD_LIMIT, chargeFromHold } from '../engine/physics';
 import { readFxMode, type FxLevel, type FxMode, writeFxMode } from '../engine/fxMode';
 import type { InputState, SimEvent } from '../engine/types';
 import {
@@ -420,8 +420,10 @@ export const SlapArenaMatch: React.FC = () => {
       inputRef.current.dash = false;
       inputRef.current.charge = 0;
 
-      // A finger that never lifts still gets its slap, at the top of the meter.
-      if (holding.current && !autoFired.current && chargeFromHold(sim.local?.chargeT ?? -1) >= 1) {
+      // Releasing the button is what fires the slap. This branch only catches a press the
+      // browser will never report the end of, and it sits well past the point where the
+      // meter is already full, so it cannot fire early by accident.
+      if (holding.current && !autoFired.current && (sim.local?.chargeT ?? -1) >= CHARGE_HOLD_LIMIT) {
         autoFired.current = true;
         fireSlap(1);
       }
@@ -672,9 +674,20 @@ export const SlapArenaMatch: React.FC = () => {
 
 function handleSimEvent(event: SimEvent, sim: SlapSim, arena: Arena3DHandle | null): void {
   switch (event.kind) {
-    case 'slap':
-      playSlapSound();
+    case 'slap': {
+      const charge = Number.isFinite(event.charge) ? event.charge : 0;
+      // On a client the local prediction arrives first and carries no outcome; the host's
+      // copy follows a tick later with `hitCount`. Sound belongs to the first, the verdict
+      // text to the second, so neither plays or prints twice.
+      const ownEcho = !sim.authoritative && event.playerId === sim.localId && event.hitCount !== undefined;
+      if (!ownEcho) playSlapSound();
+      if (event.hitCount === 0) {
+        arena?.float(event.x, event.z, 'MISS', '#9c8aa4', 'miss');
+      } else if (charge >= 0.99 && !ownEcho) {
+        arena?.float(event.x, event.z, 'MAX', '#ffd166', 'max');
+      }
       break;
+    }
     case 'hit': {
       const victim = sim.players[event.victimId];
       if (victim) victim.bump = 1;
