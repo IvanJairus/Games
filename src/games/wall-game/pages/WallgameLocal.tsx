@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   GameState,
   Position,
@@ -11,14 +11,14 @@ import {
   getRecommendedGridSize,
 } from '../engine';
 import { Board } from '../components/Board';
-import { WALL_BOT_STYLES, WallBotStyle, chooseWallBotAction, describeWallBotStyle } from '../engine/ai';
+import { WALL_BOT_LEVELS, WallBotLevel, chooseWallBotAction, describeWallBotLevel } from '../engine/ai';
 import { VictoryModal } from '../components/VictoryModal';
 import { playBlocked, playPlace, playVictory, unlockAudio } from '../../common/audio';
 import { buzzReject, buzzTap } from '../../common/haptics';
 import { SoundToggle } from '../../common/SoundToggle';
 import { RotateCw, ArrowLeft, HelpCircle } from 'lucide-react';
 
-const botStyleChoiceStyle = (active: boolean): React.CSSProperties => ({
+const botLevelChoiceStyle = (active: boolean): React.CSSProperties => ({
   padding: '12px 6px',
   borderRadius: 'var(--r2)',
   border: active ? '2px solid var(--gold)' : '1px solid var(--line-strong)',
@@ -59,8 +59,19 @@ const botTagStyle: React.CSSProperties = {
 
 const BotTag: React.FC = () => <span data-testid="bot-tag" style={botTagStyle}>BOT</span>;
 
+const readBotLevel = (raw: string | null): WallBotLevel | null =>
+  raw && WALL_BOT_LEVELS.some((level) => level.id === raw) ? (raw as WallBotLevel) : null;
+
+const readNumber = (raw: string | null, min: number, max: number, fallback: number): number => {
+  const parsed = parseInt(raw ?? '', 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(min, Math.min(max, parsed));
+};
+
 export const WallgameLocal: React.FC = () => {
-  const [playerCount, setPlayerCount] = useState<number>(2);
+  const [params] = useSearchParams();
+
+  const [playerCount, setPlayerCount] = useState<number>(() => readNumber(params.get('seats'), 2, 6, 2));
   const [gridSizeOption, setGridSizeOption] = useState<string>('auto');
   const [playerNames, setPlayerNames] = useState<string[]>([
     'Pemain 1',
@@ -71,8 +82,8 @@ export const WallgameLocal: React.FC = () => {
     'Pemain 6',
   ]);
 
-  const [botStyle, setBotStyle] = useState<WallBotStyle | null>(null);
-  const [botCount, setBotCount] = useState(1);
+  const [botLevel, setBotLevel] = useState<WallBotLevel | null>(() => readBotLevel(params.get('bot')));
+  const [botCount, setBotCount] = useState(() => readNumber(params.get('bots'), 1, 5, 1));
 
   const [game, setGame] = useState<GameState | null>(null);
   const [wallOrientation, setWallOrientation] = useState<WallOrientation>('H');
@@ -85,17 +96,18 @@ export const WallgameLocal: React.FC = () => {
       ? getRecommendedGridSize(playerCount)
       : parseInt(gridSizeOption, 10);
 
-  const botSeats = botStyle
+  const botSeats = botLevel
     ? Array.from({ length: Math.max(0, Math.min(botCount, playerCount - 1)) }, (_, i) => playerCount - 1 - i)
     : [];
   const isBotSeat = (index: number) => botSeats.includes(index);
 
   // Only a seat still carrying its default label is renamed, so a typed name still wins.
+  const isUntouchedName = (name: string, idx: number) => !name.trim() || name.trim() === `Pemain ${idx + 1}`;
+  const displayName = (idx: number) =>
+    isBotSeat(idx) && isUntouchedName(playerNames[idx], idx) ? `Bot ${idx + 1}` : playerNames[idx];
+
   const namesForGame = () =>
-    playerNames.slice(0, playerCount).map((name, idx) => {
-      const untouched = !name.trim() || name.trim() === `Pemain ${idx + 1}`;
-      return isBotSeat(idx) && untouched ? `Bot ${idx + 1}` : name;
-    });
+    playerNames.slice(0, playerCount).map((name, idx) => (isBotSeat(idx) && isUntouchedName(name, idx) ? `Bot ${idx + 1}` : name));
 
   const handleStartGame = () => {
     const newGame = createGame({
@@ -158,7 +170,7 @@ export const WallgameLocal: React.FC = () => {
   }, [game?.phase]);
 
   useEffect(() => {
-    if (!game || game.phase !== 'ACTION' || !botStyle) return;
+    if (!game || game.phase !== 'ACTION' || !botLevel) return;
     if (!isBotSeat(game.activePlayerIndex)) return;
 
     // The pause is pacing, not search time: it lets a human follow which seat moved.
@@ -166,13 +178,13 @@ export const WallgameLocal: React.FC = () => {
       playPlace();
       setGame((prev) => {
         if (!prev || prev.phase !== 'ACTION' || !isBotSeat(prev.activePlayerIndex)) return prev;
-        const action = chooseWallBotAction(prev, botStyle);
+        const action = chooseWallBotAction(prev, botLevel);
         return action.type === 'WALL' ? applyWall(prev, action.wall) : applyMove(prev, action.target);
       });
     }, 520);
 
     return () => clearTimeout(timer);
-  }, [botStyle, game]);
+  }, [botLevel, game]);
 
   // Keyboard shortcut: Space or R toggles wall orientation
   useEffect(() => {
@@ -236,11 +248,11 @@ export const WallgameLocal: React.FC = () => {
                 color: 'var(--ink)',
               }}
             >
-              WallGo · {botStyle ? 'Lawan Bot' : 'Mode Hotseat Lokal'}
+              WallGo · {botLevel ? 'Lawan Bot' : 'Mode Hotseat Lokal'}
             </h1>
             <div style={{ font: '11px/1 var(--mono)', color: 'var(--ink-faint)', marginTop: '2px' }}>
               Papan Catur Halang Rintang · {game ? `${game.playerCount} Pemain` : 'Konfigurasi'}
-              {botStyle ? ` · ${botSeats.length} bot` : ''}
+              {botLevel ? ` · ${botSeats.length} bot · tingkat ${botLevel}` : ''}
             </div>
           </div>
         </div>
@@ -365,6 +377,7 @@ export const WallgameLocal: React.FC = () => {
                   key={num}
                   type="button"
                   data-testid={`player-count-${num}`}
+                  aria-pressed={playerCount === num}
                   onClick={() => setPlayerCount(num)}
                   style={{
                     padding: '12px 0',
@@ -460,7 +473,7 @@ export const WallgameLocal: React.FC = () => {
                   </span>
                   <input
                     type="text"
-                    value={playerNames[idx]}
+                    value={displayName(idx)}
                     maxLength={20}
                     onChange={(e) => {
                       const updated = [...playerNames];
@@ -496,35 +509,35 @@ export const WallgameLocal: React.FC = () => {
             >
               Lawan Bot
             </label>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
               <button
                 type="button"
-                data-testid="bot-style-none"
-                aria-pressed={botStyle === null}
-                onClick={() => setBotStyle(null)}
-                style={botStyleChoiceStyle(botStyle === null)}
+                data-testid="bot-level-none"
+                aria-pressed={botLevel === null}
+                onClick={() => setBotLevel(null)}
+                style={botLevelChoiceStyle(botLevel === null)}
               >
                 Semua Manusia
               </button>
-              {WALL_BOT_STYLES.map((style) => (
+              {WALL_BOT_LEVELS.map((level) => (
                 <button
-                  key={style.id}
+                  key={level.id}
                   type="button"
-                  data-testid={`bot-style-${style.id}`}
-                  aria-pressed={botStyle === style.id}
-                  onClick={() => setBotStyle(style.id)}
-                  style={botStyleChoiceStyle(botStyle === style.id)}
+                  data-testid={`bot-level-${level.id}`}
+                  aria-pressed={botLevel === level.id}
+                  onClick={() => setBotLevel(level.id)}
+                  style={botLevelChoiceStyle(botLevel === level.id)}
                 >
-                  {style.label}
+                  {level.label}
                 </button>
               ))}
             </div>
             <p style={{ font: '11.5px/1.5 var(--mono)', color: 'var(--ink-faint)', margin: '8px 0 0' }}>
-              {botStyle
-                ? describeWallBotStyle(botStyle)
+              {botLevel
+                ? describeWallBotLevel(botLevel)
                 : 'Semua kursi diisi pemain di satu perangkat.'}
             </p>
-            {botStyle && (
+            {botLevel && (
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px', flexWrap: 'wrap' }}>
                 <span style={{ font: '11px/1 var(--mono)', color: 'var(--ink-dim)', whiteSpace: 'nowrap' }}>Jumlah bot</span>
                 {Array.from({ length: playerCount - 1 }, (_, i) => i + 1).map((num) => (

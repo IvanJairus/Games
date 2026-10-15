@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { WallgameLocal } from '@/games/wall-game/pages/WallgameLocal';
+import { WallgameLobby } from '@/games/wall-game/pages/WallgameLobby';
 
 // Matches the engine's recommended board: 9x9 up to three seats, 11x11 for four.
 const coreOf = (playerCount: number) => {
@@ -45,7 +46,7 @@ const moveHuman = (core: { x: number; y: number }) => {
   return true;
 };
 
-const startWithBots = (style: 'jalan' | 'agresif', seats = 2, bots?: number) => {
+const startWithBots = (level: 'santai' | 'sedang' | 'sempurna', seats = 2, bots?: number) => {
   render(
     <MemoryRouter>
       <WallgameLocal />
@@ -53,7 +54,7 @@ const startWithBots = (style: 'jalan' | 'agresif', seats = 2, bots?: number) => 
   );
 
   if (seats > 2) fireEvent.click(screen.getByTestId(`player-count-${seats}`));
-  fireEvent.click(screen.getByTestId(`bot-style-${style}`));
+  fireEvent.click(screen.getByTestId(`bot-level-${level}`));
   if (bots !== undefined) fireEvent.click(screen.getByTestId(`bot-count-${bots}`));
   fireEvent.click(screen.getByTestId('start-game-btn'));
 };
@@ -65,16 +66,17 @@ describe('WallGo against the bots', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
-  it('keeps a plain hotseat game when no style is picked', () => {
+  it('keeps a plain hotseat game when no level is picked', () => {
     render(
       <MemoryRouter>
         <WallgameLocal />
       </MemoryRouter>
     );
 
-    expect(screen.getByTestId('bot-style-none')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('bot-level-none')).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(screen.getByTestId('start-game-btn'));
 
     expect(screen.queryAllByTestId('bot-tag')).toHaveLength(0);
@@ -84,7 +86,7 @@ describe('WallGo against the bots', () => {
   });
 
   it('names the bot seats and holds the tag until a bot is on turn', () => {
-    startWithBots('jalan');
+    startWithBots('sedang');
 
     expect(screen.getByTestId('roster-player-1')).toHaveTextContent('Bot 2');
     expect(screen.getByTestId('roster-player-0')).not.toHaveTextContent('Bot');
@@ -93,7 +95,10 @@ describe('WallGo against the bots', () => {
   });
 
   it('takes the bot turn on its own and unlocks the board again', () => {
-    startWithBots('jalan');
+    // A high draw keeps the easy tier on its best-distance branch, so this test is about pacing
+    // and the board lock rather than about which square the bot likes.
+    vi.spyOn(Math, 'random').mockReturnValue(0.99);
+    startWithBots('santai');
     const botBefore = distance(1);
 
     fireEvent.click(candidateAt(4, 7)!);
@@ -112,7 +117,7 @@ describe('WallGo against the bots', () => {
   });
 
   it('runs a full game with one human seat against three bots', () => {
-    startWithBots('agresif', 4, 3);
+    startWithBots('sempurna', 4, 3);
 
     expect(screen.getByTestId('roster-player-1')).toHaveTextContent('Bot 2');
     expect(screen.getByTestId('roster-player-3')).toHaveTextContent('Bot 4');
@@ -134,7 +139,7 @@ describe('WallGo against the bots', () => {
   });
 
   it('carries the bot choice into a restart from the victory modal', () => {
-    startWithBots('jalan');
+    startWithBots('sedang');
     const core = coreOf(2);
     let rounds = 0;
 
@@ -149,5 +154,71 @@ describe('WallGo against the bots', () => {
     expect(screen.getByTestId('roster-player-1')).toHaveTextContent('Bot 2');
     expect(screen.queryAllByTestId('bot-tag')).toHaveLength(0);
     expect(isHumanTurn()).toBe(true);
+  });
+
+  it('opens straight into a bot table from the lobby link', () => {
+    render(
+      <MemoryRouter initialEntries={['/wall-game/local?bot=sempurna&seats=4&bots=3']}>
+        <WallgameLocal />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByTestId('player-count-4')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('bot-level-sempurna')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('bot-count-3')).toHaveAttribute('aria-pressed', 'true');
+
+    fireEvent.click(screen.getByTestId('start-game-btn'));
+
+    expect(screen.getByTestId('roster-player-0')).toHaveTextContent('Pemain 1');
+    expect(screen.getByTestId('roster-player-3')).toHaveTextContent('Bot 4');
+    expect(screen.getByText(/tingkat sempurna/)).toBeInTheDocument();
+  });
+
+  it('ignores an unknown level in the link and stays hotseat', () => {
+    render(
+      <MemoryRouter initialEntries={['/wall-game/local?bot=jawara']}>
+        <WallgameLocal />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByTestId('bot-level-none')).toHaveAttribute('aria-pressed', 'true');
+  });
+});
+
+describe('WallGo lobby bot entrance', () => {
+  const renderLobby = () =>
+    render(
+      <MemoryRouter initialEntries={['/wall-game']}>
+        <Routes>
+          <Route path="/wall-game" element={<WallgameLobby />} />
+          <Route path="/wall-game/local" element={<WallgameLocal />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+  it('offers one link per bot level', () => {
+    renderLobby();
+
+    expect(screen.getByTestId('wallgame-bot-link-santai')).toHaveAttribute('href', '/wall-game/local?bot=santai');
+    expect(screen.getByTestId('wallgame-bot-link-sedang')).toHaveAttribute('href', '/wall-game/local?bot=sedang');
+    expect(screen.getByTestId('wallgame-bot-link-sempurna')).toHaveAttribute(
+      'href',
+      '/wall-game/local?bot=sempurna'
+    );
+    expect(screen.getByTestId('wallgame-bot-link-sempurna').textContent).toContain('membalikkan balapan');
+  });
+
+  it('walks from the lobby link into a bot table', () => {
+    renderLobby();
+
+    fireEvent.click(screen.getByTestId('wallgame-bot-link-sedang'));
+
+    expect(screen.getByTestId('bot-level-sedang')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('bot-level-none')).toHaveAttribute('aria-pressed', 'false');
+
+    fireEvent.click(screen.getByTestId('start-game-btn'));
+
+    expect(screen.getByTestId('roster-player-1')).toHaveTextContent('Bot 2');
+    expect(screen.getByTestId('roster-player-0')).not.toHaveTextContent('Bot');
   });
 });

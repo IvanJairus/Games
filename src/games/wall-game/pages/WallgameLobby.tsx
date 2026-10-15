@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Bot } from 'lucide-react';
 import { createOnlineRoom } from '../../common/multiplayer';
 import { createGame, getRecommendedGridSize } from '../engine';
+import { WALL_BOT_LEVELS } from '../engine/ai';
 import {
   isSupabaseConfigured,
   getStoredPlayerName,
@@ -138,6 +139,51 @@ export const WallgameLobby: React.FC = () => {
           />
         </div>
 
+        <div
+          style={{
+            background: 'var(--bg-paper)',
+            border: '1px solid var(--line)',
+            borderRadius: 'var(--r2)',
+            padding: '20px',
+            marginBottom: '16px',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+            <Bot size={16} color="var(--gold)" />
+            <h2 style={{ fontSize: '15px', fontWeight: 700, margin: 0, color: 'var(--ink)' }}>
+              Lawan Bot
+            </h2>
+          </div>
+          <p style={{ color: 'var(--ink-dim)', fontSize: '13px', lineHeight: 1.5, marginBottom: '14px' }}>
+            Kursi selain milik Anda diisi bot. Tingkat dipilih di sini, jumlahnya di layar konfigurasi.
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '8px' }}>
+            {WALL_BOT_LEVELS.map((level) => (
+              <Link
+                key={level.id}
+                to={`/wall-game/local?bot=${level.id}`}
+                data-testid={`wallgame-bot-link-${level.id}`}
+                style={{
+                  display: 'block',
+                  padding: '9px 11px',
+                  border: '1px solid var(--line-strong)',
+                  borderRadius: 'var(--r2)',
+                  background: '#ffffff',
+                  color: 'var(--ink)',
+                  textDecoration: 'none',
+                }}
+              >
+                <span style={{ font: '12px/1 var(--mono)', fontWeight: 700, letterSpacing: '.04em' }}>
+                  {level.label}
+                </span>
+                <span style={{ display: 'block', fontSize: '11.5px', lineHeight: 1.4, color: 'var(--ink-dim)', marginTop: '3px' }}>
+                  {level.note}
+                </span>
+              </Link>
+            ))}
+          </div>
+        </div>
+
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
           {/* Hotseat Local Option */}
           <div
@@ -157,7 +203,6 @@ export const WallgameLobby: React.FC = () => {
               </h2>
               <p style={{ color: 'var(--ink-dim)', fontSize: '13px', lineHeight: 1.5, marginBottom: '20px' }}>
                 Bermain bersama di satu layar bergantian. Pilihan 2 hingga 6 pemain dengan posisi awal simetris.
-                Kursi yang tidak dipakai manusia bisa diisi bot.
               </p>
             </div>
             <Link

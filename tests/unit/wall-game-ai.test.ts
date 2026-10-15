@@ -7,7 +7,13 @@ import {
   isValidWallPlacement,
   GameState,
 } from '@/games/wall-game/engine';
-import { chooseWallBotAction, describeWallBotStyle, WALL_BOT_STYLES } from '@/games/wall-game/engine/ai';
+import {
+  WALL_BOT_LEVELS,
+  WallBotAction,
+  WallBotLevel,
+  chooseWallBotAction,
+  describeWallBotLevel,
+} from '@/games/wall-game/engine/ai';
 
 const lcg = (seed: number) => {
   let s = seed >>> 0;
@@ -19,13 +25,16 @@ const lcg = (seed: number) => {
 
 const seat = (state: GameState, index: number) => state.players[index];
 
-function runGame(playerCount: number, style: 'jalan' | 'agresif', seed: number, maxTurns = 400) {
+const applyAction = (state: GameState, action: WallBotAction): GameState =>
+  action.type === 'WALL' ? applyWall(state, action.wall) : applyMove(state, action.target);
+
+function runGame(playerCount: number, level: WallBotLevel, seed: number, maxTurns = 400) {
   const rand = lcg(seed);
   let state = createGame({ playerCount, playerNames: Array.from({ length: playerCount }, (_, i) => `Bot ${i + 1}`) });
   let turns = 0;
 
   while (state.phase === 'ACTION' && turns < maxTurns) {
-    const action = chooseWallBotAction(state, style, rand);
+    const action = chooseWallBotAction(state, level, rand);
     const actorId = state.activePlayerIndex;
     const before = seat(state, actorId).wallsRemaining;
 
@@ -43,24 +52,77 @@ function runGame(playerCount: number, style: 'jalan' | 'agresif', seed: number, 
   return { state, turns };
 }
 
+// One game per pair, with the opening seat handed to each side in turn, so the first-move edge
+// cannot decide a matchup on its own.
+function runMatchup(left: WallBotLevel, right: WallBotLevel, games: number, baseSeed = 1) {
+  const wins: Record<WallBotLevel, number> = { santai: 0, sedang: 0, sempurna: 0 };
+  let unfinished = 0;
+
+  for (let i = 0; i < games; i++) {
+    const levels: [WallBotLevel, WallBotLevel] = i % 2 === 0 ? [left, right] : [right, left];
+    const rand = lcg(baseSeed + i * 7919);
+    let state = createGame({ playerCount: 2, playerNames: ['Left', 'Right'] });
+    let turns = 0;
+
+    while (state.phase === 'ACTION' && turns < 400) {
+      const action = chooseWallBotAction(state, levels[state.activePlayerIndex], rand);
+      state = action.type === 'MOVE' ? applyMove(state, action.target) : applyWall(state, action.wall);
+      turns += 1;
+    }
+
+    if (state.phase !== 'GAME_OVER' || state.winnerId === null) {
+      unfinished += 1;
+      continue;
+    }
+    wins[levels[state.winnerId]] += 1;
+  }
+
+  return { wins, unfinished, games };
+}
+
 describe('WallGo bot', () => {
-  it('exposes two styles with readable copy', () => {
-    expect(WALL_BOT_STYLES.map((s) => s.id)).toEqual(['jalan', 'agresif']);
-    expect(describeWallBotStyle('agresif')).toContain('dinding');
+  it('exposes three difficulty levels with readable copy', () => {
+    expect(WALL_BOT_LEVELS.map((l) => l.id)).toEqual(['santai', 'sedang', 'sempurna']);
+    expect(describeWallBotLevel('santai')).toContain('dinding');
+    expect(describeWallBotLevel('sempurna')).toContain('lompatan');
   });
 
-  it('never places a wall in the walk-only style', () => {
+  it('never places a wall on the easy tier', () => {
     for (let seed = 1; seed <= 6; seed++) {
-      const { state } = runGame(3, 'jalan', seed);
+      const { state } = runGame(3, 'santai', seed);
       expect(state.walls).toHaveLength(0);
     }
   });
 
-  it('reaches the core in every game it plays, with 2 to 6 seats', () => {
+  it('wanders on the easy tier while the other tiers close in', () => {
+    const base = createGame({ playerCount: 2 });
+    // The bot is pinned to the left edge so one direction is clearly best, and the engine lists
+    // legal moves north, south, west, east.
+    const positions = [
+      { x: 0, y: 4 },
+      { x: 8, y: 8 },
+    ];
+    const state: GameState = {
+      ...base,
+      players: base.players.map((p, i) => ({ ...p, position: positions[i], distanceToCore: i === 0 ? 4 : 8 })),
+      activePlayerIndex: 0,
+    };
+
+    expect(getValidMoves(state).map((m) => `${m.x}:${m.y}`)).toEqual(['0:3', '0:5', '1:4']);
+
+    expect(chooseWallBotAction(state, 'santai', () => 0.01)).toEqual({ type: 'MOVE', target: { x: 0, y: 3 } });
+    expect(chooseWallBotAction(state, 'santai', () => 0.99)).toEqual({ type: 'MOVE', target: { x: 1, y: 4 } });
+
+    for (const level of ['sedang', 'sempurna'] as const) {
+      expect(chooseWallBotAction(state, level, () => 0.01)).toEqual({ type: 'MOVE', target: { x: 1, y: 4 } });
+    }
+  });
+
+  it('reaches the core in every game it plays, with 2 to 6 seats', { timeout: 90000 }, () => {
     for (const playerCount of [2, 3, 4, 6]) {
-      for (const style of ['jalan', 'agresif'] as const) {
-        const { state, turns } = runGame(playerCount, style, playerCount * 13 + 7);
-        expect(state.phase, `${playerCount} seats ${style}`).toBe('GAME_OVER');
+      for (const level of WALL_BOT_LEVELS.map((l) => l.id)) {
+        const { state, turns } = runGame(playerCount, level, playerCount * 13 + 7);
+        expect(state.phase, `${playerCount} seats ${level}`).toBe('GAME_OVER');
         expect(state.winnerId).not.toBeNull();
         expect(turns).toBeLessThan(400);
         const winner = seat(state, state.winnerId as number);
@@ -69,18 +131,20 @@ describe('WallGo bot', () => {
     }
   });
 
-  it('spends walls in the aggressive style but stays inside the quota', () => {
-    let walled = 0;
+  it('spends walls on the two wall-using tiers but stays inside the quota', { timeout: 90000 }, () => {
+    for (const level of ['sedang', 'sempurna'] as const) {
+      let walled = 0;
 
-    for (let seed = 1; seed <= 10; seed++) {
-      const { state } = runGame(2, 'agresif', seed * 31);
-      walled += state.walls.length;
-      for (const player of state.players) {
-        expect(player.wallsRemaining).toBeGreaterThanOrEqual(0);
+      for (let seed = 1; seed <= 10; seed++) {
+        const { state } = runGame(2, level, seed * 31);
+        walled += state.walls.length;
+        for (const player of state.players) {
+          expect(player.wallsRemaining).toBeGreaterThanOrEqual(0);
+        }
       }
-    }
 
-    expect(walled).toBeGreaterThan(0);
+      expect(walled, level).toBeGreaterThan(0);
+    }
   });
 
   it('keeps every player reachable after each wall it places', () => {
@@ -89,7 +153,7 @@ describe('WallGo bot', () => {
     let guard = 0;
 
     while (state.phase === 'ACTION' && guard++ < 200) {
-      const action = chooseWallBotAction(state, 'agresif', rand);
+      const action = chooseWallBotAction(state, 'sempurna', rand);
       state = action.type === 'MOVE' ? applyMove(state, action.target) : applyWall(state, action.wall);
 
       for (const player of state.players) {
@@ -106,7 +170,7 @@ describe('WallGo bot', () => {
     let moves = 0;
 
     while (state.phase === 'ACTION' && moves < 60) {
-      const action = chooseWallBotAction(state, 'agresif', lcg(moves + 1));
+      const action = chooseWallBotAction(state, 'sempurna', lcg(moves + 1));
       state = action.type === 'MOVE' ? applyMove(state, action.target) : applyWall(state, action.wall);
       moves += 1;
     }
@@ -114,9 +178,101 @@ describe('WallGo bot', () => {
     expect(Date.now() - started).toBeLessThan(1500);
   });
 
+  it(
+    'walls only where every rival is delayed more than the bot itself',
+    { timeout: 90000 },
+    () => {
+      // On a six seat table a wall that slows two rivals hands the other three a free tempo, so
+      // this tier mostly runs there. The invariant has to hold for the walls it does play.
+      for (const playerCount of [2, 6]) {
+        const rand = lcg(4243 + playerCount);
+        let state = createGame({ playerCount });
+        let wallsSeen = 0;
+        let guard = 0;
+
+        while (state.phase === 'ACTION' && guard++ < 300) {
+          const action = chooseWallBotAction(state, 'sempurna', rand);
+
+          if (action.type === 'MOVE') {
+            state = applyMove(state, action.target);
+            continue;
+          }
+
+          const before = state.players.map((p) => p.distanceToCore);
+          const actor = state.activePlayerIndex;
+          const next = applyWall(state, action.wall);
+          const selfCost = next.players[actor].distanceToCore - before[actor];
+
+          for (const player of next.players) {
+            if (player.id === actor) continue;
+            expect(player.distanceToCore - before[player.id], `seat ${player.id}`).toBeGreaterThanOrEqual(
+              selfCost + 2
+            );
+          }
+
+          wallsSeen += 1;
+          state = next;
+        }
+
+        expect(state.phase, `${playerCount} seats`).toBe('GAME_OVER');
+        if (playerCount === 2) expect(wallsSeen).toBeGreaterThan(0);
+      }
+    }
+  );
+
+  it('keeps the wide-board search inside a usable turn time', () => {
+    let state = createGame({ playerCount: 6, gridSize: 13 });
+    const rand = lcg(11);
+    const started = Date.now();
+    let plies = 0;
+
+    while (state.phase === 'ACTION' && plies < 60) {
+      state = applyAction(state, chooseWallBotAction(state, 'sempurna', rand));
+      plies += 1;
+    }
+
+    // Measured 1.8s for a whole 6-seat game on the biggest board. The 520ms pacing timer in the UI
+    // is the wait a player actually notices.
+    expect(plies).toBeGreaterThan(20);
+    expect(Date.now() - started).toBeLessThan(3000);
+  });
+
   it('refuses to move in a finished game', () => {
     const finished = createGame({ playerCount: 2 });
     const over: GameState = { ...finished, phase: 'GAME_OVER', winnerId: 0 };
-    expect(() => chooseWallBotAction(over, 'jalan')).toThrow(/sudah selesai/);
+    expect(() => chooseWallBotAction(over, 'santai')).toThrow(/sudah selesai/);
+  });
+
+  it('plays a ladder where no tier is weaker than the one below it', { timeout: 300000 }, () => {
+    const GAMES = 100;
+    const matchups = [
+      { a: 'santai' as WallBotLevel, b: 'sedang' as WallBotLevel },
+      { a: 'sedang' as WallBotLevel, b: 'sempurna' as WallBotLevel },
+      { a: 'santai' as WallBotLevel, b: 'sempurna' as WallBotLevel },
+    ];
+
+    const rows = matchups.map(({ a, b }) => {
+      const { wins, unfinished } = runMatchup(a, b, GAMES);
+      return { a, b, winsA: wins[a], winsB: wins[b], unfinished };
+    });
+
+    const table = rows
+      .map((r) => `${r.a} ${r.winsA} - ${r.winsB} ${r.b} (stale ${r.unfinished})`)
+      .join('\n');
+    // Recorded in CHANGELOG.md so the published numbers match what this test measured.
+    console.log(`[wall-bot ladder] ${GAMES} games per pair, seeded\n${table}`);
+
+    for (const row of rows) {
+      expect(row.unfinished).toBe(0);
+    }
+
+    const [easyVsMedium, mediumVsHard, easyVsHard] = rows;
+
+    // The easy tier never walls, and a race with no walls is lost on tempo: that gap is wide enough
+    // to assert. Hard over medium measured 52-48 here, inside noise for a two seat race where the
+    // opening seat wins on tempo alone, so it is only held to "not worse".
+    expect(easyVsMedium.winsB, table).toBeGreaterThan(GAMES * 0.9);
+    expect(easyVsHard.winsB, table).toBeGreaterThan(GAMES * 0.9);
+    expect(mediumVsHard.winsB, table).toBeGreaterThanOrEqual(mediumVsHard.winsA);
   });
 });

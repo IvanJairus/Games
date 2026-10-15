@@ -8,6 +8,47 @@ terpisah saat kamu menerbitkan rilis.
 Entri dimulai dari 14 Oktober 2026. Perubahan sebelum tanggal itu ada pada riwayat git dan daftar
 pull request, karena tidak dicatat saat terjadi.
 
+## 2026-10-15 - WallGo: tiga tingkat bot dan entrance "Lawan Bot"
+
+### Diubah
+
+- **Bot WallGo sekarang punya tiga tingkat: Santai, Sedang, Sempurna.** Dua gaya lama (`jalan` dan
+  `agresif`) dihapus. `sedang` mewarisi persis perilaku `agresif`, jadi tidak ada kemampuan yang
+  hilang dari permainan yang sudah ada.
+- `sempurna` mencari dinding di seluruh papan, bukan hanya radius dua di sekitar pemimpin, menilai
+  balasan terbaik rival sebelum memilih langkah, dan hanya memasang dinding kalau setiap rival
+  tertahan lebih lama daripada dirinya sendiri.
+- `WallgameLocal` membaca `?bot=<tingkat>&bots=<jumlah>&seats=<jumlah>`, jadi meja bot bisa
+  dibagikan sebagai tautan dan layar konfigurasi tetap bisa mengubah sisanya.
+
+### Ditambahkan
+
+- Kartu "Lawan Bot" selebar papan di lobby WallGo, satu tautan per tingkat, diletakkan di atas
+  kartu Hotseat Lokal dan Multiplayer Online.
+- Kursi bot di layar konfigurasi menampilkan nama aslinya ("Bot 2") sebelum permainan dimulai,
+  bukan lagi "Pemain 2".
+
+### Terukur, harness seeded di `tests/unit/wall-game-ai.test.ts`
+
+n = 100 game per pasangan, dua kursi, kursi pembuka bergantian tiap game.
+
+| Pasangan | Menang |
+| --- | --- |
+| Santai vs Sedang | 0 - 100 |
+| Santai vs Sempurna | 0 - 100 |
+| Sedang vs Sempurna | 48 - 52 |
+
+48-52 tidak bisa dibedakan dari 50-50 pada n=100 (simpangan bakunya sekitar 5 game), jadi klaim
+"Sempurna lebih kuat dari Sedang" **tidak terbukti di meja dua kursi**, dan test hanya menuntut
+"tidak lebih lemah". Yang benar-benar menentukan kemenangan di game ini adalah kebiasaan memasang
+dinding: bot terbaik dalam melangkah tapi tanpa dinding kalah 0-60 dari semua bot berdinding
+(ablation 60 game per pasangan).
+
+Di meja lebar, satu pengukuran terpisah dengan policy yang sama (30 game, tiga policy duduk di
+satu meja, rotasi kursi tiap game): Sempurna 16 menang, Sedang 10, dan varian yang hanya menimbang
+dua rival terdekat 4. Untuk enam kursi: 13, 11, dan 6. Biaya pikir Sempurna terukur 1,8 detik untuk
+60 ply di meja 6 kursi 13x13; jeda pacing 520 ms per giliran bot tetap yang paling terasa pemain.
+
 ## 2026-10-14 - Perbaikan regresi: rematch dan riwayat terpisah (PR #19)
 
 ### Diperbaiki

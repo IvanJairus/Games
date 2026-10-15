@@ -68,7 +68,26 @@ Pada setiap giliran, seorang pemain aktif **HANYA MEMILIH SALAH SATU** dari dua 
 
 ---
 
-## 5. Sistem Desain Visual & Estetika
+## 5. Kursi Bot (*Mode Lawan Bot*)
+
+Kursi yang tidak diisi manusia dapat diisi bot. Semua bot di satu meja memakai tingkat yang sama.
+Bot mematuhi aturan yang sama dengan pemain manusia: satu tindakan per giliran, kuota dinding yang
+sama, dan penempatan dinding yang sama-sama divalidasi dengan BFS.
+
+| Tingkat | Melangkah | Memasang dinding |
+| --- | --- | --- |
+| Santai | 35% langkah acak dari langkah legal, sisanya rute terpendek | Tidak pernah |
+| Sedang | Selalu rute terpendek ke inti | Hanya terhadap pemimpin, kalau selisihnya minimal dua langkah |
+| Sempurna | Rute terpendek setelah memperhitungkan balasan terbaik rival terdekat | Scan seluruh papan; dinding dipilih kalau menahan *semua* rival lebih lama daripada menahan dirinya sendiri |
+
+Catatan kekuatan. Pada balapan dua kursi, kursi pembuka menang hanya karena tempo, jadi keunggulan
+tingkat tertinggi tidak terbukti di atas ambang noise (terukur 48-52 dari 100 game atas tingkat
+Sedang). Yang membedakan hasil adalah penggunaan dinding: bot yang tidak pernah memasang dinding
+kalah telak dari bot berdinding. Angka lengkapnya ada di `CHANGELOG.md`.
+
+---
+
+## 6. Sistem Desain Visual & Estetika
 
 Menyelaraskan tema arsitektural dari `gateway-B2.html` dan `ivanjairus.xyz`:
 - **Kanvas**: Dark Espresso (`#12100e`) dengan grid kertas arsitektur halus (`.paper`).
