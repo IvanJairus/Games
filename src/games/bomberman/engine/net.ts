@@ -1,0 +1,171 @@
+/**
+ * Realtime link for the arena.
+ *
+ * The room's database row only carries lifecycle: who is seated, when the match
+ * started, who won. Everything that moves at frame rate goes over broadcast, because
+ * `submitOnlineMove` is a compare-and-swap on one row: at tick rate it would reject
+ * nearly every input as stale and fan a REST refetch out to every client.
+ *
+ * One message per tick, not two. `eventsPerSecond` in src/lib/supabase.ts is 20 and is
+ * shared by everything this client sends; the snapshot and the effect batch therefore
+ * travel together, or the host would try to push 30 messages through a 20 message pipe.
+ */
+
+import type { RealtimeChannel } from '@supabase/supabase-js';
+
+import type { BombermanState, Facing, InputState, SimEvent } from './types';
+
+export const EV_INPUT = 'bm_in';
+export const EV_WORLD = 'bm_world';
+export const TICK_MS = 66;
+/** Stated so the tests can hold the sender to it. */
+export const CHANNEL_BUDGET_PER_SECOND = 20;
+
+export interface BombermanInput {
+  seat: number;
+  dir: Facing | null;
+  bomb: boolean;
+  seq: number;
+}
+
+export interface WorldPayload {
+  /** Host clock. Anything older than the last accepted frame is dropped. */
+  t: number;
+  state: BombermanState;
+  fx: SimEvent[];
+}
+
+const DIRS: Facing[] = ['up', 'down', 'left', 'right'];
+
+export function encodeInput(msg: BombermanInput): BombermanInput {
+  const seq = Number.isFinite(msg.seq) ? Math.max(0, Math.floor(msg.seq)) : 0;
+  return {
+    seat: Number.isFinite(msg.seat) ? Math.floor(msg.seat) : -1,
+    dir: DIRS.includes(msg.dir as Facing) ? (msg.dir as Facing) : null,
+    bomb: msg.bomb === true,
+    seq,
+  };
+}
+
+export function isInput(payload: unknown): payload is BombermanInput {
+  const p = payload as Partial<BombermanInput> | null;
+  return !!p && typeof p.seat === 'number' && (p.dir === null || DIRS.includes(p.dir as Facing)) && typeof p.seq === 'number';
+}
+
+export function isWorld(payload: unknown): payload is WorldPayload {
+  const p = payload as Partial<WorldPayload> | null;
+  return (
+    !!p &&
+    typeof p.t === 'number' &&
+    !!p.state &&
+    Array.isArray(p.state.players) &&
+    typeof p.state.phase === 'string' &&
+    Array.isArray(p.fx)
+  );
+}
+
+/* A press is carried as an edge, not a flag: the sender bumps `seq` and the sim's own
+   per-seat memory decides whether that is a new action. One owner, no double bookkeeping. */
+
+export interface NetOptions {
+  channel: RealtimeChannel;
+  /** Read live: host election happens after the first room sync, not at construction. */
+  isHost: () => boolean;
+  localSeat: number;
+  getInput: () => InputState;
+  getWorld: () => WorldPayload;
+  onInput: (seat: number, input: InputState) => void;
+  onWorld: (world: WorldPayload) => void;
+  onDrop?: (count: number) => void;
+}
+
+export class BombermanNet {
+  private timer: ReturnType<typeof setInterval> | null = null;
+  private lastT = -Infinity;
+  private dropped = 0;
+  private warned = false;
+  readonly stats = { sent: 0, drop: 0, byEvent: {} as Record<string, number>, lastState: 'init' };
+
+  constructor(private opts: NetOptions) {}
+
+  start(): void {
+    const { channel } = this.opts;
+
+    channel.on('broadcast', { event: EV_INPUT }, (msg: { payload: unknown }) => {
+      if (!this.opts.isHost()) return;
+      const payload = msg.payload;
+      if (!isInput(payload)) return;
+      this.opts.onInput(payload.seat, { dir: payload.dir, bomb: payload.bomb, seq: payload.seq });
+    });
+
+    channel.on('broadcast', { event: EV_WORLD }, (msg: { payload: unknown }) => {
+      if (this.opts.isHost()) return;
+      const payload = msg.payload;
+      if (!isWorld(payload) || payload.t < this.lastT) return;
+      this.lastT = payload.t;
+      this.opts.onWorld(payload);
+    });
+
+    this.timer = setInterval(() => this.tick(), TICK_MS);
+  }
+
+  /** Called when this client becomes host mid-match so stale frames are ignored. */
+  resetClock(): void {
+    this.lastT = -Infinity;
+  }
+
+  private tick(): void {
+    if (this.opts.isHost()) {
+      this.send(EV_WORLD, this.opts.getWorld());
+      return;
+    }
+    const input = this.opts.getInput();
+    this.send(EV_INPUT, encodeInput({ seat: this.opts.localSeat, dir: input.dir, bomb: input.bomb, seq: input.seq }));
+  }
+
+  /** A press is reported as an edge, so the sender bumps the counter, not the flag. */
+  sendPress(seat: number, dir: Facing | null, seq: number): void {
+    if (this.opts.isHost()) return;
+    this.send(EV_INPUT, encodeInput({ seat, dir, bomb: true, seq }));
+  }
+
+  private send(event: string, payload: unknown): void {
+    this.stats.sent += 1;
+    this.stats.byEvent[event] = (this.stats.byEvent[event] ?? 0) + 1;
+    let sent: unknown;
+    try {
+      sent = this.opts.channel.send({ type: 'broadcast', event, payload });
+    } catch (err) {
+      this.reportError(err);
+      return;
+    }
+    if (sent && typeof (sent as Promise<string>).then === 'function') {
+      void (sent as Promise<string>).then((state) => {
+        this.stats.lastState = state;
+        if (state !== 'ok' && state !== 'sent' && state !== 'pending') this.noteDrop(state);
+      });
+    }
+  }
+
+  private noteDrop(state: string): void {
+    // supabase-js answers 'timedOut'/'closed' instead of throwing and quietly falls back
+    // to one REST POST per message, which is slower but not silent.
+    this.dropped += 1;
+    this.opts.onDrop?.(this.dropped);
+    if (this.dropped >= 20 && !this.warned) {
+      this.warned = true;
+      console.warn(`[bomberman] realtime ${state}: ${this.dropped} pesan gagal, koneksi mungkin terputus`);
+    }
+  }
+
+  private reportError(err: unknown): void {
+    if (this.warned) return;
+    this.warned = true;
+    console.warn('[bomberman] broadcast gagal', err);
+  }
+
+  stop(): void {
+    if (this.timer) clearInterval(this.timer);
+    this.timer = null;
+  }
+}

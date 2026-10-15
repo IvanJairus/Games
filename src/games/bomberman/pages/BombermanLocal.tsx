@@ -9,22 +9,12 @@ import { createFpsController, fxGates, levelAtMount, readFxMode, writeFxMode, Fx
 import { Arena, ArenaHandle } from '../components/Arena';
 import { Hud, StatusLine } from '../components/Hud';
 import { TouchPad } from '../components/TouchPad';
+import { KEYS } from './keyMap';
 import { ResultDialog } from '../../common/ResultDialog';
 import { useMuted } from '../../common/SoundToggle';
 import { playBombDrop, playExplosion, playKo, playPowerup, unlockAudio } from '../../common/audio';
 import { buzzThud } from '../../common/haptics';
 import { generateSeed } from '../engine/rng';
-
-const KEYS: Record<string, Facing> = {
-  ArrowUp: 'up',
-  KeyW: 'up',
-  ArrowDown: 'down',
-  KeyS: 'down',
-  ArrowLeft: 'left',
-  KeyA: 'left',
-  ArrowRight: 'right',
-  KeyD: 'right',
-};
 
 interface Setup {
   level: BotLevel;

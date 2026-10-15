@@ -718,3 +718,45 @@
   gap: 8px;
   margin: 10px 0 0;
 }
+
+.bm-tabs button {
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1.5px solid var(--bm-keyline, #2a1b33);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--bm-keyline, #2a1b33);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.bm-tabs button.is-on {
+  background: var(--bm-keyline, #2a1b33);
+  color: var(--bm-cream, #fff6e5);
+}
+
+.bm-tabs button:focus-visible {
+  outline: 3px solid var(--gold, #b45309);
+  outline-offset: 2px;
+}
+
+.bm-pick a {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 14px;
+  border: 1.5px solid var(--bm-keyline, #2a1b33);
+  border-radius: 10px;
+  background: var(--bm-cream, #fff6e5);
+  color: var(--bm-keyline, #2a1b33);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.bm-pick a:focus-visible {
+  outline: 3px solid var(--gold, #b45309);
+  outline-offset: 2px;
+}
