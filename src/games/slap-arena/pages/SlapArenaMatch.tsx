@@ -6,7 +6,9 @@ import { ArenaModal, Hud, type HudSnapshot } from '../components/Hud';
 import { useMuted } from '../../common/SoundToggle';
 import { TouchControls } from '../components/TouchControls';
 import { SlapSim } from '../engine/sim';
-import { ArenaNet, type InputMessage } from '../engine/net';
+import { ArenaNet, makeActionEdge, type InputMessage } from '../engine/net';
+import { chargeFromHold } from '../engine/physics';
+import { readFxMode, type FxLevel, type FxMode, writeFxMode } from '../engine/fxMode';
 import type { InputState, SimEvent } from '../engine/types';
 import {
   playCountTick,
@@ -34,7 +36,6 @@ const BOT_CONFIGS = [
   { name: 'Sue', color: '#b197fc' },
 ];
 
-const HIT_STOP_MS = 70;
 const AUTO_NEXT_ROUND_MS = 3800;
 
 const COMICS = ['PAF!', 'SUIT!', 'BUK!', 'TAMPAR!', 'DAR!'];
@@ -82,6 +83,8 @@ export const SlapArenaMatch: React.FC = () => {
 
   const [usesTouch, setUsesTouch] = useState(false);
   const [muted, toggleMute] = useMuted();
+  const [fxMode, setFxMode] = useState<FxMode>(() => readFxMode());
+  const [fxLevel, setFxLevel] = useState<FxLevel>('high');
   const [hud, setHud] = useState<HudSnapshot>(() => blankHud(localId, roomCode));
   const [fatal, setFatal] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -91,6 +94,16 @@ export const SlapArenaMatch: React.FC = () => {
 
   const arenaRef = useRef<Arena3DHandle>(null);
   const inputRef = useRef<InputState>({ x: 0, z: 0, slap: false, dash: false });
+  /**
+   * The wire reads this instead of `inputRef`. A keypress lives one frame, but the
+   * sender only wakes every 50 ms, and sharing one object meant a released slap was
+   * usually eaten before it could be broadcast. `seq` is the edge: the host acts when it
+   * moves and ignores the flags it carries in between.
+   */
+  const wireRef = useRef({ held: false, charge: 0, slap: false, dash: false, seq: 0 });
+  const actionEdge = useMemo(() => makeActionEdge(), []);
+  const holding = useRef(false);
+  const autoFired = useRef(false);
   const stickRef = useRef({ x: 0, y: 0 });
   const keysRef = useRef<Record<string, boolean>>({});
   const fxQueue = useRef<SimEvent[]>([]);
@@ -99,22 +112,15 @@ export const SlapArenaMatch: React.FC = () => {
   const reported = useRef(false);
   const lastCount = useRef(0);
   const netStatsRef = useRef<ArenaNet | null>(null);
-  const hitStopUntil = useRef(0);
-
-  // Chained hits must not stack into one long freeze.
-  const hitStop = useCallback(() => {
-    const now = performance.now();
-    if (now > hitStopUntil.current) hitStopUntil.current = now + HIT_STOP_MS;
-  }, []);
 
   const sim = useMemo(() => {
     const s = new SlapSim({ localId, authoritative: isSolo, scoreToWin: 3 });
     s.onEvent = (event) => {
       if (s.authoritative) fxQueue.current.push(event);
-      handleSimEvent(event, s, arenaRef.current, reducedMotion, hitStop);
+      handleSimEvent(event, s, arenaRef.current);
     };
     return s;
-  }, [localId, isSolo, reducedMotion]);
+  }, [localId, isSolo]);
 
   // ---- solo setup ---------------------------------------------------------
   useEffect(() => {
@@ -146,25 +152,69 @@ export const SlapArenaMatch: React.FC = () => {
     return () => window.removeEventListener('pointerdown', onDown, { capture: true });
   }, []);
 
+  // ---- slap charge --------------------------------------------------------
+  const fireSlap = useCallback((charge: number) => {
+    inputRef.current.slap = true;
+    inputRef.current.charge = charge;
+    wireRef.current.slap = true;
+    wireRef.current.charge = charge;
+    wireRef.current.seq += 1;
+  }, []);
+
+  const pressSlap = useCallback(() => {
+    unlockAudio();
+    if (holding.current) return;
+    holding.current = true;
+    autoFired.current = false;
+    inputRef.current.held = true;
+    wireRef.current.held = true;
+  }, []);
+
+  const releaseSlap = useCallback(() => {
+    if (!holding.current) return;
+    holding.current = false;
+    inputRef.current.held = false;
+    wireRef.current.held = false;
+    // A hold that already auto-fired at the top of the meter must not fire twice.
+    if (!autoFired.current) fireSlap(chargeFromHold(sim.local?.chargeT ?? -1));
+    autoFired.current = false;
+  }, [fireSlap, sim]);
+
+  const cancelSlap = useCallback(() => {
+    holding.current = false;
+    autoFired.current = false;
+    inputRef.current.held = false;
+    wireRef.current.held = false;
+  }, []);
+
+  const fireDash = useCallback(() => {
+    unlockAudio();
+    inputRef.current.dash = true;
+    wireRef.current.dash = true;
+    wireRef.current.seq += 1;
+  }, []);
+
   // ---- keyboard -----------------------------------------------------------
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       keysRef.current[e.key.toLowerCase()] = true;
       if (e.code === 'Space') {
         e.preventDefault();
-        unlockAudio();
-        inputRef.current.slap = true;
+        // Auto-repeat would reopen the hold every 30 ms and cap the charge at zero.
+        if (!e.repeat) pressSlap();
       } else if (e.key === 'Shift') {
         e.preventDefault();
-        unlockAudio();
-        inputRef.current.dash = true;
+        fireDash();
       }
     };
     const up = (e: KeyboardEvent) => {
       keysRef.current[e.key.toLowerCase()] = false;
+      if (e.code === 'Space') releaseSlap();
     };
     const reset = () => {
       keysRef.current = {};
+      // A blur eats the keyup, and an orphaned hold would fire on the next press.
+      cancelSlap();
     };
     window.addEventListener('keydown', down);
     window.addEventListener('keyup', up);
@@ -174,7 +224,7 @@ export const SlapArenaMatch: React.FC = () => {
       window.removeEventListener('keyup', up);
       window.removeEventListener('blur', reset);
     };
-  }, []);
+  }, [pressSlap, releaseSlap, cancelSlap, fireDash]);
 
   // ---- multiplayer --------------------------------------------------------
   useEffect(() => {
@@ -283,7 +333,15 @@ export const SlapArenaMatch: React.FC = () => {
                 localId,
                 playerName,
                 playerColor,
-                getInput: () => inputRef.current,
+                getInput: () => ({
+                  x: inputRef.current.x,
+                  z: inputRef.current.z,
+                  held: wireRef.current.held,
+                  charge: wireRef.current.charge,
+                  slap: wireRef.current.slap,
+                  dash: wireRef.current.dash,
+                  seq: wireRef.current.seq,
+                }),
                 getSnapshot: () => sim.snapshot(),
                 drainFx: () => {
                   const batch = fxQueue.current;
@@ -294,14 +352,25 @@ export const SlapArenaMatch: React.FC = () => {
                   const p = sim.players[msg.id] ?? sim.addPlayer({ id: msg.id, name: msg.name });
                   p.name = msg.name;
                   sim.setColor(msg.id, msg.color);
-                  sim.setInput(msg.id, { x: msg.x, z: msg.z, slap: msg.slap, dash: msg.dash });
+                  // The flags stay up between ticks, so only a new sequence number is an
+                  // action. Reading the flags directly is what used to drop a slap whose
+                  // release landed in the same frame as the sim's own clear.
+                  const edge = actionEdge(msg);
+                  sim.setInput(msg.id, {
+                    x: msg.x,
+                    z: msg.z,
+                    slap: edge && !!msg.slap,
+                    dash: edge && !!msg.dash,
+                    held: !!msg.held,
+                    charge: edge ? (msg.charge ?? 0) : 0,
+                  });
                 },
                 onSnapshot: (snap) => {
                   if (!sim.players[localId]) sim.addPlayer({ id: localId, name: playerName, color: playerColor });
                   sim.applySnapshot(snap);
                   setHud((prev) => ({ ...prev, peers: snap.players.length }));
                 },
-                onFx: (events) => events.forEach((ev) => handleSimEvent(ev, sim, arenaRef.current, reducedMotion, hitStop)),
+                onFx: (events) => events.forEach((ev) => handleSimEvent(ev, sim, arenaRef.current)),
               });
               net.start();
               netStatsRef.current = net;
@@ -318,7 +387,7 @@ export const SlapArenaMatch: React.FC = () => {
       net?.stop();
       sub?.unsubscribe();
     };
-  }, [isSolo, roomCode, playerName, playerColor, localId, sim, reducedMotion]);
+  }, [isSolo, roomCode, playerName, playerColor, localId, sim]);
 
   // ---- simulation loop ----------------------------------------------------
   useEffect(() => {
@@ -340,23 +409,26 @@ export const SlapArenaMatch: React.FC = () => {
         x = stickRef.current.x;
         z = stickRef.current.y;
       }
-
-      // The same object feeds the sim and the network sender, so what the host
-      // receives is exactly what this client acted on.
       inputRef.current.x = x;
       inputRef.current.z = z;
 
-      // Freeze with a zero step rather than skipping the call: skipping leaves the
-      // next frame to integrate the whole paused span at once, which reads as a
-      // stutter on desktop where hits land in bursts.
-      sim.setInput(localId, inputRef.current);
-      sim.step(now < hitStopUntil.current ? 0 : dt);
+      // Hand the sim a copy. It clears the action flags in place, and the wire sender
+      // has to be able to see the one this frame acted on.
+      sim.setInput(localId, { ...inputRef.current });
+      sim.step(dt);
       inputRef.current.slap = false;
       inputRef.current.dash = false;
+      inputRef.current.charge = 0;
+
+      // A finger that never lifts still gets its slap, at the top of the meter.
+      if (holding.current && !autoFired.current && chargeFromHold(sim.local?.chargeT ?? -1) >= 1) {
+        autoFired.current = true;
+        fireSlap(1);
+      }
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [sim, localId]);
+  }, [sim, localId, fireSlap]);
 
   // ---- HUD tick (React only re-renders 10x per second, never per frame) ---
   useEffect(() => {
@@ -470,9 +542,31 @@ export const SlapArenaMatch: React.FC = () => {
   const matchOver = hud.phase === 'MATCH_OVER' && !disconnected && !fatal;
   const spectating = !!me?.out && hud.phase === 'BATTLE';
 
+  // Read through a ref, not the closure: two taps inside one frame would otherwise both
+  // compute from the same stale mode and the second would do nothing.
+  const fxModeRef = useRef(fxMode);
+  fxModeRef.current = fxMode;
+  const cycleFx = useCallback(() => {
+    const prev = fxModeRef.current;
+    const next: FxMode = prev === 'auto' ? 'high' : prev === 'high' ? 'low' : 'auto';
+    fxModeRef.current = next;
+    writeFxMode(next);
+    setFxMode(next);
+  }, []);
+
   return (
     <div className="sa sa-root" data-testid="slap-arena-match">
-      {!fatal && <Arena3D ref={arenaRef} sim={sim} localId={localId} reducedMotion={reducedMotion} onError={setFatal} />}
+      {!fatal && (
+        <Arena3D
+          ref={arenaRef}
+          sim={sim}
+          localId={localId}
+          reducedMotion={reducedMotion}
+          fxMode={fxMode}
+          onError={setFatal}
+          onLevel={setFxLevel}
+        />
+      )}
 
       {!fatal && (
         <Hud
@@ -483,6 +577,9 @@ export const SlapArenaMatch: React.FC = () => {
           showKeys={!usesTouch}
           slapCd={hud.slapCd}
           dashCd={hud.dashCd}
+          fxMode={fxMode}
+          fxLevel={fxLevel}
+          onCycleFx={cycleFx}
         />
       )}
 
@@ -494,12 +591,9 @@ export const SlapArenaMatch: React.FC = () => {
             stickRef.current = { x, y };
           }}
           onRelease={releaseStick}
-          onSlap={() => {
-            inputRef.current.slap = true;
-          }}
-          onDash={() => {
-            inputRef.current.dash = true;
-          }}
+          onSlapStart={pressSlap}
+          onSlapEnd={releaseSlap}
+          onDash={fireDash}
         />
       )}
 
@@ -576,13 +670,7 @@ export const SlapArenaMatch: React.FC = () => {
   );
 };
 
-function handleSimEvent(
-  event: SimEvent,
-  sim: SlapSim,
-  arena: Arena3DHandle | null,
-  reducedMotion: boolean,
-  onImpact: () => void
-): void {
+function handleSimEvent(event: SimEvent, sim: SlapSim, arena: Arena3DHandle | null): void {
   switch (event.kind) {
     case 'slap':
       playSlapSound();
@@ -591,8 +679,17 @@ function handleSimEvent(
       const victim = sim.players[event.victimId];
       if (victim) victim.bump = 1;
       playKnockbackSound();
-      arena?.impact(event.x, event.z, '#ffcf5c', 1, pickComic());
-      if (!reducedMotion) onImpact();
+      // An fx batch from a host that predates the charge carries no number at all.
+      const charge = Number.isFinite(event.charge) ? event.charge : 0;
+      arena?.impact(
+        event.x,
+        event.z,
+        charge > 0.15 ? '#ffd166' : '#ffcf5c',
+        1 + charge * 1.6,
+        pickComic(),
+        event.angle
+      );
+      arena?.freeze([event.attackerId, event.victimId], 60);
       break;
     }
     case 'dash':

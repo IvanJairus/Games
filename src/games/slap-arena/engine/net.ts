@@ -14,10 +14,26 @@ export interface InputMessage {
   z: number;
   slap: boolean;
   dash: boolean;
+  held?: boolean;
+  charge?: number;
+  /** Bumped by the sender on every action; the host fires on a change, not on the flag. */
+  seq?: number;
 }
 
+/**
+ * The host writes whatever arrives straight into the sim, and `isInputMessage` only
+ * checks the movement keys. A `NaN` charge would poison `vx` for the rest of the round,
+ * so the number is clamped here rather than trusted later.
+ */
 export function encodeInput(msg: InputMessage): InputMessage {
-  return { ...msg, x: Math.round(msg.x * 100) / 100, z: Math.round(msg.z * 100) / 100 };
+  const raw = Number.isFinite(msg.charge) ? (msg.charge as number) : 0;
+  const charge = Math.round(Math.max(0, Math.min(1, raw)) * 100) / 100;
+  return {
+    ...msg,
+    x: Math.round(msg.x * 100) / 100,
+    z: Math.round(msg.z * 100) / 100,
+    charge,
+  };
 }
 
 export function isInputMessage(payload: unknown): payload is InputMessage {
@@ -32,6 +48,24 @@ export function isSnapshot(payload: unknown): payload is WorldSnapshot {
 
 export function isFxBatch(payload: unknown): payload is SimEvent[] {
   return Array.isArray(payload);
+}
+
+/**
+ * Builds the host-side rule for "is this message an action, or a sender repeating itself".
+ *
+ * A sender that numbers its actions fires only when the number moves, which is what lets
+ * it keep the flags up between 50 ms ticks without firing twice. A sender with no number
+ * is a client from before the charge, whose flags were the whole signal, so those are
+ * taken at face value.
+ */
+export function makeActionEdge(): (msg: Pick<InputMessage, 'id' | 'seq'>) => boolean {
+  const seen: Record<string, number> = {};
+  return (msg) => {
+    if (typeof msg.seq !== 'number') return true;
+    const changed = msg.seq !== (seen[msg.id] ?? 0);
+    seen[msg.id] = msg.seq;
+    return changed;
+  };
 }
 
 export interface ArenaNetOptions {
@@ -101,7 +135,18 @@ export class ArenaNet {
       this.send({
         type: 'broadcast',
         event: EV_INPUT,
-        payload: encodeInput({ id: localId, name: playerName, color: playerColor, x: input.x, z: input.z, slap: input.slap, dash: input.dash }),
+        payload: encodeInput({
+          id: localId,
+          name: playerName,
+          color: playerColor,
+          x: input.x,
+          z: input.z,
+          slap: input.slap,
+          dash: input.dash,
+          held: input.held ?? false,
+          charge: input.charge ?? 0,
+          seq: input.seq ?? 0,
+        }),
       });
     }
   }

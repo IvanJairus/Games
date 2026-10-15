@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { DASH_COOLDOWN, SLAP_COOLDOWN } from '../engine/physics';
+import { CHARGE_MAX_TIME, DASH_COOLDOWN, SLAP_COOLDOWN } from '../engine/physics';
 import type { SlapSim } from '../engine/sim';
 import { unlockAudio } from '../../common/audio';
 import { buzz } from '../../common/haptics';
@@ -8,7 +8,10 @@ interface TouchControlsProps {
   sim: SlapSim;
   localId: string;
   onMove: (x: number, z: number) => void;
-  onSlap: () => void;
+  /** Finger down: starts the wind-up. The page owns when the slap actually lands. */
+  onSlapStart: () => void;
+  /** Finger up: spends whatever charge the sim banked. */
+  onSlapEnd: () => void;
   onDash: () => void;
   /** Called on unmount so a lifted-but-unreleased drag cannot outlive the round. */
   onRelease: () => void;
@@ -20,7 +23,15 @@ const STICK_RADIUS = 46;
  * Floating stick: the base appears under the thumb instead of waiting in a corner,
  * which is the difference between "works on a phone" and "plays well on a phone".
  */
-export const TouchControls: React.FC<TouchControlsProps> = ({ sim, localId, onMove, onSlap, onDash, onRelease }) => {
+export const TouchControls: React.FC<TouchControlsProps> = ({
+  sim,
+  localId,
+  onMove,
+  onSlapStart,
+  onSlapEnd,
+  onDash,
+  onRelease,
+}) => {
   const zoneRef = useRef<HTMLDivElement>(null);
   const stickRef = useRef<HTMLDivElement>(null);
   const knobRef = useRef<HTMLDivElement>(null);
@@ -28,7 +39,10 @@ export const TouchControls: React.FC<TouchControlsProps> = ({ sim, localId, onMo
   const dashCdRef = useRef<HTMLDivElement>(null);
   const slapTxtRef = useRef<HTMLSpanElement>(null);
   const dashTxtRef = useRef<HTMLSpanElement>(null);
+  const chargeRef = useRef<HTMLSpanElement>(null);
+  const slapBtnRef = useRef<HTMLButtonElement>(null);
   const pointerId = useRef<number | null>(null);
+  const slapPointer = useRef<number | null>(null);
   const origin = useRef({ x: 0, y: 0 });
 
   // This layer unmounts between rounds. Without a release here the last drag
@@ -72,6 +86,13 @@ export const TouchControls: React.FC<TouchControlsProps> = ({ sim, localId, onMo
         const p = Math.max(0, Math.min(1, dash / DASH_COOLDOWN));
         dashCdRef.current.style.height = `${p * 100}%`;
         if (dashTxtRef.current) dashTxtRef.current.textContent = dash > 0.05 ? dash.toFixed(1) : '';
+      }
+      // The wind-up meter is the only proof on a phone that holding is doing something.
+      const ring = chargeRef.current;
+      if (ring) {
+        const c = me && me.chargeT >= 0 ? Math.min(1, me.chargeT / CHARGE_MAX_TIME) : 0;
+        ring.style.transform = `scale(${0.55 + c * 0.55})`;
+        ring.style.opacity = c > 0 ? `${0.2 + c * 0.8}` : '0';
       }
     };
     raf = requestAnimationFrame(tick);
@@ -177,16 +198,32 @@ export const TouchControls: React.FC<TouchControlsProps> = ({ sim, localId, onMo
 
         <button
           type="button"
+          ref={slapBtnRef}
           className="sa-action sa-action--slap"
           data-testid="slap-btn-slap"
           aria-label={`Tampar ${slapReady ? 'siap' : 'sedang isi ulang'}`}
-          onPointerDown={() => {
+          onPointerDown={(e) => {
             unlockAudio();
             if (!slapReady) return;
             buzz(22);
-            onSlap();
+            onSlapStart();
+            slapPointer.current = e.pointerId;
+            // Capture keeps the release even when the thumb slides off the button,
+            // which is exactly when a charged slap should still land.
+            slapBtnRef.current?.setPointerCapture(e.pointerId);
+          }}
+          onPointerUp={(e) => {
+            if (e.pointerId !== slapPointer.current) return;
+            slapPointer.current = null;
+            onSlapEnd();
+          }}
+          onPointerCancel={(e) => {
+            if (e.pointerId !== slapPointer.current) return;
+            slapPointer.current = null;
+            onSlapEnd();
           }}
         >
+          <span ref={chargeRef} className="sa-action__charge" aria-hidden="true" />
           <span className="sa-action__label">TAMPAR</span>
           <span ref={slapTxtRef} className="sa-action__cdtext" style={{ position: 'absolute', top: 4 }} />
           <span ref={slapCdRef} className="sa-action__cd" style={{ height: 0 }} />

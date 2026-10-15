@@ -13,7 +13,7 @@ Koleksi mini game taktis dan strategi web modern di portal `ivanjairus.xyz/games
    - Game strategi penempatan dinding taktis (2-6 pemain).
    - Validasi jalur anti-jebakan menggunakan pathfinder BFS murni.
    - Papan SVG interaktif dengan kontrol *touch-drag* (geser dinding) dan penempatan aman *two-step preview*.
-   - Mode Hotseat Lokal dan Online Multiplayer (Supabase Realtime).
+   - Mode Hotseat Lokal, Solo lawan bot (3 tingkat: Santai, Sedang, Sempurna), dan Online Multiplayer (Supabase Realtime).
 
 2. **Tic Tac Toe: No-Draw Edition**
    - Aturan anti-seri berbasis FIFO 3-bidak aktif per pemain.
