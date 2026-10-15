@@ -23,6 +23,8 @@ export interface Arena3DHandle {
   shake(amount: number): void;
   /** Text only, at a world position: the verdict of a slap that hit nothing. */
   float(x: number, z: number, text: string, color: string, variant?: 'miss' | 'max'): void;
+  /** A swing that met nothing: a puff of air ahead of the fist, readable without reading. */
+  whiff(x: number, z: number, angle: number): void;
   /** Holds the swing of these brawlers for a few frames without touching positions. */
   freeze(ids: string[], ms: number): void;
 }
@@ -85,6 +87,7 @@ const Arena3D = forwardRef<Arena3DHandle, Arena3DProps>(function Arena3D(
     confetti: () => apiRef.current?.confetti(),
     shake: (amount) => apiRef.current?.shake(amount),
     float: (x, z, text, color, variant) => apiRef.current?.float(x, z, text, color, variant),
+    whiff: (x, z, angle) => apiRef.current?.whiff(x, z, angle),
     freeze: (ids, ms) => apiRef.current?.freeze(ids, ms),
   }));
 
@@ -106,7 +109,7 @@ const Arena3D = forwardRef<Arena3DHandle, Arena3DProps>(function Arena3D(
     const width = container.clientWidth || window.innerWidth;
     const height = container.clientHeight || window.innerHeight;
     let mode: FxMode = fxMode;
-    let level: FxLevel = levelAtMount(fxMode, window.innerWidth);
+    let level: FxLevel = levelAtMount(fxMode);
     let gates = fxGates(level);
 
     let renderer: THREE.WebGLRenderer;
@@ -320,6 +323,19 @@ const Arena3D = forwardRef<Arena3DHandle, Arena3DProps>(function Arena3D(
       },
       float(x, z, text, color, variant) {
         popText(x, z, text, color, variant);
+      },
+      whiff(x, z, angle) {
+        particles.burst({
+          x: x + Math.cos(angle) * 1.3,
+          z: z + Math.sin(angle) * 1.3,
+          y: 0.9,
+          color: '#dff0e4',
+          count: gates.particles ? Math.max(5, Math.round(7 * gates.particleScale)) : 5,
+          speed: 2.2,
+          life: 0.34,
+          spread: 1.1,
+          angle,
+        });
       },
       freeze(ids, ms) {
         const hold = Math.min(ms, gates.hitFreezeMs);

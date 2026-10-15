@@ -16,6 +16,7 @@ vi.mock('@/games/slap-arena/components/Arena3D', () => ({
       confetti: vi.fn(),
       shake: vi.fn(),
       float: vi.fn(),
+      whiff: vi.fn(),
       freeze: vi.fn(),
     }));
     return <div data-testid="slap-stage-stub" />;

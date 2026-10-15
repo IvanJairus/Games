@@ -146,6 +146,9 @@ export const SlapArenaMatch: React.FC = () => {
   // ---- reveal touch controls on first real touch --------------------------
   useEffect(() => {
     const onDown = (e: PointerEvent) => {
+      // Any first touch unlocks audio, not only a touch that lands on a control: the
+      // countdown sound wants to play before the player has found the buttons.
+      unlockAudio();
       if (e.pointerType === 'touch') setUsesTouch(true);
     };
     window.addEventListener('pointerdown', onDown, { capture: true });
@@ -682,7 +685,8 @@ function handleSimEvent(event: SimEvent, sim: SlapSim, arena: Arena3DHandle | nu
       const ownEcho = !sim.authoritative && event.playerId === sim.localId && event.hitCount !== undefined;
       if (!ownEcho) playSlapSound();
       if (event.hitCount === 0) {
-        arena?.float(event.x, event.z, 'MISS', '#9c8aa4', 'miss');
+        arena?.whiff(event.x, event.z, event.angle);
+        if (!ownEcho) arena?.float(event.x, event.z, 'MISS', '#f4eef7', 'miss');
       } else if (charge >= 0.99 && !ownEcho) {
         arena?.float(event.x, event.z, 'MAX', '#ffd166', 'max');
       }

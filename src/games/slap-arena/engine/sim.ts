@@ -2,6 +2,7 @@ import type { ArenaState, InputState, PlayerSnapshot, PlayerState, SimEvent, Wor
 import {
   CHARGE_HOLD_LIMIT,
   COUNTDOWN_TIME,
+  canSlap,
   createInitialArena,
   createPlayer,
   executeDash,
@@ -192,21 +193,25 @@ export class SlapSim {
     if (input.slap) {
       input.slap = false;
       const charge = clamp01(input.charge);
-      const hits = executeSlap(p, list, knockScale, charge);
-      this.onEvent({ kind: 'slap', playerId: p.id, x: p.x, z: p.z, angle: p.angle, charge, hitCount: hits.length });
-      for (const h of hits) {
-        const victim = this.state.players[h.victimId];
-        if (victim)
-          this.onEvent({
-            kind: 'hit',
-            attackerId: h.attackerId,
-            victimId: h.victimId,
-            x: victim.x,
-            z: victim.z,
-            angle: p.angle,
-            force: h.force,
-            charge: h.charge,
-          });
+      // A refused swing announces nothing at all, so it cannot print a MISS the player
+      // never swung. Returning here would also swallow a dash in the same frame.
+      if (canSlap(p)) {
+        const hits = executeSlap(p, list, knockScale, charge);
+        this.onEvent({ kind: 'slap', playerId: p.id, x: p.x, z: p.z, angle: p.angle, charge, hitCount: hits.length });
+        for (const h of hits) {
+          const victim = this.state.players[h.victimId];
+          if (victim)
+            this.onEvent({
+              kind: 'hit',
+              attackerId: h.attackerId,
+              victimId: h.victimId,
+              x: victim.x,
+              z: victim.z,
+              angle: p.angle,
+              force: h.force,
+              charge: h.charge,
+            });
+        }
       }
     }
     if (input.dash) {
@@ -245,7 +250,8 @@ export class SlapSim {
     const input = this.inputs.get(this.localId) ?? NO_INPUT;
     if (input.slap) {
       input.slap = false;
-      this.onEvent({ kind: 'slap', playerId: me.id, x: me.x, z: me.z, angle: me.angle, charge: clamp01(input.charge) });
+      if (canSlap(me))
+        this.onEvent({ kind: 'slap', playerId: me.id, x: me.x, z: me.z, angle: me.angle, charge: clamp01(input.charge) });
     }
     if (input.dash) {
       input.dash = false;
