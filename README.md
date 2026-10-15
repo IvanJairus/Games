@@ -16,7 +16,7 @@ Koleksi mini game taktis dan strategi web modern di portal `ivanjairus.xyz/games
    - Mode Hotseat Lokal, Solo lawan bot (3 tingkat: Santai, Sedang, Sempurna), dan Online Multiplayer (Supabase Realtime).
 
 2. **Tic Tac Toe: No-Draw Edition**
-   - Aturan anti-seri berbasis FIFO 3-bidak aktif per pemain.
+   - Aturan anti-seri berbasis FIFO 3-bidak aktif per pemain, plus 2 kali tahan bidak tertua per ronde.
    - Papan dinamis dengan indikator bidak tertua yang akan memudar.
    - Mode Hotseat Lokal dan Online Multiplayer.
 

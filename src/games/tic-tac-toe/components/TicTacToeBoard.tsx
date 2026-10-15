@@ -9,6 +9,8 @@ export interface TicTacToeBoardProps {
   winningLine: WinLine | null;
   onCellClick: (index: number) => void;
   disabled?: boolean;
+  /** Square holding the mover's own expiring piece, while a hold is still available there. */
+  holdCell?: number | null;
 }
 
 export const TicTacToeBoard: React.FC<TicTacToeBoardProps> = ({
@@ -18,6 +20,7 @@ export const TicTacToeBoard: React.FC<TicTacToeBoardProps> = ({
   winningLine,
   onCellClick,
   disabled = false,
+  holdCell = null,
 }) => {
   const expiringPiece = !winningLine ? getOldestPiece(pieces, currentTurn) : null;
 
@@ -43,10 +46,11 @@ export const TicTacToeBoard: React.FC<TicTacToeBoardProps> = ({
       {board.map((cell, idx) => {
         const isWinningCell = winningLine ? winningLine.includes(idx) : false;
         const isExpiringCell = expiringPiece?.cellIndex === idx;
+        const isHoldCell = holdCell === idx;
         const isOccupied = cell !== null;
         // Filled squares stay clickable on purpose: the click is what explains why the square
         // cannot be used yet, which a truly disabled button would swallow.
-        const isAvailable = !disabled && !isOccupied;
+        const isAvailable = !disabled && (!isOccupied || isHoldCell);
 
         // Find piece info for this cell to display sequence badge if present
         const cellPiece = pieces.find((p) => p.cellIndex === idx);
@@ -62,16 +66,18 @@ export const TicTacToeBoard: React.FC<TicTacToeBoardProps> = ({
             role="gridcell"
             aria-label={`Petak ${idx + 1}, ${
               cell
-                ? `terisi ${cell}${
-                    isExpiringCell
-                      ? ' (bidak tertua, lenyap setelah pemiliknya melangkah, petaknya belum bisa dipilih)'
-                      : ''
-                  }`
+                ? isHoldCell
+                  ? `terisi ${cell} (bidak tertua, tap untuk menahannya agar tidak lenyap)`
+                  : `terisi ${cell}${
+                      isExpiringCell
+                        ? ' (bidak tertua, lenyap setelah pemiliknya melangkah, petaknya belum bisa dipilih)'
+                        : ''
+                    }`
                 : 'kosong'
             }`}
             data-testid={`cell-${idx}`}
             disabled={disabled}
-            aria-disabled={disabled || isOccupied}
+            aria-disabled={disabled || (isOccupied && !isHoldCell)}
             onClick={() => onCellClick(idx)}
             style={{
               position: 'relative',
@@ -129,6 +135,29 @@ export const TicTacToeBoard: React.FC<TicTacToeBoardProps> = ({
                 }}
               >
                 #{pieceRank}
+              </span>
+            )}
+
+            {/* Hold affordance: the expiring piece can be kept for one of the mover's budgets */}
+            {isHoldCell && (
+              <span
+                data-testid={`hold-indicator-${idx}`}
+                style={{
+                  position: 'absolute',
+                  top: '4px',
+                  left: '6px',
+                  fontSize: '8px',
+                  fontFamily: 'var(--mono)',
+                  fontWeight: 700,
+                  letterSpacing: '.06em',
+                  textTransform: 'uppercase',
+                  color: '#ffffff',
+                  background: 'var(--gold)',
+                  padding: '2px 4px',
+                  borderRadius: '2px',
+                }}
+              >
+                Tahan
               </span>
             )}
 

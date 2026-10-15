@@ -122,9 +122,46 @@ describe('Tic Tac Toe against the bot', () => {
     fireEvent.click(screen.getByTestId('cell-3'));
 
     expect(screen.getByTestId('tictactoe-status-banner')).toHaveTextContent('Giliran Aktif: Bot');
-    expect(screen.getByTestId('tictactoe-status-banner')).toHaveTextContent(
+    expect(screen.getByTestId('tictactoe-hint')).toHaveTextContent(
       'Bidak tertua Bot di petak #9 akan lenyap'
     );
+    randomSpy.mockRestore();
+  });
+
+  it('announces a hold as information instead of a refusal', () => {
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.99);
+    renderLocal('?bot=santai');
+
+    fireEvent.click(screen.getByTestId('cell-0'));
+    letBotThink();
+    fireEvent.click(screen.getByTestId('cell-2'));
+    letBotThink();
+    fireEvent.click(screen.getByTestId('cell-6'));
+    letBotThink();
+
+    fireEvent.click(screen.getByTestId('cell-0'));
+
+    const note = screen.getByTestId('tictactoe-notice');
+    expect(note).toHaveAttribute('data-tone', 'info');
+    expect(note).toHaveTextContent('Bidak di petak #1 ditahan');
+    expect(note).toHaveTextContent('Sisa tahan Pemain X: 1/2');
+    // The board did not change, only the queue did.
+    expect(screen.getByTestId('cell-0')).toHaveTextContent('X');
+    randomSpy.mockRestore();
+  });
+
+  it('announces when the bot holds its own blocker', () => {
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.99);
+    renderLocal('?bot=sedang');
+
+    // This line leaves the bot no safe placement, so it keeps the piece that blocks instead.
+    for (const cell of [0, 5, 1, 7]) {
+      fireEvent.click(screen.getByTestId(`cell-${cell}`));
+      letBotThink();
+    }
+
+    expect(screen.getByTestId('tictactoe-notice')).toHaveAttribute('data-tone', 'info');
+    expect(screen.getByTestId('tictactoe-notice')).toHaveTextContent('Bot menahan bidaknya di petak #5');
     randomSpy.mockRestore();
   });
 

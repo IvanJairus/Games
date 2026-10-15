@@ -15,6 +15,8 @@ import {
   resetRound,
   getPlayerPieces,
   getOldestPiece,
+  getHoldCell,
+  MAX_HOLDS_PER_ROUND,
   TicTacToeState,
 } from '../engine';
 import { TicTacToeBoard } from '../components/TicTacToeBoard';
@@ -202,7 +204,12 @@ export const TicTacToeMatch: React.FC = () => {
         payload: { cellIndex },
       });
     } catch (err: any) {
-      setActionError(err.message || 'Langkah tidak dapat diproses.');
+      // The engine still answers in English, and that string used to reach the player verbatim.
+      setActionError(
+        /already occupied/i.test(String(err?.message))
+          ? `Petak itu sudah terisi. Pilih petak kosong, atau tap bidak tertua Anda untuk menahannya.`
+          : err.message || 'Langkah tidak dapat diproses.'
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -625,7 +632,11 @@ export const TicTacToeMatch: React.FC = () => {
 
         {activePlayerPieces.length >= 3 && activeOldestPiece && (
           <span style={{ font: '11px/1 var(--mono)', color: 'var(--terracotta)', fontWeight: 600 }}>
-            Langkah berikutnya akan menghapus bidak #{activeOldestPiece.order}
+            {getHoldCell(game) === null
+              ? `Langkah berikutnya akan menghapus bidak di petak #${activeOldestPiece.cellIndex + 1}. Jatah tahan habis.`
+              : `Tap petak #${activeOldestPiece.cellIndex + 1} untuk menahan bidak tertua Anda. Sisa tahan ${
+                  game.holdsLeft?.[game.currentTurn] ?? MAX_HOLDS_PER_ROUND
+                }/${MAX_HOLDS_PER_ROUND}.`}
           </span>
         )}
       </div>
@@ -639,6 +650,7 @@ export const TicTacToeMatch: React.FC = () => {
           winningLine={game.winningLine}
           onCellClick={handleCellClick}
           disabled={!isMyTurn || isSubmitting || players.length < 2}
+          holdCell={getHoldCell(game)}
         />
       </div>
 

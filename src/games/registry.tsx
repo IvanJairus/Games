@@ -96,7 +96,7 @@ export const GAMES_REGISTRY: GameMetadata[] = [
     id: 'tic-tac-toe',
     title: 'Tic Tac Toe · Mode No-Draw',
     subtitle: 'Maksimal 3 Bidak (Anti-Seri)',
-    description: 'Setiap pemain maksimal memiliki 3 bidak di papan. Bidak ke-4 otomatis melenyapkan bidak tertua. Mustahil seri!',
+    description: 'Setiap pemain maksimal memiliki 3 bidak di papan. Bidak ke-4 otomatis melenyapkan bidak tertua, dan bidak tertua bisa ditahan. Mustahil seri!',
     playerRange: '2 Pemain',
     statusLabel: 'Lokal & Online',
     route: '/tic-tac-toe',

@@ -4,10 +4,13 @@ import {
   applyMove,
   checkWinner,
   getOldestPiece,
+  getHoldCell,
   getPlayerPieces,
   resetRound,
   WINNING_LINES,
   MAX_PIECES_PER_PLAYER,
+  MAX_HOLDS_PER_ROUND,
+  TicTacToeState,
 } from '@/games/tic-tac-toe/engine';
 
 describe('No-Draw Tic Tac Toe Engine (3-Pieces FIFO)', () => {
@@ -166,5 +169,73 @@ describe('No-Draw Tic Tac Toe Engine (3-Pieces FIFO)', () => {
       line: [0, 1, 2],
     });
     expect(checkWinner([null, null, null, null, null, null, null, null, null])).toBeNull();
+  });
+});
+
+describe('Hold rule: tapping your own expiring square', () => {
+  // The position read off the 2026-10-15 recording, where X's oldest piece on cell 6 was the only
+  // blocker on O's 7 + 8 and every placement handed the bot the row.
+  const RECORDED = [7, 1, 0, 4, 6, 3, 5, 8, 1, 7];
+
+  const recorded = () => RECORDED.reduce((g, cell) => applyMove(g, cell), createTicTacToeGame());
+
+  it('offers no hold while the mover still has room for a new piece', () => {
+    expect(getHoldCell(createTicTacToeGame())).toBeNull();
+    expect(getHoldCell(applyMove(createTicTacToeGame(), 0))).toBeNull();
+  });
+
+  it('keeps the piece standing and sends it to the back of the queue', () => {
+    const g = recorded();
+    expect(getHoldCell(g)).toBe(6);
+
+    const held = applyMove(g, 6);
+    expect(held.board).toEqual(g.board);
+    expect(getPlayerPieces(held.pieces, 'X').map((p) => p.cellIndex)).toEqual([5, 1, 6]);
+    expect(held.currentTurn).toBe('O');
+    expect(held.status).toBe('IN_PROGRESS');
+    expect(held.winner).toBeNull();
+  });
+
+  it('hands the same right to the other seat', () => {
+    const held = applyMove(recorded(), 6);
+    expect(getHoldCell(held)).toBe(3);
+  });
+
+  it('spends one hold from the mover budget and leaves the other seat whole', () => {
+    const held = applyMove(recorded(), 6);
+    expect(held.holdsLeft).toEqual({ X: MAX_HOLDS_PER_ROUND - 1, O: MAX_HOLDS_PER_ROUND });
+  });
+
+  it('runs out of holds, after which the expiring square is just occupied again', () => {
+    let g = applyMove(recorded(), 6);
+    g = applyMove(g, 2);
+    g = applyMove(g, 5);
+    g = applyMove(g, 0);
+
+    expect(g.holdsLeft.X).toBe(0);
+    expect(getHoldCell(g, 'X')).toBeNull();
+    expect(() => applyMove(g, getOldestPiece(g.pieces, 'X')!.cellIndex)).toThrow(/already occupied/);
+  });
+
+  it('breaks the recorded zugzwang: holding the blocker leaves the bot no instant win', () => {
+    const held = applyMove(recorded(), 6);
+    const replies = [0, 2, 4].map((cell) => applyMove(held, cell));
+
+    expect(replies.every((r) => r.status === 'IN_PROGRESS')).toBe(true);
+    expect(replies.some((r) => checkWinner(r.board))).toBe(false);
+  });
+
+  it('materialises the budget for a room state saved before the rule', () => {
+    const legacy = { ...recorded(), holdsLeft: undefined } as unknown as TicTacToeState;
+    expect(getHoldCell(legacy)).toBe(6);
+    expect(applyMove(legacy, 6).holdsLeft).toEqual({
+      X: MAX_HOLDS_PER_ROUND - 1,
+      O: MAX_HOLDS_PER_ROUND,
+    });
+  });
+
+  it('refills both budgets for the next round', () => {
+    const g = applyMove(recorded(), 6);
+    expect(resetRound(g).holdsLeft).toEqual({ X: MAX_HOLDS_PER_ROUND, O: MAX_HOLDS_PER_ROUND });
   });
 });

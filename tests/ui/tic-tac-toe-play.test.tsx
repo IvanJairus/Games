@@ -57,16 +57,53 @@ describe('Tic Tac Toe played through the real UI', () => {
     play(0, 3, 1, 4, 8, 7);
 
     expect(label(0)).toContain('bidak tertua');
-    expect(screen.getByTestId('tictactoe-status-banner')).toHaveTextContent(
+    expect(screen.getByTestId('tictactoe-hint')).toHaveTextContent(
       'Bidak tertua Pemain X di petak #1 akan lenyap'
     );
-    expect(screen.getByTestId('tictactoe-status-banner')).toHaveTextContent(
-      'setelah Pemain X melangkah. Petak itu baru bisa ditempati pada giliran berikutnya'
+    expect(screen.getByTestId('tictactoe-hint')).toHaveTextContent(
+      'setelah Pemain X melangkah. Tap petaknya untuk menahannya. Sisa tahan 2/2.'
+    );
+  });
+
+  it('holds the expiring piece when its own square is tapped', () => {
+    renderLocal();
+    play(0, 3, 1, 4, 8, 7);
+
+    expect(cell(0)).toHaveAttribute('aria-disabled', 'false');
+    fireEvent.click(cell(0));
+
+    expect(screen.getByTestId('tictactoe-notice')).toHaveTextContent('Bidak di petak #1 ditahan');
+    expect(screen.getByTestId('tictactoe-notice')).toHaveTextContent('Sisa tahan Pemain X: 1/2');
+    expect(label(0)).toContain('terisi X');
+    // A hold moves the turn without moving a piece, so the board is exactly as it was.
+    expect(label(1)).toContain('terisi X');
+    expect(label(8)).toContain('terisi X');
+    expect(screen.getByTestId('tictactoe-status-banner')).toHaveTextContent('Giliran Aktif: Pemain O');
+  });
+
+  it('keeps the hint slot reserved so the board never jumps between turns', () => {
+    renderLocal();
+    expect(screen.getByTestId('tictactoe-hint')).toHaveStyle({ minHeight: '78px' });
+
+    // The warning used to grow the banner by 47 px and push the board down with it.
+    play(0, 3, 1, 4, 8, 7);
+    expect(screen.getByTestId('tictactoe-hint')).toHaveStyle({ minHeight: '78px' });
+  });
+
+  it('refuses the expiring square once the hold budget is spent', () => {
+    renderLocal();
+    play(0, 3, 1, 4, 8, 7);
+
+    // Both seats spend their two holds: X keeps 0 then 1, O keeps 3 then 4.
+    play(0, 3, 1, 4);
+
+    expect(screen.getByTestId('tictactoe-hint')).toHaveTextContent(
+      'Petak itu baru bisa ditempati pada giliran berikutnya'
     );
 
-    fireEvent.click(cell(0));
-    expect(screen.getByTestId('tictactoe-notice')).toHaveTextContent('masih terisi bidak Anda sendiri');
-    expect(label(0)).toContain('terisi X');
+    fireEvent.click(cell(8));
+    expect(screen.getByTestId('tictactoe-notice')).toHaveTextContent('jatah menahannya sudah habis');
+    expect(label(8)).toContain('terisi X');
   });
 
   it('recycles the oldest piece so four moves never fill the board', () => {    renderLocal();

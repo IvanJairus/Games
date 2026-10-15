@@ -7,12 +7,14 @@ import {
   resetRound,
   getPlayerPieces,
   getOldestPiece,
+  getHoldCell,
+  MAX_HOLDS_PER_ROUND,
   TicTacToeState,
   PlayerSymbol,
 } from '../engine';
 import { TicTacToeBoard } from '../components/TicTacToeBoard';
 import { BOT_LEVELS, BotLevel, chooseBotMove } from '../engine/ai';
-import { playBlocked, playPlace, playVictory, unlockAudio } from '../../common/audio';
+import { playBlocked, playPlace, playSelect, playVictory, unlockAudio } from '../../common/audio';
 import { buzzReject, buzzTap } from '../../common/haptics';
 import { SoundToggle } from '../../common/SoundToggle';
 import { ResultDialog } from '../../common/ResultDialog';
@@ -22,6 +24,8 @@ const BOT_SYMBOL: PlayerSymbol = 'O';
 // Long enough that the vanishing square and the bot's new square are seen as two events.
 const BOT_THINK_MS = 1200;
 const NOTICE_MS = 3400;
+// Tall enough for the warning plus the thinking line, measured at 375 px and 598 px viewports.
+const HINT_SLOT_MIN_H = 78;
 
 const readBotLevel = (raw: string | null): BotLevel | null =>
   raw && BOT_LEVELS.some((level) => level.id === raw) ? (raw as BotLevel) : null;
@@ -32,13 +36,15 @@ export const TicTacToeLocal: React.FC = () => {
   const [game, setGame] = useState<TicTacToeState>(() => createTicTacToeGame());
   const [victoryOpen, setVictoryOpen] = useState(false);
   // The id restarts the dismiss timer when the same message is raised twice in a row.
-  const [notice, setNotice] = useState<{ id: number; text: string } | null>(null);
+  const [notice, setNotice] = useState<{ id: number; text: string; tone: 'warn' | 'info' } | null>(null);
   const noticeSeq = useRef(0);
-  const raiseNotice = (text: string) => setNotice({ id: (noticeSeq.current += 1), text });
+  const raiseNotice = (text: string, tone: 'warn' | 'info' = 'warn') =>
+    setNotice({ id: (noticeSeq.current += 1), text, tone });
 
   const rulesDialogRef = useRef<HTMLDialogElement>(null);
 
   const botTurn = !!botLevel && game.currentTurn === BOT_SYMBOL && game.status === 'IN_PROGRESS';
+  const holdCell = getHoldCell(game);
   const seatLabel = (symbol: PlayerSymbol | null) =>
     symbol ? (botLevel && symbol === BOT_SYMBOL ? 'Bot' : `Pemain ${symbol}`) : '';
 
@@ -53,8 +59,22 @@ export const TicTacToeLocal: React.FC = () => {
     // The click sound waits for the piece, so it does not announce a move 1.2s early.
     const timer = setTimeout(() => {
       if (game.status !== 'IN_PROGRESS' || game.currentTurn !== BOT_SYMBOL) return;
-      setGame(applyMove(game, chooseBotMove(game, botLevel)));
-      playPlace();
+      const mover = game.currentTurn;
+      const cell = chooseBotMove(game, botLevel);
+      const next = applyMove(game, cell);
+      setGame(next);
+
+      // A bot hold moves no piece, so it needs naming or it reads as the last frame glitching.
+      if (cell === getHoldCell(game)) {
+        playSelect();
+        raiseNotice(
+          `${seatLabel(mover)} menahan bidaknya di petak #${cell + 1} dan menjadikannya bidak ` +
+            `paling baru. Sisa tahan ${seatLabel(mover)}: ${next.holdsLeft[mover]}/${MAX_HOLDS_PER_ROUND}.`,
+          'info'
+        );
+      } else {
+        playPlace();
+      }
     }, BOT_THINK_MS);
 
     return () => clearTimeout(timer);
@@ -72,16 +92,26 @@ export const TicTacToeLocal: React.FC = () => {
     try {
       const next = applyMove(game, index);
       unlockAudio();
-      playPlace();
       buzzTap();
-      setNotice(null);
+      if (index === holdCell) {
+        playSelect();
+        raiseNotice(
+          `Bidak di petak #${index + 1} ditahan. Ia tetap berdiri dan jadi bidak paling baru. ` +
+            `Sisa tahan ${seatLabel(game.currentTurn)}: ${next.holdsLeft[game.currentTurn]}/${MAX_HOLDS_PER_ROUND}.`,
+          'info'
+        );
+      } else {
+        playPlace();
+        setNotice(null);
+      }
       setGame(next);
     } catch {
       // The square is taken. Name it and say when it frees up instead of only beeping.
       const expiring = getOldestPiece(game.pieces, game.currentTurn);
       raiseNotice(
         expiring?.cellIndex === index
-          ? `Petak #${index + 1} masih terisi bidak Anda sendiri. Bidak itu baru lenyap setelah Anda melangkah, jadi petaknya bebas pada giliran berikutnya.`
+          ? `Petak #${index + 1} memegang bidak tertua Anda dan jatah menahannya sudah habis. ` +
+              `Ia lenyap begitu Anda melangkah, lalu bebas pada giliran berikutnya.`
           : `Petak #${index + 1} sudah terisi. Hanya petak kosong yang bisa dipilih.`
       );
       playBlocked();
@@ -286,7 +316,7 @@ export const TicTacToeLocal: React.FC = () => {
           background: '#ffffff',
           border: '1px solid var(--line-strong)',
           textAlign: 'center',
-          marginBottom: '20px',
+          marginBottom: '10px',
           boxShadow: '0 2px 8px rgba(28, 25, 23, 0.04)',
         }}
       >
@@ -300,34 +330,6 @@ export const TicTacToeLocal: React.FC = () => {
               · Bidak ke-{activePlayerPieces.length + 1}
             </div>
 
-            {activeOldestPiece && (
-              <div
-                style={{
-                  marginTop: '6px',
-                  fontSize: '11px',
-                  fontFamily: 'var(--mono)',
-                  color: 'var(--gold)',
-                  background: 'var(--gold-tint)',
-                  padding: '4px 10px',
-                  borderRadius: 'var(--r2)',
-                  display: 'inline-block',
-                }}
-              >
-                <span style={{ fontWeight: 600 }}>Perhatian:</span> Bidak tertua{' '}
-                {seatLabel(game.currentTurn)} di petak #{activeOldestPiece.cellIndex + 1} akan lenyap
-                setelah {seatLabel(game.currentTurn)} melangkah. Petak itu baru bisa ditempati pada
-                giliran berikutnya.
-              </div>
-            )}
-
-            {botTurn && (
-              <div
-                data-testid="tictactoe-bot-thinking"
-                style={{ marginTop: '6px', font: '11px/1.3 var(--mono)', color: 'var(--ink-faint)' }}
-              >
-                Bot sedang memikirkan langkah...
-              </div>
-            )}
           </div>
         )}
 
@@ -338,9 +340,53 @@ export const TicTacToeLocal: React.FC = () => {
         )}
       </div>
 
+      {/*
+        Hint slot. The copy changes with the turn, the box does not: an inline warning that grows
+        the banner pushed the board down 47 px the moment a seat reached its third piece.
+      */}
+      <div
+        data-testid="tictactoe-hint"
+        style={{
+          minHeight: `${HINT_SLOT_MIN_H}px`,
+          marginBottom: '10px',
+          textAlign: 'center',
+        }}
+      >
+        {activeOldestPiece && (
+          <div
+            style={{
+              fontSize: '11px',
+              fontFamily: 'var(--mono)',
+              color: 'var(--gold)',
+              background: 'var(--gold-tint)',
+              padding: '4px 10px',
+              borderRadius: 'var(--r2)',
+              display: 'inline-block',
+            }}
+          >
+            <span style={{ fontWeight: 600 }}>Perhatian:</span> Bidak tertua{' '}
+            {seatLabel(game.currentTurn)} di petak #{activeOldestPiece.cellIndex + 1} akan lenyap
+            setelah {seatLabel(game.currentTurn)} melangkah.{' '}
+            {holdCell === null
+              ? 'Petak itu baru bisa ditempati pada giliran berikutnya.'
+              : `Tap petaknya untuk menahannya. Sisa tahan ${game.holdsLeft[game.currentTurn]}/${MAX_HOLDS_PER_ROUND}.`}
+          </div>
+        )}
+
+        {botTurn && (
+          <div
+            data-testid="tictactoe-bot-thinking"
+            style={{ marginTop: '6px', font: '11px/1.3 var(--mono)', color: 'var(--ink-faint)' }}
+          >
+            Bot sedang memikirkan langkah...
+          </div>
+        )}
+      </div>
+
       {notice && (
         <div
           data-testid="tictactoe-notice"
+          data-tone={notice.tone}
           role="status"
           style={{
             position: 'fixed',
@@ -352,11 +398,14 @@ export const TicTacToeLocal: React.FC = () => {
             zIndex: 30,
             padding: '10px 14px',
             borderRadius: 'var(--r2)',
-            border: '1px solid var(--red)',
-            background: '#fff',
-            color: 'var(--red-deep)',
+            border: `1px solid ${notice.tone === 'warn' ? 'var(--red)' : 'var(--gold-border)'}`,
+            background: notice.tone === 'warn' ? '#fff' : 'var(--gold-tint)',
+            color: notice.tone === 'warn' ? 'var(--red-deep)' : 'var(--gold)',
             font: '11px/1.45 var(--mono)',
-            boxShadow: '0 8px 24px rgba(143, 29, 20, 0.18)',
+            boxShadow:
+              notice.tone === 'warn'
+                ? '0 8px 24px rgba(143, 29, 20, 0.18)'
+                : '0 8px 24px rgba(180, 83, 9, 0.14)',
           }}
         >
           {notice.text}
@@ -371,6 +420,7 @@ export const TicTacToeLocal: React.FC = () => {
         winningLine={game.winningLine}
         onCellClick={handleCellClick}
         disabled={game.status !== 'IN_PROGRESS' || botTurn}
+        holdCell={holdCell}
       />
 
       {/* Next Round Button below board */}
@@ -470,7 +520,10 @@ export const TicTacToeLocal: React.FC = () => {
             <strong>Taktik &amp; Prediksi:</strong> Bidak tertua yang akan lenyap ditandai dengan garis putus-putus dan label <em>"Akan Lenyap"</em> agar pemain dapat memperhitungkan langkah berikutnya.
           </li>
           <li>
-            <strong>Petak yang ditinggalkan:</strong> Petak bidak tertua tetap terisi sampai Anda melangkah, jadi tidak bisa ditimpa lebih dulu. Ia baru bebas pada giliran berikutnya, dan lawan boleh langsung mengambilnya.
+            <strong>Petak yang ditinggalkan:</strong> Petak bidak tertua tetap terisi sampai pemiliknya melangkah, jadi tidak bisa ditimpa lebih dulu. Ia baru bebas pada giliran berikutnya, dan lawan boleh langsung mengambilnya.
+          </li>
+          <li>
+            <strong>Menahan bidak ({MAX_HOLDS_PER_ROUND} kali per ronde):</strong> Tap petak yang memegang bidak tertua Anda untuk menahannya. Bidaknya tetap berdiri dan menjadi bidak paling baru, giliran berpindah, dan jatah tahan kursi itu berkurang satu. Ini satu-satunya cara menyelamatkan bidak yang menutup langkah lawan.
           </li>
         </ul>
         <div style={{ textAlign: 'right' }}>
