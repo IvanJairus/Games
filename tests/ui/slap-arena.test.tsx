@@ -15,6 +15,7 @@ vi.mock('@/games/slap-arena/components/Arena3D', () => ({
       koBurst: vi.fn(),
       confetti: vi.fn(),
       shake: vi.fn(),
+      float: vi.fn(),
       freeze: vi.fn(),
     }));
     return <div data-testid="slap-stage-stub" />;
@@ -429,6 +430,27 @@ describe('Slap Arena multiplayer wiring', () => {
     expect(Math.max(...client.inputs().map((m) => m.payload.charge ?? 0))).toBeGreaterThan(0.3);
     // The wind-up has to reach the host too, or the peer never sees the tell.
     expect(client.inputs().some((m) => m.payload.held === true)).toBe(true);
+  });
+
+  it('waits for the release instead of firing at the top of the meter', async () => {
+    const client = await mountClient();
+    client.press();
+    await new Promise((r) => setTimeout(r, 900));
+    // Past the 0.7 s the meter is already full. A full meter is not an order to swing.
+    expect(client.inputs().some((m) => m.payload.slap === true)).toBe(false);
+    client.lift();
+    await waitFor(() => {
+      expect(client.inputs().some((m) => m.payload.slap === true)).toBe(true);
+    });
+    expect(Math.max(...client.inputs().map((m) => m.payload.charge ?? 0))).toBe(1);
+  });
+
+  it('fires a stuck hold on its own only past the safety limit', async () => {
+    const client = await mountClient();
+    client.press();
+    await new Promise((r) => setTimeout(r, 2400));
+    expect(client.inputs().some((m) => m.payload.slap === true)).toBe(true);
+    client.lift();
   });
 
   it('sends no charge for a tap', async () => {

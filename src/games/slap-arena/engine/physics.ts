@@ -21,6 +21,8 @@ export const COUNTDOWN_TIME = 3;
 export const CHARGE_MIN_TIME = 0.25;
 /** A finger that never lifts still gets its slap; the button auto-fires here. */
 export const CHARGE_MAX_TIME = 0.7;
+/** A hold only stops being useful here; the meter is already full at CHARGE_MAX_TIME. */
+export const CHARGE_HOLD_LIMIT = 1.6;
 /** Knockback multiplier at a full hold is 1 + this. */
 export const CHARGE_FORCE_GAIN = 1.2;
 export const CHARGE_STUN_GAIN = 0.14;

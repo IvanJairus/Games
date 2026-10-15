@@ -21,6 +21,8 @@ export interface Arena3DHandle {
   koBurst(x: number, z: number, color: string, charge?: number): void;
   confetti(): void;
   shake(amount: number): void;
+  /** Text only, at a world position: the verdict of a slap that hit nothing. */
+  float(x: number, z: number, text: string, color: string, variant?: 'miss' | 'max'): void;
   /** Holds the swing of these brawlers for a few frames without touching positions. */
   freeze(ids: string[], ms: number): void;
 }
@@ -82,6 +84,7 @@ const Arena3D = forwardRef<Arena3DHandle, Arena3DProps>(function Arena3D(
     koBurst: (x, z, color, charge) => apiRef.current?.koBurst(x, z, color, charge),
     confetti: () => apiRef.current?.confetti(),
     shake: (amount) => apiRef.current?.shake(amount),
+    float: (x, z, text, color, variant) => apiRef.current?.float(x, z, text, color, variant),
     freeze: (ids, ms) => apiRef.current?.freeze(ids, ms),
   }));
 
@@ -251,16 +254,22 @@ const Arena3D = forwardRef<Arena3DHandle, Arena3DProps>(function Arena3D(
       entries.delete(id);
     }
 
-    function popText(x: number, z: number, text: string, color: string): void {
+    function popText(
+      x: number,
+      z: number,
+      text: string,
+      color: string,
+      variant?: 'miss' | 'max'
+    ): void {
       // Chained hits must not stack an unbounded row of animated divs.
       while (livePops.length >= gates.popTextMax) livePops.shift()?.remove();
       const el = document.createElement('div');
-      el.className = 'sa-pop';
+      el.className = variant ? `sa-pop sa-pop--${variant}` : 'sa-pop';
       el.style.color = color;
       el.textContent = text;
       labels.appendChild(el);
       livePops.push(el);
-      const at = popAt.set(x, 1.9, z).project(camera);
+      const at = popAt.set(x, variant === 'miss' ? 2.35 : 1.9, z).project(camera);
       el.style.left = `${((at.x + 1) / 2) * stageW}px`;
       el.style.top = `${((-at.y + 1) / 2) * stageH}px`;
       window.setTimeout(() => {
@@ -308,6 +317,9 @@ const Arena3D = forwardRef<Arena3DHandle, Arena3DProps>(function Arena3D(
       },
       shake(amount) {
         if (gates.shake && !reducedMotion) shake.amount = Math.min(0.9, shake.amount + amount);
+      },
+      float(x, z, text, color, variant) {
+        popText(x, z, text, color, variant);
       },
       freeze(ids, ms) {
         const hold = Math.min(ms, gates.hitFreezeMs);
@@ -429,6 +441,7 @@ const Arena3D = forwardRef<Arena3DHandle, Arena3DProps>(function Arena3D(
           e.markerColor = p.color;
           e.marker.setColor(p.color || PALETTE_FALLBACK);
         }
+        e.marker.setCharge(p.chargeT >= 0 ? Math.min(1, p.chargeT / CHARGE_MAX_TIME) : 0);
 
         let px = p.x;
         let pz = p.z;

@@ -113,6 +113,22 @@
   40% { transform: translate(-50%, -50%) scale(0.98) rotate(-2deg); }
   100% { opacity: 0; transform: translate(-50%, -140%) scale(1.05) rotate(0deg); }
 }
+/* A whiff must read weaker than a hit, or the arena shouts about nothing. */
+.sa-pop--miss {
+  font-size: clamp(15px, 3.4vw, 22px);
+  -webkit-text-stroke-width: 2px;
+  animation-name: sa-pop-miss;
+}
+@keyframes sa-pop-miss {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.72); }
+  25% { opacity: 0.95; transform: translate(-50%, -62%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -122%) scale(0.96); }
+}
+/* Full charge earns a shout, kept shorter than the comic it lands beside. */
+.sa-pop--max {
+  font-size: clamp(16px, 3.6vw, 24px);
+  -webkit-text-stroke-width: 2.5px;
+}
 
 /* ---------- HUD frame ---------- */
 .sa-hud {

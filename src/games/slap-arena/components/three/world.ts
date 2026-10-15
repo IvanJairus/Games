@@ -382,6 +382,7 @@ export class ParticleField {
 export function createGroundMarker(color: string): {
   group: THREE.Group;
   setColor: (c: string) => void;
+  setCharge: (c: number) => void;
   dispose: () => void;
 } {
   const group = new THREE.Group();
@@ -411,10 +412,32 @@ export function createGroundMarker(color: string): {
   ring.position.y = 0.032;
   ring.renderOrder = 3;
 
-  group.add(shadow, rim, ring);
+  // A desktop player has no on-screen button to watch, so the wind-up is measured on the
+  // grass under their own feet. The ring starts wide and closes as the meter fills.
+  const chargeGeo = new THREE.RingGeometry(0.9, 1.12, 28, 1);
+  chargeGeo.rotateX(-Math.PI / 2);
+  const chargeMat = new THREE.MeshBasicMaterial({
+    color: new THREE.Color('#ffd166'),
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+  });
+  const charge = new THREE.Mesh(chargeGeo, chargeMat);
+  charge.position.y = 0.036;
+  charge.renderOrder = 4;
+  charge.visible = false;
+
+  group.add(shadow, rim, ring, charge);
   return {
     group,
     setColor: (c: string) => ringMat.color.set(c),
+    setCharge: (c: number) => {
+      const t = Number.isFinite(c) ? Math.max(0, Math.min(1, c)) : 0;
+      charge.visible = t > 0;
+      if (!charge.visible) return;
+      charge.scale.setScalar(1.75 - t * 0.75);
+      chargeMat.opacity = 0.28 + t * 0.66;
+    },
     dispose: () => {
       shadowGeo.dispose();
       shadowMat.dispose();
@@ -422,6 +445,8 @@ export function createGroundMarker(color: string): {
       rimMat.dispose();
       ringGeo.dispose();
       ringMat.dispose();
+      chargeGeo.dispose();
+      chargeMat.dispose();
     },
   };
 }
