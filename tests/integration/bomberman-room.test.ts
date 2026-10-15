@@ -120,6 +120,24 @@ describe('host and client agree after a match', () => {
     expect(JSON.stringify(client.state)).not.toBe(JSON.stringify(late));
   });
 
+  it('can be rebuilt from a world frame alone, before any lifecycle sync', () => {
+    // A broadcast can overtake this tab's first room sync. The page then has the world
+    // but no readable game_state yet, and used to read .seats off a null config.
+    const host = fromConfig(configFor(2, 'frame-first'));
+    for (let i = 0; i < 400; i++) host.step(1 / 60);
+    const frame = host.snapshot();
+
+    const late = new BombermanSim({
+      seats: frame.seats,
+      seed: frame.seed,
+      floor: frame.floor,
+      players: frame.players.map((p) => ({ seat: p.seat, name: p.name, charId: p.charId, bot: p.bot })),
+    });
+    expect(() => late.applySnapshot(frame)).not.toThrow();
+    expect(late.state.grid).toEqual(frame.grid);
+    expect(late.state.players.map((p) => [p.seat, p.x, p.y])).toEqual(frame.players.map((p) => [p.seat, p.x, p.y]));
+  });
+
   it('finishes with exactly one winner and a result that fits the row', () => {
     const host = fromConfig(configFor(2, 'finish'));
     const brains = host.state.players.filter((p) => p.bot).map((p) => new BombermanBot(p.seat, 'sempurna'));
