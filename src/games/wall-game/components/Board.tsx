@@ -334,8 +334,8 @@ export const Board: React.FC<BoardProps> = ({
                 width={wWidth}
                 height={wHeight}
                 rx={1}
-                fill={owner ? owner.theme.hex : 'var(--wall-placed, #1e293b)'}
-                stroke={owner ? owner.theme.border : 'var(--wall-placed-border, #334155)'}
+                fill={owner ? owner.theme.hex : 'var(--wall-unowned, #78716c)'}
+                stroke="var(--wall-keyline, rgba(28, 25, 23, 0.45))"
                 strokeWidth="1"
               />
             </g>

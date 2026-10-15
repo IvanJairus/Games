@@ -88,8 +88,14 @@ harness relay. Dan tombol efek baru diverifikasi di Chrome, bukan di browser kel
 
 - **Dinding yang sudah dipasang kini dicat dengan warna tema kursi yang memasangnya**, bukan lagi
   netral semua. Sebelumnya papan tidak bisa menjawab "siapa yang menutup jalan saya".
-- Warna dinding mengikuti `PLAYER_GOLD_THEMES` pemiliknya: isi `theme.hex`, garis tepi
-  `theme.border`. Dinding tanpa pemilik (room lama) tetap memakai `--wall-placed` netral.
+- Isi dinding memakai `theme.hex` pemiliknya. Garis tepinya bukan `theme.border` lagi, tapi satu
+  kunci gelap netral (`--wall-keyline`), supaya tema yang warnanya dekat dengan emas inti tetap
+  terbaca sebagai benda yang berbeda.
+- Dinding tanpa pemilik (room lama) memakai token baru `--wall-unowned` (`#78716c`), bukan
+  `--wall-placed`. Alasannya: `--wall-placed` (`#1e293b`) adalah warna border tema kursi 6, dan
+  border `--wall-placed-border` (`#334155`) adalah warna isi tema kursi 6, jadi dinding kursi 6
+  tidak akan bisa dibedakan dari dinding tanpa pemilik. `--wall-placed` tetap dipakai Battleship
+  untuk sel kapal, jadi token itu tidak saya ubah.
 
 ### Ditambahkan
 
@@ -103,11 +109,9 @@ harness relay. Dan tombol efek baru diverifikasi di Chrome, bukan di browser kel
   terpasang, 10 di antaranya memakai warna tema, 0 yang masih netral.
 - Engine test membuktikan `owner` terisi sesuai kursi yang bergerak, dan render test Board
   membuktikan pemetaan `owner` ke warna tema plus fallback netralnya.
-- Dua warna tema perlu diwaspadai, dan ini terlihat di screenshot: kursi 4 "Emas Kuning"
-  `#d97706` berhimpitan dengan aksen emas inti dan dengan "Terracotta" `#c2410c` milik kursi 1 pada
-  bilah dinding setipis 10 px. Kursi 6 "Batu Basalt" `#334155` sama persis dengan token
-  `--wall-placed-border` hari ini, jadi dindingnya hampir tidak bisa dibedakan dari dinding tanpa
-  pemilik. Belum ada perbaikan yang diputuskan.
+- Test `tests/ui/wall-game-board.test.tsx` menjaga dua hal sekaligus: pemetaan `owner` ke warna tema,
+  fallback netral untuk dinding tanpa `owner`, dan `#78716c` tidak boleh muncul di palet
+  `PLAYER_GOLD_THEMES` (guard terhadap tabrakan warna yang baru saja diperbaiki).
 
 ### Ditemukan sambil lalu
 
