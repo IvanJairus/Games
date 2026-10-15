@@ -3,6 +3,10 @@ import { forwardRef, useImperativeHandle, useRef, type ReactNode } from 'react';
 import type { BombermanState, SimEvent } from '../engine/types';
 import type { FxGates } from '../engine/fxMode';
 import { bombMarkup, powerMarkup, softMarkup, spriteMarkup, type PowerGlyph, type SpriteFacing, type SpritePose } from '../sprites';
+import floorGrass from '../assets/floor-grass.webp';
+import floorSand from '../assets/floor-sand.webp';
+import floorStone from '../assets/floor-stone.webp';
+
 
 export const CELL = 40;
 
@@ -10,6 +14,18 @@ export const CELL = 40;
 const CHAR_BOX = { w: 46, h: 66, dx: -3, dy: -26 };
 const BOMB_BOX = { w: 36, h: 36, dx: 2, dy: 4 };
 const FLAT_BOX = { w: CELL, h: CELL, dx: 0, dy: 0 };
+/**
+ * Tiled in user space at two cells, so the texture lines up with the grid instead of
+ * cutting a random slice of stone through every tile. Kept translucent: the floor is
+ * scenery, and a character has to stay readable on top of it.
+ */
+export const FLOOR_TEXTURES: Record<string, string> = {
+  grass: floorGrass,
+  sand: floorSand,
+  stone: floorStone,
+};
+const FLOOR_TILE = CELL * 2;
+const FLOOR_OPACITY = 0.45;
 
 export interface ArenaHandle {
   draw: (state: BombermanState, events: SimEvent[]) => void;
@@ -59,7 +75,14 @@ export const Arena = forwardRef<ArenaHandle, ArenaProps>(function Arena(
   const shape = useRef('');
 
   const paintStatic = (state: BombermanState): void => {
-    let s = '';
+    const texture = FLOOR_TEXTURES[state.floor];
+    const id = `bm-floor-${state.floor}`;
+    let s = texture
+      ? `<defs><pattern id="${id}" width="${FLOOR_TILE}" height="${FLOOR_TILE}" patternUnits="userSpaceOnUse">
+           <image href="${texture}" width="${FLOOR_TILE}" height="${FLOOR_TILE}" opacity="${FLOOR_OPACITY}"/>
+         </pattern></defs>
+         <rect width="${state.cols * CELL}" height="${state.rows * CELL}" fill="url(#${id})"/>`
+      : '';
     for (let y = 0; y < state.rows; y++) {
       for (let x = 0; x < state.cols; x++) {
         const tint = (x + y) % 2 ? 'rgba(0,0,0,.05)' : 'rgba(255,255,255,.06)';

@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 
 import { BombermanSim } from '../engine/sim';
 import { BombermanBot, BOMBER_BOT_LEVELS, BotLevel, describeBombermanBot } from '../engine/ai';
-import { Facing, SCORE_TO_WIN, boardFor } from '../engine/types';
+import { Facing, SCORE_TO_WIN, boardFor, type FloorKind } from '../engine/types';
 import { CHARACTERS, CHAR_IDS, characterById } from '../sprites';
 import { createFpsController, fxGates, levelAtMount, readFxMode, writeFxMode, FxLevel } from '../engine/fxMode';
 import { Arena, ArenaHandle } from '../components/Arena';
@@ -20,7 +20,11 @@ interface Setup {
   level: BotLevel;
   seats: number;
   charId: string;
+  /** Pinned only for the screenshot pass; a normal match draws its floor from the seed. */
+  floor?: FloorKind;
 }
+
+const FLOOR_NAMES: FloorKind[] = ['grass', 'sand', 'stone'];
 
 export function BombermanLocal() {
   const [params] = useSearchParams();
@@ -29,6 +33,7 @@ export function BombermanLocal() {
     level: BOMBER_BOT_LEVELS.some((l) => l.id === levelParam) ? levelParam : 'sedang',
     seats: params.get('seats') === '4' ? 4 : 2,
     charId: CHAR_IDS.includes(params.get('char') ?? '') ? (params.get('char') as string) : 'robo',
+    floor: FLOOR_NAMES.includes(params.get('floor') as FloorKind) ? (params.get('floor') as FloorKind) : undefined,
   });
   const [sim, setSim] = useState<BombermanSim | null>(null);
   const [fxMode, setFxMode] = useState(readFxMode);
@@ -74,6 +79,7 @@ export function BombermanLocal() {
         players,
         seats: board.seats,
         seed: generateSeed(),
+        floor: cfg.floor,
         rand: Math.random,
       }),
     );

@@ -20,7 +20,19 @@ Koleksi mini game taktis dan strategi web modern di portal `ivanjairus.xyz/games
    - Papan dinamis dengan indikator bidak tertua yang akan memudar.
    - Mode Hotseat Lokal dan Online Multiplayer.
 
-3. **Battleship: Kapal Tersembunyi**
+3. **Slap Arena: Pulau Tampol**
+   - Brawler fisika 3D di satu pulau melayang, dirender dengan three.js dari primitif tanpa aset eksternal.
+   - Mode Solo melawan tiga bot berkarakter, dan Online sampai empat brawler dengan host-authoritative snapshot lewat Supabase Realtime.
+   - Kualitas efek diturunkan otomatis dari frame rate terukur, bukan dari lebar layar.
+
+4. **Bomberman: Arena Bata Lunak**
+   - Arena grid real-time: tanam bom, ledakan berbentuk salib, reaksi berantai, dan bata lunak yang menyerap api sehingga petaknya sendiri tidak ikut terbakar.
+   - Enam karakter chibi kepala besar (pilih manual atau acak) dan tiga lantai yang diacak tiap pertandingan; seluruh sprite digambar sebagai SVG di kode, hanya tekstur lantai yang berupa gambar.
+   - Dua ukuran papan: 11x9 untuk dua kursi, 15x11 untuk empat kursi.
+   - Mode Solo lawan bot (3 tingkat), Online 2-4 pemain, dan kursi kosong yang bisa diisi bot.
+   - Satu nyawa per ronde, bukan per pertandingan: juara ditentukan lebih dulu dari 3 ronde, supaya arena sempat terbuka.
+
+5. **Battleship: Kapal Tersembunyi**
    - Papan 8x8, lima kapal (Battleship 4, Cruiser 3, Frigate 3, Submarine 2, Patrol 2).
    - Armada ditandai anotasi peta laut (kurung rentang petak dan sandi jenis seperti "BS 4"), bukan blok warna.
    - Mode Solo lawan AI, Hotseat dua pemain, dan Online 2 perangkat.
@@ -84,4 +96,6 @@ Proyek ini dilisensikan di bawah **[MIT License](LICENSE)** © 2026 **Ivan Jairu
 ### Atribusi & Catatan Hak Cipta:
 * **WallGo** adalah implementasi kode digital orisinal yang terinspirasi dari permainan papan strategi penempatan dinding klasik (*abstract strategy wall-placement board games*).
 * **Tic Tac Toe No-Draw** merupakan variasi matematis orisinal berbasis aturan grid 3×3 klasik.
-* Seluruh kode TypeScript, engine permainan, arsitektur multiplayer, dan aset SVG di repositori ini ditulis secara independen dan dilindungi oleh lisensi MIT.
+* **Bomberman** memakai mekanik bom berantai grid yang umum pada genre ini; seluruh aturan, engine, sprite karakter, dan efeknya ditulis ulang dari nol untuk repo ini dan tidak memakai aset atau kode dari game Bomberman mana pun.
+* **Aset karakter, papan, dan efek seluruh game di repositori ini digambar sebagai SVG di kode dan ditulis secara independen.** Pengecualian: tiga tekstur lantai Bomberman di `src/games/bomberman/assets/` dibuat dengan image generation, lalu dikecilkan ke WebP. Klaim ini terpisah dari kode, yang dilindungi lisensi MIT.
+* **Font Fredoka** (`src/fonts/`) dipakai di bawah SIL Open Font License; teks lisensinya disertakan di `src/fonts/OFL-Fredoka.txt`.

@@ -13,7 +13,8 @@ import type { InputState } from '@/games/bomberman/engine/types';
 class FakeChannel {
   static bus = new Map<string, FakeChannel[]>();
   sent: { event: string; payload: unknown }[] = [];
-  private handlers = new Map<string, (msg: { payload: unknown }) => void>();
+  /** Public so a test can push a payload straight at one binding. */
+  handlers = new Map<string, (msg: { payload: unknown }) => void>();
   name: string;
 
   constructor(name: string) {

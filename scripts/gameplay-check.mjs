@@ -34,9 +34,9 @@ function findBrowser() {
 }
 
 const VIEWPORTS = [
-  { name: 'desktop', width: 1280, height: 800, touch: false },
-  { name: 'phone-portrait', width: 375, height: 667, touch: true },
-  { name: 'phone-landscape', width: 667, height: 375, touch: true },
+  { name: 'desktop', width: 1280, height: 800, touch: false, floor: 'grass' },
+  { name: 'phone-portrait', width: 375, height: 667, touch: true, floor: 'sand' },
+  { name: 'phone-landscape', width: 667, height: 375, touch: true, floor: 'stone' },
   { name: 'small-phone', width: 360, height: 640, touch: true },
 ];
 
@@ -96,7 +96,7 @@ async function run() {
     page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
     page.on('pageerror', (e) => errors.push(String(e)));
 
-    await page.goto(`${BASE}/bomberman/local`, { waitUntil: 'load' });
+    await page.goto(`${BASE}/bomberman/local${vp.floor ? `?floor=${vp.floor}` : ''}`, { waitUntil: 'load' });
     await page.waitForSelector('[data-testid="bomberman-start"]', { timeout: 15000 });
     check(`${vp.name}: setup screen renders`, true);
 
