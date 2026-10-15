@@ -8,6 +8,80 @@ terpisah saat kamu menerbitkan rilis.
 Entri dimulai dari 14 Oktober 2026. Perubahan sebelum tanggal itu ada pada riwayat git dan daftar
 pull request, karena tidak dicatat saat terjadi.
 
+## 2026-10-15 - Slap Arena: gerakan lancar, tampar terisi, dan tombol efek
+
+### Diperbaiki
+
+- **World tidak lagi dibekukan 70 ms setiap hit mendarat.** Pembekuan itu (`HIT_STOP_MS`) adalah
+  sumber utama "patah-patah" pada rekaman layar 15 Oktober: ia menghentikan simulasi sementara
+  kamera tetap meluncur, dan pada mode online mendorong posisi klien melewati ambang
+  `reconcile` 1,1 m sehingga pemain ter-lempar balik ke posisi tuan rumah tiap kali dipukul.
+  Penggantinya adalah tahan-pose per brawler (`Arena3DHandle.freeze`): lengan dan badan tertahan
+  beberapa frame, posisi gambar tidak pernah ditahan, jadi tidak ada lompatan.
+- **Semua timer animasi kini memakai `dt` asli.** `poseFor` sebelumnya maju `1/60` per frame,
+  sehingga di layar 45 fps animasi memukul berputar pada 0,75x kecepatan dan tidak sinkron dengan
+  fisika yang berjalan di 120 Hz.
+- **Tampar dari klien sering tidak sampai ke tuan rumah.** Sim dan pengirim jaringan berbagi satu
+  objek input, dan sim menghapus flag `slap` di tempat pada frame berikutnya, sebelum tick 50 ms
+  sempat membacanya. Sekarang halaman mengirim salinan ke sim dan membawa nomor urut aksi (`seq`)
+  di `sa_in`; tuan rumah berekasi saat nomornya berubah. Klien lama tanpa `seq` tetap diterima.
+- **Brawler yang KO di sisi klien mengambang di laut.** `fallY` tidak ikut snapshot, jadi sekarang
+  klien menghitung penurunannya sendiri.
+- **`bump` tidak pernah meluruh untuk brawler remote**, membuat lawan terkunci dalam pose penyok
+  sampai ronde berikutnya.
+
+### Diubah
+
+- **Tahan Spasi atau tahan tombol TAMPAR untuk menampar terisi.** Tap biasa berubah menjadi
+  tampar terisi penuh: gaya 20 menjadi 44 (`SLAP_FORCE * (1 + 1,2 * charge)`), stun 0,26 dtk
+  menjadi 0,40 dtk, cooldown 0,55 dtk menjadi 0,85 dtk, dan korban terangkat ke sumbu Y dengan
+  puncak lintasan sekitar 0,44 m. Jangkauan dan kerucut pukulan sengaja tidak disentuh, jadi
+  tidak ada pemain yang tiba-tiba terkena pukulan yang sebelumnya meleset.
+- Auto quality sekarang bisa naik lagi dengan hysteresis EWMA, bukan turun permanen setelah satu
+  jendela buruk. Garis trip lamanya (`fps < 45`) ternyata duduk tepat di angka rekaman pengguna.
+- `antialias`, batas `pixelRatio` (2 menjadi 1,5 pada mode tinggi), bayangan, dan cangkang outline
+  kini dikendalikan satu tabel gerbang (`engine/fxMode.ts`) alih-alih tersebar.
+- Remote brawler digambar sedikit di sepanjang vektor kecepatannya (maksimum 0,6 m) supaya
+  tubuh yang terlempar terbaca sebagai lintasan, bukan 20 lompatan diskrit per detik.
+- `popText` tidak lagi memanggil `getBoundingClientRect()` di dalam frame yang baru saja menulis
+  transform semua label, dan jumlah node `.sa-pop` dibatasi lewat pool.
+
+### Ditambahkan
+
+- Tombol `FX AUTO / TINGGI / RENDAH` di HUD, tersimpan di `localStorage` kunci `ij_slap_fx`,
+  mengikuti pola preferensi suara yang sudah ada. Mode `HEMAT` tampil saat auto menurunkan
+  kualitas sendiri.
+- Pose wind-up di rig: sarung tangan ditarik ke belakang, badan memutar melawan, kaki berhenti
+  melangkah, dan gemetar pada 20 persen terakhir tahan.
+- Cincin pengisi daya di tombol TAMPAR sentuh, karena melepas di *release* berarti pemain perlu
+  bukti visual bahwa menahan itu sedang melakukan sesuatu.
+- `tahan Spasi = lempar jauh` pada legenda keyboard, dan `Burst.angle` agar serpihan debu
+  mengarah searah knockback.
+
+### Terukur
+
+Rekaman pengguna (`Screen Recording 2026-10-15 at 10.50.09.mov`, 1019 frame, mode solo, Opera):
+rata-rata **45,1 fps**, dengan jeda 66-88 ms yang berulang tepat saat hit mendarat.
+
+Sesudah, diukur lewat `requestAnimationFrame` delta di Chrome headless (new), kanvas 1920x1200,
+`devicePixelRatio` 2, mode `high`, 15 detik melawan bot: **60,1 fps**, p50/p95/max =
+16,7 / 16,7 / 16,8 ms, **0 frame di atas 60 ms dari 902 frame dengan 14 hit mendarat**.
+
+Dua angka itu bukan apples to apples: browser dan alat rekamnya berbeda, dan sebagian 45 fps
+bisa jadi berasal dari screen recorder macOS itu sendiri. Yang bisa dipertahankan adalah hilangnya
+jeda 70 ms per hit, yang penyebabnya kode dan memang terukur ada di rekaman.
+
+Tampar, dibaca dari event `hit` di dunia berjalan (bukan dari kode): tap `force 11` (grace 0,55
+aktif), tahan 0,61 dtk `force 39,11` dengan korban di `y = 0,31` dan berpindah 3,46 m dalam 150 ms.
+
+Uji slap-arena bertambah 19 kasus (42 menjadi 57 unit, 16 menjadi 20 UI). `npm run release:check`
+lulus 5 tahap.
+
+### Batas yang belum terbukti
+
+Mode dua pemain sungguhan di dua perangkat belum dicoba; jalur protokolnya yang teruji lewat
+harness relay. Dan tombol efek baru diverifikasi di Chrome, bukan di browser kelas bawah.
+
 ## 2026-10-15 - WallGo: tiga tingkat bot dan entrance "Lawan Bot"
 
 ### Diubah
