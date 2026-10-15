@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import '../slap-arena.css';
 import { getStoredPlayerName, setStoredPlayerName } from '../../../lib/supabase';
 import { createOnlineRoom } from '../../common/multiplayer';
@@ -119,6 +119,16 @@ export const SlapArenaLobby: React.FC = () => {
 
   return (
     <div className="sa sa-lobby" data-testid="slap-lobby">
+      <Link to="/" className="sa-lobby__back" data-testid="slap-back-to-games" aria-label="Kembali ke /games/">
+        <svg width="15" height="15" viewBox="0 0 15 15" aria-hidden="true">
+          <g stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" fill="none">
+            <path d="M10 3 5.5 7.5 10 12" />
+            <path d="M5.5 7.5H12" />
+          </g>
+        </svg>
+        /games/
+      </Link>
+
       <header className="sa-lobby__hero">
         <div>
           <span className="sa-lobby__badge">PULAU TAMPOL 3D</span>

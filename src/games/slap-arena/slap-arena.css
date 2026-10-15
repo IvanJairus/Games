@@ -558,6 +558,26 @@
   color: var(--sa-ink);
   font-family: var(--sa-font);
 }
+.sa-lobby__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 14px;
+  padding: 6px 13px 7px;
+  border: 3px solid var(--sa-ink);
+  border-radius: 999px;
+  background: var(--sa-cream);
+  box-shadow: 0 3px 0 var(--sa-ink);
+  color: var(--sa-ink);
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+  transition: transform 0.09s ease, box-shadow 0.09s ease, background-color 0.15s ease;
+}
+.sa-lobby__back:hover { background: var(--sa-gold); }
+.sa-lobby__back:active { transform: translateY(3px); box-shadow: 0 0 0 var(--sa-ink); }
+.sa-lobby__back:focus-visible { outline: 3px solid var(--sa-ink); outline-offset: 3px; }
 .sa-lobby__hero {
   display: grid;
   grid-template-columns: 1fr;

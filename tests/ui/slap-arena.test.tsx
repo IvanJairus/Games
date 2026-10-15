@@ -117,6 +117,17 @@ describe('Slap Arena lobby (desktop 1280px)', () => {
     expect(screen.getByTestId('slap-join-input')).toBeInTheDocument();
   });
 
+  it('links back to the games hub', () => {
+    render(
+      <MemoryRouter>
+        <SlapArenaLobby />
+      </MemoryRouter>
+    );
+    const back = screen.getByRole('link', { name: /kembali ke \/games\//i });
+    expect(back).toHaveAttribute('href', '/');
+    expect(back).toHaveTextContent('/games/');
+  });
+
   it('refuses a short room code before spending a network call', () => {
     render(
       <MemoryRouter>
