@@ -17,13 +17,14 @@ export function writeFxMode(mode: FxMode): void {
 }
 
 /**
- * WebGL cannot change `antialias` after the context exists, so the mount-time level
- * has to be guessable without a measured frame rate. A narrow viewport is the phone
- * case, where the extra samples cost more than the edge quality buys.
+ * WebGL cannot change `antialias` after the context exists, so the mount-time level has
+ * to be picked before any frame has been measured. Auto therefore starts high and lets
+ * the measured frame rate demote it. Judging a phone by its screen width instead put
+ * every phone into the emergency tier before it had done anything wrong, and the result
+ * was a coarse, sandy image on a 2.75x display.
  */
-export function levelAtMount(mode: FxMode, viewportWidth: number): FxLevel {
-  if (mode !== 'auto') return mode;
-  return viewportWidth < 720 ? 'low' : 'high';
+export function levelAtMount(mode: FxMode): FxLevel {
+  return mode === 'auto' ? 'high' : mode;
 }
 
 /**
@@ -71,7 +72,7 @@ const GATES: Record<FxLevel, FxGates> = {
     windup: false,
     maxPixelRatio: 1,
     antialias: false,
-    popTextMax: 1,
+    popTextMax: 4,
     labelEveryFrame: false,
   },
 };

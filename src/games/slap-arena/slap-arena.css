@@ -57,6 +57,10 @@
   inset: 0;
   pointer-events: none;
   overflow: hidden;
+  /* The renderer's canvas is appended after this layer and is itself absolutely
+     positioned, so with both at z-index auto the opaque canvas painted over every name
+     tag and every floating word. The labels have to be told they are on top. */
+  z-index: 1;
 }
 
 /* ---------- floating name tags ---------- */
@@ -113,16 +117,19 @@
   40% { transform: translate(-50%, -50%) scale(0.98) rotate(-2deg); }
   100% { opacity: 0; transform: translate(-50%, -140%) scale(1.05) rotate(0deg); }
 }
-/* A whiff must read weaker than a hit, or the arena shouts about nothing. */
+/* A whiff must not out-shout a hit, but at 15 px it measured 23x16 px on a phone and
+   simply was not seen. Hierarchy now comes from colour and motion, not from being small.
+   The plateau matters most: peaking at one keyframe and then fading for 0.6 s meant the
+   text was legible for a few frames, which is the same as never showing it. */
 .sa-pop--miss {
-  font-size: clamp(15px, 3.4vw, 22px);
-  -webkit-text-stroke-width: 2px;
+  font-size: clamp(20px, 5vw, 28px);
   animation-name: sa-pop-miss;
 }
 @keyframes sa-pop-miss {
-  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.72); }
-  25% { opacity: 0.95; transform: translate(-50%, -62%) scale(1); }
-  100% { opacity: 0; transform: translate(-50%, -122%) scale(0.96); }
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.7); }
+  16% { opacity: 1; transform: translate(-50%, -60%) scale(1); }
+  58% { opacity: 1; transform: translate(-50%, -80%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -118%) scale(0.98); }
 }
 /* Full charge earns a shout, kept shorter than the comic it lands beside. */
 .sa-pop--max {

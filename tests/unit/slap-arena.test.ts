@@ -272,6 +272,21 @@ describe('Slap Arena charge', () => {
     expect(seenHit).toEqual([1]);
   });
 
+  it('announces nothing for a swing the sim refused', () => {
+    const sim = new SlapSim({ localId: 'me', authoritative: true });
+    sim.addPlayer({ id: 'me' });
+    sim.addPlayer({ id: 'foe', x: 4 });
+    sim.state.phase = 'BATTLE';
+    const kinds: string[] = [];
+    sim.onEvent = (e) => kinds.push(e.kind);
+    sim.players.me.isHit = true;
+    sim.players.me.hitTimer = 0.2;
+    sim.setInput('me', { x: 0, z: 0, slap: true, dash: false });
+    for (let i = 0; i < 4; i++) sim.step(1 / 60);
+    // A refused swing must not print MISS: the player never swung.
+    expect(kinds).not.toContain('slap');
+  });
+
   it('the snapshot carries the launch height and the wind-up', () => {
     const host = new SlapSim({ localId: 'a', authoritative: true });
     host.addPlayer({ id: 'a', x: 0 });
@@ -590,6 +605,15 @@ describe('Slap Arena stays inside the site CSP', () => {
 
   it('ships no model files', () => {
     expect(existsSync(resolve(process.cwd(), 'public/models'))).toBe(false);
+  });
+
+  it('keeps the label layer above the canvas', () => {
+    // The renderer appends its canvas after the label layer, and both are absolutely
+    // positioned. With no z-index the opaque canvas painted over every name tag and every
+    // floating word, so the whole layer was invisible while the DOM said otherwise.
+    const css = readFileSync(resolve(process.cwd(), 'src/games/slap-arena/slap-arena.css'), 'utf8');
+    const block = /\.sa-label-layer\s*\{([^}]*)\}/.exec(css)?.[1] ?? '';
+    expect(block).toMatch(/z-index:\s*([1-9]\d*)/);
   });
 
   it('draws the cast from primitives, not from an asset pipeline', () => {

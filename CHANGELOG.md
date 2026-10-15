@@ -8,6 +8,72 @@ terpisah saat kamu menerbitkan rilis.
 Entri dimulai dari 14 Oktober 2026. Perubahan sebelum tanggal itu ada pada riwayat git dan daftar
 pull request, karena tidak dicatat saat terjadi.
 
+## 2026-10-15 - Slap Arena: teks terbang tertutup kanvas, dan HP dinilai dari lebar layar
+
+Menyusul dua rekaman layar dari HP Android. Yang pertama (15.19, 608x1312, 27,5 dtk) melaporkan
+tiga hal: teks terbang tidak terlihat, grafik terlihat berpasir, dan tidak ada suara. Yang kedua
+(15.52, 480x1032, 12,5 dtk) mengonfirmasi dua di antaranya sudah beres dan menyisakan teks terbang.
+
+### Diperbaiki
+
+- **Mode auto tidak lagi menebak kemampuan perangkat dari lebar layar.** `levelAtMount`
+  sebelumnya mengembalikan `low` untuk setiap viewport di bawah 720 px, jadi semua HP memulai di
+  tier darurat sebelum satu frame pun diukur. Tier itu menutup `antialias`, menahan `pixelRatio`
+  di 1, dan menghapus outline tinta. Di layar 2,75x hasilnya tepi bertangga di mana-mana dan
+  karakter kehilangan garis artnya, persis keluhan "berpasir". Sekarang auto mulai dari `high`
+  dan hanya turun kalau EWMA frame rate benar-benar jatuh di bawah 44 selama dua detik.
+- **Jumlah teks terbang hidup di tier rendah dinaikkan dari 1 menjadi 4**, supaya teks milik
+  pemain tidak terus tersingkir oleh teks bot di layar kecil.
+- **`unlockAudio()` dipanggil pada sentuhan pertama di mana pun**, bukan hanya pada tombol
+  kontrol. Bunyi hitung mundur dibangkitkan dari interval 100 ms, yaitu sebelum pemain menemukan
+  tombol, sehingga konteks audio bisa tercipta di luar gesture.
+
+### Koreksi atas klaim saya sendiri
+
+Di tengah perbaikan ini saya sempat menulis bahwa teks terbang "bekerja dengan baik" karena node
+`.sa-pop` ditemukan di 21 dari 60 sample pada build produksi. **Itu salah.** Node memang ada,
+tetapi tidak pernah tergambar. Saya mengukur keberadaan, bukan hasil render. Penyebab sebenarnya:
+
+- Kanvas renderer di-`appendChild` **setelah** `.sa-label-layer`, dan CSS membuat keduanya
+  `position: absolute`. Dua elemen bersaudara yang sama-sama `z-index: auto` digambar menurut
+  urutan DOM, jadi kanvas yang opaque menutupi seluruh layer. **Tag nama dan semua teks terbang
+  tidak pernah terlihat sejak game ini dibuat**, bukan hanya sejak perubahan ini. Perbaikannya
+  satu baris: `z-index: 1` pada `.sa-label-layer`.
+- `MISS` sendiri punya dua cacat tambahan. Ukurannya `clamp(15px, ...)` menghasilkan kotak 23x16 px
+  di layar 393 px, dan kurva animasinya memuncak pada satu keyframe lalu meluruh selama 0,6 detik,
+  sehingga plateau yang benar-benar terbaca praktis nol. Sekarang 20-28 px dengan opacity penuh dari
+  125 ms sampai 452 ms.
+- Swing yang ditolak mesin (masih cooldown, masih stun) tetap mengumumkan event `slap` dengan
+  `hitCount: 0`, yang akan mencetak `MISS` untuk pukulan yang tidak pernah terjadi. Sekarang
+  `canSlap()` ditanyakan sebelum event dikirim, mengikuti pola `executeDash` yang sudah benar.
+
+Sebagai gantinya, tampar yang meleset kini juga memunculkan semburan debu kecil searah ayunan, jadi
+isyaratnya tidak bergantung pada sempat membaca teks.
+
+### Audio, terkonfirmasi beres
+
+Rekaman HP pertama: `mean_volume` = `max_volume` = -91 dB pada 2.637.824 sampel, yaitu kesunyian
+digital murni. Rekaman HP kedua, setelah `unlockAudio()` dipanggil pada sentuhan pertama di mana
+pun: **mean -29,8 dB, max -3,5 dB**. Jadi bunyinya sekarang keluar dan terukur ada isinya.
+
+### Terukur, viewport 393x852 `devicePixelRatio` 2,75 di Chrome headless
+
+| Sebelum | Sesudah |
+| --- | --- |
+| kanvas 393x852 (ratio 1) | kanvas 589x1278 (ratio 1,5) |
+| `quality = low`, tanpa outline, tanpa bayangan | `quality = high`, outline dan bayangan aktif |
+| teks `MISS` 23x16 px, opacity 1 tetapi tertutup kanvas | `MISS` 29x21 px, terlihat di screenshot |
+| tag nama tidak pernah tergambar | tag nama tergambar |
+| 60 fps | 60 fps |
+
+Penjaga regresi ditambahkan di `tests/unit/slap-arena.test.ts`: blok `.sa-label-layer` harus
+mencantumkan `z-index` bukan nol, karena kegagalan ini tidak terlihat oleh satu pun uji DOM.
+
+### Batas
+
+Angka 60 fps berasal dari Chrome headless di MacBook, bukan dari HP. Pill `AUTO` dan tepi tajam
+sudah dikonfirmasi baik di HP lewat rekaman kedua.
+
 ## 2026-10-15 - Battleship: kurung kapal tidak lagi menutupi bar aksi
 
 ### Diperbaiki

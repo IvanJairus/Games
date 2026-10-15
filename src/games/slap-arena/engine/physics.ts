@@ -235,6 +235,14 @@ export interface SlapResult {
 }
 
 /**
+ * Whether this brawler is allowed to swing at all. The sim asks before it announces a
+ * slap, so a swing that was refused cannot print a MISS the player never took.
+ */
+export function canSlap(player: PlayerState): boolean {
+  return player.slapCooldown <= 0 && !player.isFalling && !player.eliminated && !player.isHit;
+}
+
+/**
  * `knockScale` lets the sim soften hits during the opening seconds of a round, so a
  * player who is still reading the controls does not get shoved into the sea by three
  * bots before they have moved once. `charge` is 0..1 from a held slap button: it buys
@@ -246,7 +254,7 @@ export function executeSlap(
   knockScale = 1,
   charge = 0
 ): SlapResult[] {
-  if (attacker.slapCooldown > 0 || attacker.isFalling || attacker.eliminated || attacker.isHit) {
+  if (!canSlap(attacker)) {
     return [];
   }
 
