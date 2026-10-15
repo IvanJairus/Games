@@ -25,6 +25,11 @@
   --wall-placed: #1e293b;
   --wall-placed-border: #334155;
   --wall-placed-shadow: rgba(15, 23, 42, 0.18);
+
+  /* WallGo: walls carry their owner's theme colour, so the unowned fallback must not be a theme
+     colour. --wall-placed stays for battleship ships. */
+  --wall-unowned: #78716c;
+  --wall-keyline: rgba(28, 25, 23, 0.45);
   
   /* Core Goal */
   --core-bg: #fef3c7;

@@ -180,6 +180,14 @@ describe('WallGo: Race to the Golden Core Engine', () => {
       expect(next.history).toHaveLength(1);
       expect(next.history[0].type).toBe('WALL');
     });
+
+    it('stamps the wall with the seat that placed it, whoever is on turn', () => {
+      const first = applyWall(createGame({ playerCount: 2, gridSize: 9 }), { orientation: 'H', x: 1, y: 1 });
+      expect(first.walls[0]).toMatchObject({ orientation: 'H', x: 1, y: 1, owner: 0 });
+
+      const second = applyWall(first, { orientation: 'V', x: 5, y: 5 });
+      expect(second.walls[1].owner).toBe(1);
+    });
   });
 
   describe('Pathfinding & Utilities', () => {

@@ -393,7 +393,7 @@ export function applyWall(state: GameState, wall: Wall): GameState {
   }
 
   const activePlayer = state.players[state.activePlayerIndex];
-  const newWalls = [...state.walls, wall];
+  const newWalls = [...state.walls, { ...wall, owner: activePlayer.id }];
 
   const updatedPlayers = state.players.map((p, idx) => {
     const wallsRemaining = idx === state.activePlayerIndex ? p.wallsRemaining - 1 : p.wallsRemaining;

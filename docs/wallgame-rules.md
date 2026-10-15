@@ -93,5 +93,5 @@ Menyelaraskan tema arsitektural dari `gateway-B2.html` dan `ivanjairus.xyz`:
 - **Kanvas**: Dark Espresso (`#12100e`) dengan grid kertas arsitektur halus (`.paper`).
 - **Aksen Utama**: Coklat tua, perunggu, dan emas (*Gold / Brass / Amber*).
 - **The Golden Core**: Petak tengah berlapis aksen emas murni berukir lambang inti dengan pendaran cahaya lembut.
-- **Dinding**: Bilah kuningan / kayu jati bersepuh emas (*polished golden brass*).
+- **Dinding**: Bilah 2-segmen diwarnai dengan tema kursi yang memasangnya (`applyWall` menyimpan `owner` pada dinding), dengan satu garis kunci gelap netral agar warna tema terpisah dari aksen emas inti. Dinding dari room lama yang tidak punya field itu memakai `--wall-unowned` abu-abu batu, warna yang sengaja tidak dipakai tema pemain mana pun.
 - **Tipografi**: Monospaced editorial (*tabular numbers*) untuk telemetri langkah, sisa dinding, dan jarak BFS ke inti.

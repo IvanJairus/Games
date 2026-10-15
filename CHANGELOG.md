@@ -107,6 +107,44 @@ lulus 5 tahap.
 Mode dua pemain sungguhan di dua perangkat belum dicoba; jalur protokolnya yang teruji lewat
 harness relay. Dan tombol efek baru diverifikasi di Chrome, bukan di browser kelas bawah.
 
+## 2026-10-15 - WallGo: dinding ditandai dengan warna pemasangnya
+
+### Diubah
+
+- **Dinding yang sudah dipasang kini dicat dengan warna tema kursi yang memasangnya**, bukan lagi
+  netral semua. Sebelumnya papan tidak bisa menjawab "siapa yang menutup jalan saya".
+- Isi dinding memakai `theme.hex` pemiliknya. Garis tepinya bukan `theme.border` lagi, tapi satu
+  kunci gelap netral (`--wall-keyline`), supaya tema yang warnanya dekat dengan emas inti tetap
+  terbaca sebagai benda yang berbeda.
+- Dinding tanpa pemilik (room lama) memakai token baru `--wall-unowned` (`#78716c`), bukan
+  `--wall-placed`. Alasannya: `--wall-placed` (`#1e293b`) adalah warna border tema kursi 6, dan
+  border `--wall-placed-border` (`#334155`) adalah warna isi tema kursi 6, jadi dinding kursi 6
+  tidak akan bisa dibedakan dari dinding tanpa pemilik. `--wall-placed` tetap dipakai Battleship
+  untuk sel kapal, jadi token itu tidak saya ubah.
+
+### Ditambahkan
+
+- Field `owner` pada tipe `Wall`, diisi otomatis oleh `applyWall` dari kursi yang sedang giliran.
+  Tidak ada migrasi database: mode online mengirim `game_state` utuh, jadi field ini ikut mengalir
+  ke perangkat lawan tanpa perubahan sisi server.
+
+### Terukur
+
+- Di browser nyata (dev server, meja 4 kursi, 3 bot tingkat Sedang, 33 putaran): 10 dinding
+  terpasang, 10 di antaranya memakai warna tema, 0 yang masih netral.
+- Engine test membuktikan `owner` terisi sesuai kursi yang bergerak, dan render test Board
+  membuktikan pemetaan `owner` ke warna tema plus fallback netralnya.
+- Test `tests/ui/wall-game-board.test.tsx` menjaga dua hal sekaligus: pemetaan `owner` ke warna tema,
+  fallback netral untuk dinding tanpa `owner`, dan `#78716c` tidak boleh muncul di palet
+  `PLAYER_GOLD_THEMES` (guard terhadap tabrakan warna yang baru saja diperbaiki).
+
+### Ditemukan sambil lalu
+
+- `supabase/functions/_shared/wallgame/engine.ts` adalah salinan engine yang tidak diimpor siapa pun
+  (tidak ada file fungsi lain yang memanggilnya, dan SQL tidak memvalidasi penempatan dinding).
+  Perubahan `owner` sengaja tidak dicopy ke sana supaya dua engine tidak berubah tanpa alasan; kalau
+  nanti fungsi itu diaktifkan, pen-stamp-an `owner` harus ditambahkan di sana juga.
+
 ## 2026-10-15 - WallGo: tiga tingkat bot dan entrance "Lawan Bot"
 
 ### Diubah
