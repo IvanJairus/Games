@@ -107,6 +107,36 @@ lulus 5 tahap.
 Mode dua pemain sungguhan di dua perangkat belum dicoba; jalur protokolnya yang teruji lewat
 harness relay. Dan tombol efek baru diverifikasi di Chrome, bukan di browser kelas bawah.
 
+## 2026-10-15 - WallGo: tap di HP tidak lagi langsung memasang dinding
+
+### Diperbaiki
+
+- **Satu tap bisa memasang dinding tanpa sengaja di layar sentuh.** Satu tap mengirim
+  `pointerdown` lalu `click`. `pointerdown` sudah men-staged pratinjau di slot itu, dan `click` pada
+  slot dengan orientasi yang sama menganggapnya "tap kedua", jadi dinding langsung terpasang. Karena
+  dinding tidak bisa dibatalkan, tap yang meleset sekali langsung mengubah papan.
+- Yang terlihat di HP jadi konsisten: tap pertama selalu hanya pratinjau, tap kedua pada slot yang
+  sama baru memasang. Tombol "Pasang Dinding" di dock tetap langsung memasang, dan tombol itu tidak
+  lagi ikut terblokir oleh penjaga gesture.
+- Tap tepat di tengah persimpangan celah tidak lagi memakai "orientasi terakhir yang diketahui".
+  Sekarang arah ditentukan oleh sisi mana jari paling jauh dari pusat, jadi tidak ada lagi tap yang
+  hasilnya bergantung pada urutan render DOM.
+
+### Ditambahkan
+
+- Area tap dinding diperbesar dari 22 px menjadi 44 px pada dimensi tipisnya, sesuai ambang
+  minimum target sentuh. Sayap horizontal dan vertikal sekarang sama-sama mudah dijangkau di HP.
+
+### Terukur
+
+- 7 test baru di `tests/ui/wall-game-board.test.tsx` menjaga aturannya: tap pertama staged dan
+  `onPlaceWall` tidak dipanggil, tap kedua memanggilnya satu kali, tombol dock memanggilnya, dan
+  lebar area sentuh 44 px.
+- Suite penuh 218 test lulus, `tsc -b` bersih, `vite build` sukses.
+- Belum terverifikasi: sentuhan nyata di HP. Browser in-app di mesin ini viewport-nya 0x0 sehingga
+  jalur pointer tidak bisa dipetakan, dan jsdom tidak punya layout (rect papan saya stub di test).
+  Uji coba di perangkat Anda tetap yang paling menentukan.
+
 ## 2026-10-15 - WallGo: dinding ditandai dengan warna pemasangnya
 
 ### Diubah
