@@ -21,13 +21,11 @@
   --gold-tint: rgba(180, 83, 9, 0.07);
   --gold-border: rgba(180, 83, 9, 0.32);
   
-  /* Placed Wall Stone (Slate Graphite) */
-  --wall-placed: #1e293b;
-  --wall-placed-border: #334155;
+  /* Placed wall shadow, kept as the fallback inside the wall-game board SVG. */
   --wall-placed-shadow: rgba(15, 23, 42, 0.18);
 
   /* WallGo: walls carry their owner's theme colour, so the unowned fallback must not be a theme
-     colour. --wall-placed stays for battleship ships. */
+     colour. */
   --wall-unowned: #78716c;
   --wall-keyline: rgba(28, 25, 23, 0.45);
   
@@ -46,9 +44,16 @@
      so those elements rendered at radius 0 with an inherited icon colour. */
   --terracotta: #c2410c;
   --terracotta-tint: rgba(194, 65, 12, 0.08);
-  --miss: #94a3b8;
-  --water: #eef2f6;
-  --water-line: rgba(30, 41, 59, 0.16);
+
+  /* Battleship fleet marks, palette "ink on paper". The water is warm paper so the
+     chart annotation, not a dark block, is what carries the fleet. */
+  --miss: #8a8270;
+  --water: #f3eee3;
+  --water-line: rgba(28, 25, 23, 0.22);
+  --chart-plate: #c9b692;
+  --chart-ink: #3f3a30;
+  --chart-wreck: rgba(180, 83, 9, 0.22);
+  --chart-wreck-line: #7c2d12;
 }
 
 @keyframes ij-spin {
@@ -279,6 +284,9 @@ dialog::backdrop {
 .bs-cell {
   aspect-ratio: 1 / 1;
   position: relative;
+  /* Tombol memotong isinya secara bawaan, dan kurung kapal harus boleh melampaui
+     petak pertamanya. */
+  overflow: visible;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -335,22 +343,21 @@ dialog::backdrop {
 
 .bs-cell[data-mark="hit"]::before {
   transform: rotate(45deg);
+  z-index: 3;
 }
 
 .bs-cell[data-mark="hit"]::after {
   transform: rotate(-45deg);
+  z-index: 3;
 }
 
 .bs-cell[data-impact="true"] {
   animation: ij-impact 180ms ease-out;
 }
 
-.bs-cell[data-ship="true"] {
-  background: var(--wall-placed);
-}
-
-.bs-cell[data-ship="true"][data-mark="hit"] {
-  background: var(--gold-deep);
+.bs-cell[data-selected="true"],
+.bs-cell[data-cursor="true"] {
+  z-index: 3;
 }
 
 .bs-cell[data-selected="true"] {
@@ -358,12 +365,82 @@ dialog::backdrop {
   background: var(--red-tint);
 }
 
-.bs-cell[data-sunk="true"] {
-  background: repeating-linear-gradient(
-    135deg,
-    var(--gold) 0 4px,
-    var(--gold-deep) 4px 8px
-  );
+/* Armada ditandai seperti peta laut menandai karang: satu kurung per kapal dengan
+   sandi jenis dan panjangnya, bukan blok gelap. Unsur ini anak dari petak pertama
+   kapal, jadi rentangnya ikut lebar petak saat papan diskalakan. */
+.bs-chart {
+  position: absolute;
+  top: 15%;
+  left: 0;
+  z-index: 2;
+  width: calc(var(--bs-span) * (100% + 1px) - 1px);
+  height: 70%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  border: 1.5px solid var(--chart-ink);
+  border-radius: 3px;
+  background: var(--chart-plate);
+  pointer-events: none;
+}
+
+.bs-chart::before {
+  content: "";
+  position: absolute;
+  left: 9%;
+  right: 9%;
+  top: -7px;
+  height: 6px;
+  border: 1.5px solid var(--chart-ink);
+  border-bottom: 0;
+}
+
+.bs-chart[data-axis="v"] {
+  top: 0;
+  left: 15%;
+  width: 70%;
+  height: calc(var(--bs-span) * (100% + 1px) - 1px);
+}
+
+.bs-chart[data-axis="v"]::before {
+  top: 9%;
+  bottom: 9%;
+  left: -7px;
+  right: auto;
+  width: 6px;
+  height: auto;
+  border: 1.5px solid var(--chart-ink);
+  border-right: 0;
+}
+
+.bs-chart__code {
+  font: 10px/1 var(--mono);
+  letter-spacing: .04em;
+  color: var(--chart-ink);
+}
+
+.bs-chart[data-axis="v"] .bs-chart__code {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+}
+
+.bs-chart[data-sunk="true"] {
+  border-style: dashed;
+  border-color: var(--chart-wreck-line);
+  background: var(--chart-wreck);
+}
+
+.bs-chart[data-sunk="true"]::before {
+  border-color: var(--chart-wreck-line);
+}
+
+.bs-chart__wreck {
+  width: 13px;
+  height: 13px;
+  stroke: var(--chart-wreck-line);
+  stroke-width: 1.6;
+  fill: none;
 }
 
 .bs-coords {

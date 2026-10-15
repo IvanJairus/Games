@@ -22,6 +22,7 @@ Koleksi mini game taktis dan strategi web modern di portal `ivanjairus.xyz/games
 
 3. **Battleship: Kapal Tersembunyi**
    - Papan 8x8, lima kapal (Battleship 4, Cruiser 3, Frigate 3, Submarine 2, Patrol 2).
+   - Armada ditandai anotasi peta laut (kurung rentang petak dan sandi jenis seperti "BS 4"), bukan blok warna.
    - Mode Solo lawan AI, Hotseat dua pemain, dan Online 2 perangkat.
    - Pop-up hasil di akhir pertandingan: pemenang, jumlah tembakan, lalu Main lagi atau Rematch satu room, Lobi, atau Halaman utama.
    - Susunan kapal tidak pernah dikirim ke server. Yang dikirim hanya hash SHA-256 atas seed dan susunan, lalu dibuktikan ulang setelah pertandingan selesai.

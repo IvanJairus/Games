@@ -8,6 +8,29 @@ terpisah saat kamu menerbitkan rilis.
 Entri dimulai dari 14 Oktober 2026. Perubahan sebelum tanggal itu ada pada riwayat git dan daftar
 pull request, karena tidak dicatat saat terjadi.
 
+## 2026-10-15 - Battleship: armada ditandai sebagai anotasi peta
+
+### Diubah
+
+- **Kapal tidak lagi digambar sebagai blok slate.** Tiap kapal menjadi satu kurung anotasi ala peta
+  laut: bingkai memanjang mengikuti rentang petaknya, kurung kecil di sisi luarnya, dan sandi jenis
+  beserta panjangnya ("BS 4", "FR 3"). Enam puluh empat petak, atribut datanya, dan navigasi keyboard
+  tidak berubah. Anotasi hanyalah lapisan di dalam petak pertama kapal, jadi papan susun, papan tempur,
+  dan papan bukti otomatis ikut.
+- **Kapal tenggelam memakai bingkai putus-putus kuningan tua dengan simbol bangkai**, menggantikan
+  strip diagonal.
+- **Palet papan dipindah ke "tinta di atas kertas".** `--water` jadi `#f3eee3`, `--miss` jadi
+  `#8a8270`, dan garis petak dinaikkan ke alpha 0.22 supaya kisi tetap terbaca setelah blok gelap
+  hilang. Rasio terukur pada bentuk final: isi terhadap air 1.71, sandi terhadap isi 5.70, garis
+  terhadap air 9.76, titik meleset terhadap air 3.30.
+- `--wall-placed` dan `--wall-placed-border` dihapus karena satu-satunya pemakainya adalah blok kapal
+  yang diganti. `--wall-placed-shadow` tetap ada, masih dipakai papan WallGo.
+
+### Ditambahkan
+
+- Test UI mengunci bentuknya: satu kurung per kapal (bukan per petak), sandi dan sumbunya benar,
+  dan kapal tenggelam menghasilkan simbol bangkai.
+
 ## 2026-10-15 - Battleship: pop-up hasil dan rematch satu room
 
 ### Ditambahkan
