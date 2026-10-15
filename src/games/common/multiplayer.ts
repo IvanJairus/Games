@@ -2,7 +2,7 @@ import { getSupabase, getPlayerSessionId } from '../../lib/supabase';
 import { randomBytes } from '../../lib/random';
 import { RealtimeChannel } from '@supabase/supabase-js';
 
-export type GameType = 'wall-game' | 'tic-tac-toe' | 'battleship' | 'slap-arena';
+export type GameType = 'wall-game' | 'tic-tac-toe' | 'battleship' | 'slap-arena' | 'bomberman';
 
 export type MatchStatus = 'waiting' | 'playing' | 'completed' | 'abandoned';
 

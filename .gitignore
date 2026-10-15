@@ -34,3 +34,8 @@ coverage
 .env*
 
 .cache/
+
+# Scratch output from image generation; kept copies live next to the game that uses them
+vibe_images/
+docs/bomberman/floor-*.png
+docs/bomberman/shots/

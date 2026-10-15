@@ -4,6 +4,7 @@ import { wallGameRoutes } from './wall-game/routes';
 import { ticTacToeRoutes } from './tic-tac-toe/routes';
 import { battleshipRoutes } from './battleship/routes';
 import { slapArenaRoutes } from './slap-arena/routes';
+import { bombermanRoutes } from './bomberman/routes';
 import { GameType } from './common/multiplayer';
 
 export interface GameMetadata {
@@ -65,6 +66,65 @@ export const GAMES_REGISTRY: GameMetadata[] = [
         </g>
         <g transform="translate(163 84)">
           <polygon points="0,-11 3,-3 11,0 3,3 0,11 -3,3 -11,0 -3,-3" fill="#ffcf5c" stroke="#2a1b33" strokeWidth="2" strokeLinejoin="round" />
+        </g>
+      </svg>
+    ),
+  },
+  {
+    id: 'bomberman',
+    title: 'Bomberman · Arena Bata Lunak',
+    subtitle: 'Tanam bom, hancurkan bata, lari dari api',
+    description:
+      'Arena grid dengan bom berantai dan bata lunak yang menyerap api. Enam karakter chibi, tiga lantai yang diacak tiap pertandingan. Solo lawan bot tiga tingkat, atau online sampai empat pemain.',
+    playerRange: '1 - 4 Pemain',
+    statusLabel: 'Solo & Online',
+    route: '/bomberman',
+    routes: bombermanRoutes,
+    thumbnail: (
+      <svg viewBox="0 0 320 180" style={{ width: '100%', height: '100%' }} aria-hidden="true">
+        <rect width="320" height="180" rx="8" fill="#8fd08f" />
+        <g fill="rgba(0,0,0,.06)">
+          {[0, 1, 2, 3, 4, 5, 6, 7].map((c) =>
+            [0, 1, 2, 3, 4].map((r) => ((c + r) % 2 ? <rect key={`${c}-${r}`} x={8 + c * 40} y={8 + r * 34} width="40" height="34" /> : null)),
+          )}
+        </g>
+        <g stroke="#2a1b33" strokeWidth="2.6">
+          {[
+            [48, 42],
+            [272, 42],
+            [48, 138],
+            [272, 138],
+          ].map(([x, y], i) => (
+            <g key={i} transform={`translate(${x - 15} ${y - 15})`}>
+              <rect width="30" height="30" rx="6" fill="#8a8270" />
+              <rect width="30" height="8" rx="4" fill="#fff" opacity=".2" />
+            </g>
+          ))}
+          <g transform="translate(118 74)">
+            <rect width="30" height="30" rx="7" fill="#f0c48a" />
+            <path d="M0 15h30M15 0v30" strokeWidth="2" opacity=".35" />
+          </g>
+          <g transform="translate(172 74)">
+            <rect width="30" height="30" rx="7" fill="#f0c48a" />
+            <path d="M0 15h30M15 0v30" strokeWidth="2" opacity=".35" />
+          </g>
+        </g>
+        <g transform="translate(150 118)">
+          <ellipse cx="12" cy="34" rx="14" ry="3.6" fill="#2a1b33" opacity=".14" />
+          <circle cx="12" cy="18" r="14" fill="#3d3550" stroke="#2a1b33" strokeWidth="2.6" />
+          <circle cx="7" cy="13" r="3.6" fill="#fff" opacity=".5" />
+          <path d="M12 4c0-5 5-4 5-7" fill="none" stroke="#2a1b33" strokeWidth="2.4" strokeLinecap="round" />
+          <circle cx="17" cy="-4" r="3.4" fill="#ffcf5c" stroke="#2a1b33" strokeWidth="2" />
+        </g>
+        <g transform="translate(96 84)">
+          <ellipse cx="18" cy="46" rx="14" ry="3.4" fill="#2a1b33" opacity=".13" />
+          <rect x="6" y="22" width="24" height="20" rx="10" fill="#4dabf7" stroke="#2a1b33" strokeWidth="2.6" />
+          <circle cx="18" cy="12" r="15" fill="#4dabf7" stroke="#2a1b33" strokeWidth="2.8" />
+          <rect x="6" y="7" width="24" height="14" rx="7" fill="#fff6e5" stroke="#2a1b33" strokeWidth="2.2" />
+          <circle cx="13" cy="14" r="2.4" fill="#2a1b33" />
+          <circle cx="23" cy="14" r="2.4" fill="#2a1b33" />
+          <path d="M18 -3v-5" stroke="#2a1b33" strokeWidth="2.4" strokeLinecap="round" />
+          <circle cx="18" cy="-11" r="3.4" fill="#ffcf5c" stroke="#2a1b33" strokeWidth="2" />
         </g>
       </svg>
     ),

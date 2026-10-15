@@ -8,6 +8,112 @@ terpisah saat kamu menerbitkan rilis.
 Entri dimulai dari 14 Oktober 2026. Perubahan sebelum tanggal itu ada pada riwayat git dan daftar
 pull request, karena tidak dicatat saat terjadi.
 
+## 2026-10-15 - Bomberman: game kelima, dan alat ukurnya
+
+Bomberman masuk sebagai game kelima. Ia bukan cuma tambahan isi: ia memaksa satu celah
+di repo ini kelihatan, dan celah itu sekarang punya alatnya sendiri.
+
+### Yang dibuat
+
+Arena grid real-time. Tanam bom, lengan api berbentuk salib, reaksi berantai, bata lunak,
+empat powerup, enam karakter chibi kepala besar, tiga lantai yang diacak tiap pertandingan.
+Dua ukuran papan (11x9 untuk dua kursi, 15x11 untuk empat) dan tiga mode: solo lawan bot
+dengan tiga tingkat, online 2-4 pemain, dan online dengan kursi kosong diisi bot.
+
+Seluruh sprite digambar sebagai SVG di kode, mengikuti konvensi repo. Hanya tekstur lantai
+yang berupa gambar hasil generate.
+
+### Tiga aturan yang mahal
+
+Engine-nya lahir dari prototipe pratinjau gaya, dan tiga aturan di bawah ini dibayar dengan
+demo yang rusak lebih dulu. Ketiganya sekarang dikunci tes:
+
+1. **Bata lunak menyerap api.** Petaknya dihancurkan tapi tidak ikut terbakar. Versi awal
+   membuat petaknya ikut menyala, akibatnya menananm bom selalu terlihat seperti bunuh diri
+   dan bot tidak pernah menanam apa pun.
+2. **Hitung lengan api harus murni.** Renderer dan bot memintanya tiap frame. Versi awal
+   juga menghancurkan bata dan menyalakan bom lain di dalam fungsi yang sama, jadi papan
+   rusak sendiri tanpa ada yang meledak.
+3. **Selamat itu soal jarak, bukan selangkah.** Semua tetangga bom ikut terbakar, jadi
+   "pindah ke tetangga yang kosong" tidak pernah ada. Yang menyelamatkan adalah keluar dari
+   jangkauan sebelum sumbu habis, dan itu dihitung dengan BFS.
+
+### Kenapa satu nyawa per pertandingan diubah jadi ronde
+
+Diukur, bukan dirasakan. Dengan satu kematian langsung mengakhiri pertandingan, duel bot
+selesai dalam hitungan detik dengan rata-rata 1,2 bom per kursi: arena belum sempat terbuka
+kalau sudah berakhir. Setelah juara ditentukan dari 3 ronde, angka yang sama menjadi 3,2
+sampai 5,8 bom per kursi dan rata-rata panjang pertandingan 27,8 sampai 30 detik dari batas
+atas 30 detik.
+
+Bot juga pernah mati karena bomnya sendiri di 10 dari 10 pertandingan. Penyebabnya bukan
+keberanian, tapi geometri: target kaburnya satu petak spesifik, sementara satu keputusan
+menahan arah sekitar 1,5 petak, jadi bot melewat petak aman itu dan bolak-balik di dalam
+apinya sendiri. Sekarang ia berhenti begitu keluar dari zona api. Setelah itu 0 kematian
+diri sendiri pada semua konfigurasi yang diukur.
+
+### Celah yang ketemu: "viewport automation" tidak mengukur layout
+
+README menyebut "Viewport UI Automation (Desktop 1024px & Mobile 375px)". Yang sebenarnya
+berjalan adalah jsdom yang menulis `window.innerWidth`. jsdom tidak punya layout engine,
+jadi tidak ada satu pun tes yang bisa membuktikan tidak ada scroll horizontal, atau tombol
+benar-benar 44 px, atau frame rate bertahan saat papan penuh api.
+
+Karena itu ada `scripts/gameplay-check.mjs`: Chromium asli, empat viewport, dan angka yang
+dicetak. Empat hal yang ia tangkap dan screenshot-nya konfirmasi, yang semuanya lolos dari
+jsdom:
+
+1. CSS arena tidak pernah ikut termuat, jadi papan melebar ke seluruh layar.
+2. Scrim hitung mundur menutupi seluruh stage, bukan papannya saja, sehingga lantai
+   terlihat gelap padahal warna aslinya `rgb(143, 208, 143)`.
+3. Tombol BOM jatuh ke kiri dan menutupi joystick, karena zona stick absolute sehingga
+   anak in-flow yang tunggal mendarat di awal baris.
+4. Ponsel landscape membuat satu sel cuma 24,5 px, di bawah ambang baca 32 px yang jadi
+   kontrak karakter. Setelah papan dibatasi tinggi lewat `aspect-ratio`, sel landscape
+   naik ke 58,8 px.
+
+Angka terakhir untuk empat viewport (360, 375, 667 landscape, 1280): 42 dari 42 pemeriksaan lolos,
+54-60 fps, lebar sel 30,9 sampai 114,5 px, tanpa overflow horizontal, dan papan tidak
+bergeser satu piksel pun saat teks status berubah.
+
+### Aset lantai
+
+Tiga tekstur hasil generate tadinya 3,6 MB (822 KB, 1,41 MB, 1,27 MB) untuk repo yang
+seluruh budget-nya 353 KB main chunk dan 581 KB arena lazy chunk. `scripts/build-floors.mjs`
+mengecilkannya lewat canvas di browser yang sama menjadi WebP 256 px: 4,8 KB, 2,4 KB, dan
+7,8 KB, total 15 KB. Natnya hilang karena dipola pada dua petak dalam user space, jadi
+teksturnya rata dengan grid dan tidak memotong satu batu secara acak di tiap petak.
+
+Di artefak build hanya dua file WebP yang muncul sebagai aset terpisah. Yang ketiga tidak
+hilang: 2.476 byte berada di bawah `assetsInlineLimit` 4096 milik Vite, sehingga ikut
+ter-inline ke dalam chunk sebagai data URI. `img-src 'self' data:` di CSP sudah
+mengizinkannya, jadi tidak ada yang perlu diubah di `vercel.json`.
+
+### Bagian atribusi README ikut diubah
+
+README sebelumnya mengklaim "seluruh aset SVG di repositori ini ditulis secara independen".
+Itu tidak lagi benar begitu tekstur lantai masuk, jadi kalimatnya sekarang memisahkan
+sprite SVG yang ditulis tangan dari tiga lantai yang dibuat dengan image generation.
+Slap Arena juga ternyata belum pernah masuk ke daftar permainan di README; ia ditambahkan.
+
+### Angka tes
+
+314 tes di 27 file hijau. Yang baru: 44 tes aturan engine, 16 tes soak bot, 9 tes transport
+realtime, 10 tes UI lobi dan arena, 7 tes integrasi handshake host-klien. Transportnya
+sengaja satu pesan per tick, bukan dua seperti Slap Arena, karena `eventsPerSecond` 20
+dipakai bersama oleh semua yang dikirim satu klien.
+
+### Batas yang diketahui, tidak disembunyikan
+
+Host pertandingan online adalah tab browser salah satu pemain. Kalau tab itu di-minimize
+atau HP dikunci, sim-nya berhenti dan room menunggu. Yang ditampilkan sekarang adalah
+notice dan jalan kembali ke lobby; migrasi host dan server-authoritative sengaja tidak
+dibuat, sama seperti Slap Arena.
+
+`tests/integration/` dan `npm run db:verify` juga tetap tidak dijalankan CI, atas keputusan
+tersurat. Artinya regresi pada aturan CAS atau trigger Postgres bisa lolos merge tanpa
+tanda merah, dan itu berlaku untuk kelima game.
+
 ## 2026-10-15 - Tic Tac Toe: bidak tertua bisa ditahan
 
 Menyusul entri di bawahnya. Laporanannya soal keadilan sudah dijawab di sana: aturannya tidak
