@@ -15,6 +15,7 @@ import { BOT_LEVELS, BotLevel, chooseBotMove } from '../engine/ai';
 import { playBlocked, playPlace, playVictory, unlockAudio } from '../../common/audio';
 import { buzzReject, buzzTap } from '../../common/haptics';
 import { SoundToggle } from '../../common/SoundToggle';
+import { ResultDialog } from '../../common/ResultDialog';
 
 const BOT_SYMBOL: PlayerSymbol = 'O';
 
@@ -25,19 +26,16 @@ export const TicTacToeLocal: React.FC = () => {
   const [params] = useSearchParams();
   const botLevel = readBotLevel(params.get('bot'));
   const [game, setGame] = useState<TicTacToeState>(() => createTicTacToeGame());
+  const [victoryOpen, setVictoryOpen] = useState(false);
 
   const rulesDialogRef = useRef<HTMLDialogElement>(null);
-  const victoryDialogRef = useRef<HTMLDialogElement>(null);
 
   const botTurn = !!botLevel && game.currentTurn === BOT_SYMBOL && game.status === 'IN_PROGRESS';
   const seatLabel = (symbol: PlayerSymbol | null) =>
     symbol ? (botLevel && symbol === BOT_SYMBOL ? 'Bot' : `Pemain ${symbol}`) : '';
 
-  // Automatically show victory dialog when a player wins
   useEffect(() => {
-    if (game.status === 'WIN') {
-      victoryDialogRef.current?.showModal();
-    }
+    setVictoryOpen(game.status === 'WIN');
   }, [game.status]);
 
   useEffect(() => {
@@ -76,13 +74,13 @@ export const TicTacToeLocal: React.FC = () => {
   }, [game.status]);
 
   const handleNextRound = () => {
-    victoryDialogRef.current?.close();
+    setVictoryOpen(false);
     setGame((prev) => resetRound(prev));
   };
 
   const handleResetMatch = () => {
     if (window.confirm('Reset pertandingan dan hapus skor?')) {
-      victoryDialogRef.current?.close();
+      setVictoryOpen(false);
       setGame(createTicTacToeGame());
     }
   };
@@ -434,196 +432,33 @@ export const TicTacToeLocal: React.FC = () => {
         </div>
       </dialog>
 
-      <dialog
-        ref={victoryDialogRef}
-        aria-labelledby="tictactoe-victory-title"
-        data-testid="tictactoe-victory-modal"
-        onClick={(e) => {
-          if (e.target === e.currentTarget) {
-            const rect = e.currentTarget.getBoundingClientRect();
-            const inContent =
-              rect.top <= e.clientY &&
-              e.clientY <= rect.top + rect.height &&
-              rect.left <= e.clientX &&
-              e.clientX <= rect.left + rect.width;
-            if (!inContent) {
-              victoryDialogRef.current?.close();
-            }
-          }
-        }}
-        style={{
-          position: 'fixed',
-          inset: 0,
-          margin: 'auto',
-          border: '1px solid var(--gold-border)',
-          borderRadius: 'var(--r4)',
-          padding: '0',
-          background: '#ffffff',
-          boxShadow: '0 20px 40px rgba(180, 83, 9, 0.18), 0 2px 8px rgba(28, 25, 23, 0.08)',
-          maxWidth: '420px',
-          width: 'calc(100% - 32px)',
-          color: 'var(--ink)',
-        }}
-      >
-        <div style={{ padding: '28px 24px 22px', textAlign: 'center' }}>
-          <div
-            style={{
-              width: '56px',
-              height: '56px',
-              borderRadius: '50%',
-              background: 'var(--bg-stage)',
-              border: '2px solid var(--gold)',
-              color: 'var(--gold)',
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginBottom: '14px',
-            }}
-          >
-            <Sparkles size={28} />
-          </div>
-
-          <div
-            style={{
-              font: '10px/1 var(--mono)',
-              letterSpacing: '.14em',
-              textTransform: 'uppercase',
-              color: 'var(--gold)',
-              marginBottom: '6px',
-            }}
-          >
-            RONDE SELESAI · NO DRAW ARENA
-          </div>
-
-          <h2
-            id="tictactoe-victory-title"
-            style={{
-              fontSize: '24px',
-              fontWeight: 700,
-              color: 'var(--ink)',
-              margin: '0 0 8px',
-              letterSpacing: '-0.02em',
-            }}
-          >
-            {seatLabel(game.winner)} Menang!
-          </h2>
-
-          <div
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '4px 10px',
-              borderRadius: 'var(--r2)',
-              background: 'var(--bg-stage)',
-              border: '1px solid var(--line)',
-              marginBottom: '18px',
-              font: '12px/1 var(--mono)',
-              color: 'var(--ink-dim)',
-            }}
-          >
-            Menyusun 3 Garis Lurus Sempurna
-          </div>
-
-          {/* Match Score Recap */}
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(2, 1fr)',
-              gap: '8px',
-              background: 'var(--bg-stage)',
-              border: '1px solid var(--line)',
-              borderRadius: 'var(--r2)',
-              padding: '12px 8px',
-              marginBottom: '22px',
-              font: 'var(--mono)',
-            }}
-          >
-            <div>
-              <div style={{ fontSize: '10px', color: '#b45309', fontWeight: 700, textTransform: 'uppercase' }}>
-                Skor {seatLabel('X')}
-              </div>
-              <div style={{ fontSize: '18px', fontWeight: 700, color: '#b45309' }}>{game.score.X}</div>
-            </div>
-            <div>
-              <div style={{ fontSize: '10px', color: '#451a03', fontWeight: 700, textTransform: 'uppercase' }}>
-                Skor {seatLabel('O')}
-              </div>
-              <div style={{ fontSize: '18px', fontWeight: 700, color: '#451a03' }}>{game.score.O}</div>
-            </div>
-          </div>
-
-          {/* Quick Actions */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <button
-              type="button"
-              onClick={handleNextRound}
-              data-testid="victory-next-round-btn"
-              style={{
-                width: '100%',
-                padding: '12px',
-                background: 'var(--gold)',
-                color: '#ffffff',
-                border: 'none',
-                borderRadius: 'var(--r2)',
-                font: '12px/1 var(--mono)',
-                fontWeight: 700,
-                letterSpacing: '.06em',
-                textTransform: 'uppercase',
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '8px',
-                cursor: 'pointer',
-              }}
-            >
-              <RotateCw size={14} /> Ronde Berikutnya
-            </button>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-              <button
-                type="button"
-                onClick={handleResetMatch}
-                style={{
-                  padding: '10px',
-                  background: 'var(--bg-stage)',
-                  border: '1px solid var(--line-strong)',
-                  color: 'var(--ink)',
-                  borderRadius: 'var(--r2)',
-                  font: '11px/1 var(--mono)',
-                  letterSpacing: '.04em',
-                  textTransform: 'uppercase',
-                  cursor: 'pointer',
-                }}
-              >
-                Reset Skor
-              </button>
-
-              <Link
-                to="/"
-                onClick={() => victoryDialogRef.current?.close()}
-                style={{
-                  padding: '10px',
-                  background: 'var(--bg-stage)',
-                  border: '1px solid var(--line-strong)',
-                  color: 'var(--ink)',
-                  borderRadius: 'var(--r2)',
-                  font: '11px/1 var(--mono)',
-                  letterSpacing: '.04em',
-                  textTransform: 'uppercase',
-                  textDecoration: 'none',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '6px',
-                }}
-              >
-                <Home size={12} /> Menu Utama
-              </Link>
-            </div>
-          </div>
-        </div>
-      </dialog>
+      {game.status === 'WIN' && (
+        <ResultDialog
+          isOpen={victoryOpen}
+          testId="tictactoe-victory-modal"
+          titleId="tictactoe-victory-title"
+          tone="win"
+          crest={<Sparkles size={28} />}
+          kicker="RONDE SELESAI · NO DRAW ARENA"
+          title={`${seatLabel(game.winner)} Menang!`}
+          chip="Menyusun 3 garis lurus sempurna"
+          stats={[
+            { label: `Skor ${seatLabel('X')}`, value: game.score.X, accent: true },
+            { label: `Skor ${seatLabel('O')}`, value: game.score.O },
+          ]}
+          actions={[
+            {
+              label: 'Ronde Berikutnya',
+              icon: <RotateCw size={14} />,
+              onClick: handleNextRound,
+              testId: 'victory-next-round-btn',
+            },
+            { label: 'Reset Skor', onClick: handleResetMatch },
+          ]}
+          links={[{ label: 'Menu Utama', icon: <Home size={12} />, to: '/' }]}
+          onDismiss={() => setVictoryOpen(false)}
+        />
+      )}
 
     </div>
   );

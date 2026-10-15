@@ -1,17 +1,19 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Clock, Share2, Check, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Clock, Share2, Check, AlertCircle, Home } from 'lucide-react';
 import { Board } from '../components/Board';
 import { BoardSwitch } from '../components/BoardSwitch';
 import { Placer } from '../components/Placer';
 import { FleetRail } from '../components/FleetRail';
 import { FinishBlock } from '../components/FinishBlock';
+import { FinishDialog } from '../components/FinishDialog';
 import { BattleshipState, FLEET, Placement, cellLabel, otherSeat } from '../engine/types';
 import {
   RevealPayload,
   SeatReport,
   abandonGame,
   applyCommitment,
+  createInitialState,
   fireShot,
   judgeShot,
   parseCanonicalLayout,
@@ -62,6 +64,7 @@ export const BattleshipMatch: React.FC = () => {
   const [myLayout, setMyLayout] = useState<SecretLayout | null>(() => loadSecretLayout(roomCode));
   const [reports, setReports] = useState<SeatReport[]>([]);
   const [verifying, setVerifying] = useState(false);
+  const [finishDismissed, setFinishDismissed] = useState(false);
 
   const channelRef = useRef<any>(null);
   const joinedRef = useRef(false);
@@ -118,6 +121,15 @@ export const BattleshipMatch: React.FC = () => {
     const previous = lastSeen.current;
     lastSeen.current = { shots, hits, phase: game.phase };
     if (!previous) return;
+    // A rematch (or any reset back out of FINISHED) re-arms this device: the reveal
+    // flag, the judged-shot guard and the finish popup must all work for the next game.
+    if (previous.phase === 'FINISHED' && game.phase !== 'FINISHED') {
+      revealedOnce.current = false;
+      judgedCell.current = '';
+      setFinishDismissed(false);
+      setReports([]);
+      setVerifying(false);
+    }
     // Both seats react to the same synced verdict, so the defender hears the result
     // of the shot aimed at its own fleet too.
     if (shots > previous.shots) {
@@ -277,7 +289,7 @@ export const BattleshipMatch: React.FC = () => {
     };
   }, [game, revealsKnown]);
 
-  const exitRoom = async () => {
+  const exitRoom = async (to = '/battleship') => {
     if (syncData && game && game.phase === 'BATTLE' && mySeat >= 0) {
       if (!window.confirm('Keluar saat bertanding menyerahkan kemenangan ke lawan. Lanjutkan?')) return;
       await push(
@@ -307,13 +319,35 @@ export const BattleshipMatch: React.FC = () => {
     }
 
     clearSecretLayout(roomCode);
-    navigate('/battleship');
+    navigate(to);
   };
+
+  // A rematch writes a fresh PLACEMENT state, so this device must forget the fleet it
+  // committed and re-arm the reveal guard before the next game.
+  useEffect(() => {
+    if (!game || mySeat < 0) return;
+    if (game.phase === 'PLACEMENT' && !game.commitment[seatOf(mySeat)] && myLayout) {
+      clearSecretLayout(roomCode);
+      setMyLayout(null);
+    }
+  }, [game, myLayout, mySeat, roomCode]);
 
   const copyLink = () => {
     navigator.clipboard.writeText(window.location.href);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  // Restarting in place: the row goes back to PLACEMENT so both seats keep this room
+  // code and simply commit a new fleet.
+  const rematch = async () => {
+    if (!game || mySeat < 0) return;
+    await push('REMATCH', createInitialState(), {
+      nextTurn: 0,
+      status: 'playing',
+      summary: { rematch: true },
+      expectTurn: false,
+    });
   };
 
   const revealedPlacements = useMemo<(Placement[] | null)[]>(() => {
@@ -357,6 +391,14 @@ export const BattleshipMatch: React.FC = () => {
   const spectator = mySeat < 0;
   const roomOver = syncData.match.status === 'abandoned';
   const readOnly = spectator || roomOver;
+  // A rematch needs two seats: an abandoned room or a lone player would only restart
+  // into a game nobody can join.
+  const canRematch = !spectator && !roomOver && syncData.players.length >= 2;
+  // A spectator has no seat, so both fleets are named after the players holding them.
+  const seatLabel = (seat: number): string =>
+    spectator
+      ? syncData.players.find((p) => p.player_index === seat)?.name || `Pemain ${seat + 1}`
+      : nameForSeat(seat, mySeat);
   const myTurnToCommit = game.phase === 'PLACEMENT' && !readOnly && game.currentTurn === mySeat;
   const myTurnToShoot = game.phase === 'BATTLE' && !readOnly && game.currentTurn === mySeat && !game.pendingShot;
   const statusLine = spectator
@@ -474,21 +516,48 @@ export const BattleshipMatch: React.FC = () => {
         </div>
       )}
 
+      {game.phase === 'FINISHED' && !finishDismissed && (
+        <FinishDialog
+          open
+          state={game}
+          labels={[seatLabel(0), seatLabel(1)]}
+          viewAs={spectator ? null : seatOf(mySeat)}
+          testId="bs-finish-dialog"
+          retry={
+            canRematch
+              ? { label: 'Rematch di room ini', onClick: () => void rematch(), disabled: busy, testId: 'bs-rematch-btn' }
+              : { label: 'Keluar dari room', onClick: () => void exitRoom(), testId: 'bs-finish-exit' }
+          }
+          secondaryActions={[
+            {
+              label: 'Lobi Battleship',
+              icon: <ArrowLeft size={12} />,
+              onClick: () => void exitRoom('/battleship'),
+              testId: 'bs-finish-lobby',
+            },
+            {
+              label: 'Halaman utama',
+              icon: <Home size={12} />,
+              onClick: () => void exitRoom('/'),
+              testId: 'bs-finish-home',
+            },
+          ]}
+          onDismiss={() => setFinishDismissed(true)}
+        />
+      )}
+
       {game.phase === 'FINISHED' && (
         <FinishBlock
           state={game}
           boards={[0, 1].map((seat) => ({
             seat: seatOf(seat),
-            label: nameForSeat(seat, mySeat),
+            label: seatLabel(seat),
             placements: seat === mySeat ? myLayout?.placements ?? null : revealedPlacements[seat] ?? null,
           }))}
           reports={reports}
           verifying={verifying}
           resetLabel="Kembali ke lobby"
-          onReset={() => {
-            clearSecretLayout(roomCode);
-            navigate('/battleship');
-          }}
+          onReset={() => void exitRoom()}
           waitingNote={
             !game.reveal[opponentSeat]
               ? 'Lawan belum mengungkap armadanya. Bukti armada lawan muncul setelah mereka mengirim reveal.'

@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Home } from 'lucide-react';
 import { Board } from '../components/Board';
 import { BoardSwitch } from '../components/BoardSwitch';
 import { Placer } from '../components/Placer';
 import { FleetRail } from '../components/FleetRail';
 import { FinishBlock } from '../components/FinishBlock';
+import { FinishDialog } from '../components/FinishDialog';
 import { playBlocked, playDefeat, playHit, playMiss, playVictory, unlockAudio } from '../../common/audio';
 import { buzzReject, buzzTap, buzzThud } from '../../common/haptics';
 import { SoundToggle } from '../../common/SoundToggle';
@@ -55,6 +56,7 @@ export const BattleshipLocal: React.FC = () => {
   const [lastResolved, setLastResolved] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [log, setLog] = useState<string[]>([]);
+  const [finishDismissed, setFinishDismissed] = useState(false);
 
   const startMode = (next: 'solo' | 'hotseat') => {
     setParams({ mode: next }, { replace: true });
@@ -63,6 +65,7 @@ export const BattleshipLocal: React.FC = () => {
     setLog([]);
     setSelected(null);
     setError(null);
+    setFinishDismissed(false);
     setScreen('PLACE_P1');
   };
 
@@ -196,6 +199,7 @@ export const BattleshipLocal: React.FC = () => {
     setLastResolved(null);
     setLog([]);
     setError(null);
+    setFinishDismissed(false);
     setScreen(mode ? 'PLACE_P1' : 'MODE');
   };
 
@@ -383,6 +387,27 @@ export const BattleshipLocal: React.FC = () => {
             </li>
           ))}
         </ul>
+      )}
+
+      {screen === 'DONE' && !finishDismissed && (
+        <FinishDialog
+          open
+          state={state}
+          labels={[labelFor(0), labelFor(1)]}
+          viewAs={mode === 'solo' ? 0 : null}
+          testId="bs-finish-dialog"
+          retry={{ label: 'Main lagi', onClick: reset, testId: 'bs-finish-retry' }}
+          links={[
+            {
+              label: 'Lobi Battleship',
+              to: '/battleship',
+              icon: <ArrowLeft size={12} />,
+              testId: 'bs-finish-lobby',
+            },
+            { label: 'Halaman utama', to: '/', icon: <Home size={12} />, testId: 'bs-finish-home' },
+          ]}
+          onDismiss={() => setFinishDismissed(true)}
+        />
       )}
 
       {screen === 'DONE' && (
