@@ -1,0 +1,883 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bomberman · Pratinjau gaya asset &amp; efek</title>
+<style>
+  :root{
+    --ink:#1c1917; --ink-dim:#5c5348; --ink-faint:#766b5f;
+    --paper:#faf7f2; --line:rgba(28,25,23,.12);
+    --keyline:#2a1b33; --cream:#fff6e5; --skin:#ffd9b3;
+    --sky:#4dabf7; --coral:#ff5d5d; --lime:#5fd06a; --sun:#ffcf5c; --amber:#e8a33d;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI","Helvetica Neue",Arial,sans-serif;
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);line-height:1.55;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1060px;margin:0 auto;padding:28px 18px 80px}
+  h1{font-size:26px;margin:0 0 6px;letter-spacing:-.3px}
+  h2{font-size:17px;margin:44px 0 4px}
+  p.lede{margin:0 0 2px;color:var(--ink-dim);max-width:70ch}
+  p.hint{margin:6px 0 14px;color:var(--ink-faint);font-size:13.5px}
+  .contract{margin:18px 0 0;padding:14px 16px;background:#fff;border:1px solid var(--line);border-radius:10px}
+  .contract ul{margin:6px 0 0;padding-left:20px}
+  .contract li{margin:2px 0;font-size:14px;color:var(--ink-dim)}
+  .card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px;margin:12px 0}
+  .row{display:flex;flex-wrap:wrap;gap:12px}
+  .cand{flex:1 1 240px;min-width:240px;border:1px solid var(--line);border-radius:12px;padding:12px;background:#fff}
+  .cand h3{margin:0;font-size:15.5px}
+  .cand .role{margin:1px 0 10px;font-size:12.5px;color:var(--ink-faint)}
+  .poses{display:flex;gap:6px;flex-wrap:wrap}
+  /* Slot tinggi tetap: pose tidak boleh menggeser isi kartu saat animasi jalan */
+  .pose{width:66px;height:82px;flex:0 0 66px;display:flex;align-items:center;justify-content:center;background:var(--cream);border-radius:9px;position:relative}
+  .pose span{position:absolute;bottom:2px;left:0;right:0;text-align:center;font-size:9.5px;color:var(--ink-faint);font-family:var(--mono)}
+  .ch{width:56px;height:76px;display:block;overflow:visible}
+  .sw{display:flex;gap:4px;margin:10px 0 0}
+  .sw i{width:16px;height:16px;border-radius:5px;border:1.5px solid var(--keyline);display:block}
+  .stage{width:100%;height:170px;background:var(--cream);border-radius:10px;position:relative;overflow:hidden}
+  .stage svg{display:block;width:100%;height:100%}
+  .fx{flex:1 1 320px;min-width:300px}
+  .fx h3{margin:0 0 8px;font-size:14.5px}
+  .fx p{margin:8px 0 0;font-size:12.8px;color:var(--ink-faint)}
+  .grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+  .floor{height:200px;border-radius:12px;border:1px solid var(--line);position:relative;overflow:hidden;background-color:#cfe6c3}
+  .floor b{position:absolute;top:8px;left:8px;font-size:12px;font-weight:600;background:rgba(255,255,255,.86);padding:3px 8px;border-radius:6px}
+  .floor .who{position:absolute;left:50%;bottom:26px;transform:translateX(-50%)}
+  .floor .verdict{position:absolute;left:8px;right:8px;bottom:8px;font-size:11.5px;background:rgba(255,255,255,.9);padding:5px 8px;border-radius:7px;color:var(--ink-dim)}
+  .props{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+  .prop{width:88px;height:96px;background:var(--cream);border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
+  .prop em{font-style:normal;font-size:10px;font-family:var(--mono);color:var(--ink-faint)}
+  #boardwrap{width:100%;max-width:460px;margin:0 auto}
+  #board{width:100%;aspect-ratio:11/9;display:block;background:#dff0cf;border-radius:10px;touch-action:none}
+  .shake{animation:shk .34s cubic-bezier(.36,.07,.19,.97) both}
+  @keyframes shk{10%,90%{transform:translate(-1px,0)}20%,80%{transform:translate(2px,-1px)}30%,50%,70%{transform:translate(-3px,1px)}40%,60%{transform:translate(3px,-1px)}}
+  .flash{position:absolute;inset:0;pointer-events:none;opacity:0;background:radial-gradient(ellipse at center,rgba(255,255,255,0) 40%,rgba(255,120,60,.55) 100%)}
+  .flash.on{animation:fl .4s ease-out}
+  @keyframes fl{0%{opacity:.95}100%{opacity:0}}
+  .hud{display:flex;gap:8px;align-items:center;justify-content:space-between;margin:0 0 10px;flex-wrap:wrap}
+  .slot{min-height:26px;font-size:13.5px;color:var(--ink-dim)}
+  .slot b{color:var(--ink)}
+  button{font:inherit;border:1.5px solid var(--keyline);background:var(--sun);border-radius:9px;padding:7px 12px;cursor:pointer}
+  button:active{transform:translateY(1px)}
+  .pad{display:grid;grid-template-columns:repeat(3,52px);grid-template-rows:repeat(3,52px);gap:6px;justify-content:center;margin:12px auto 0}
+  .pad button{padding:0;font-size:17px;display:flex;align-items:center;justify-content:center}
+  .pad .bom{grid-column:2;grid-row:2;background:var(--coral);color:#fff;font-size:11px;font-weight:700}
+  .pad .u{grid-column:2;grid-row:1} .pad .l{grid-column:1;grid-row:2} .pad .r{grid-column:3;grid-row:2} .pad .d{grid-column:2;grid-row:3}
+  .pick{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 10px}
+  .pick button{background:#fff;font-size:12.5px;padding:6px 10px;border-width:1px}
+  .pick button[aria-pressed="true"]{background:var(--keyline);color:#fff;border-color:var(--keyline)}
+  kbd{font-family:var(--mono);font-size:11px;border:1px solid var(--line-strong,rgba(28,25,23,.24));border-bottom-width:2px;border-radius:4px;padding:1px 5px;background:#fff}
+  .bob{animation:bob .62s ease-in-out infinite}
+  @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-2.4px)}}
+  .walking .lg-l{animation:stepA .26s linear infinite}
+  .walking .lg-r{animation:stepB .26s linear infinite}
+  .walking .arm-l{animation:stepB .26s linear infinite}
+  .walking .arm-r{animation:stepA .26s linear infinite}
+  @keyframes stepA{0%,100%{transform:translateY(-2.6px)}50%{transform:translateY(0)}}
+  @keyframes stepB{0%,100%{transform:translateY(0)}50%{transform:translateY(-2.6px)}}
+  .fuse{transform-origin:center;animation:fuse .5s linear infinite}
+  @keyframes fuse{0%,100%{opacity:1;transform:scale(1.25)}50%{opacity:.35;transform:scale(.7)}}
+  .blink{animation:blk .42s steps(1,end) infinite}
+  @keyframes blk{0%,49%{opacity:1}50%,100%{opacity:.35}}
+  @media (prefers-reduced-motion:reduce){*{animation-duration:.001s!important;animation-iteration-count:1!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Bomberman · Pratinjau gaya asset &amp; efek</h1>
+  <p class="lede">Empat kandidat karakter, satu set properti, dan sembilan efek yang berputar terus. Paling bawah ada demo playable supaya gayanya bisa dinilai sambil bergerak, bukan cuma dipajang.</p>
+
+  <div class="contract">
+    <b>Kontrak desain yang dipakai semua kandidat</b>
+    <ul>
+      <li>Lucu datang dari proporsi, ekspresi, dan gerakan. Bukan dari hiasan.</li>
+      <li>Kepala 60% tinggi badan, tangan dan kaki berupa tonggak pendek.</li>
+      <li>Girlish dibuang: tidak ada merah muda, ungu, hati, bulu mata, atau pita.</li>
+      <li>Satu karakter maksimal 3 warna isi, garis luar <span style="font-family:var(--mono)">#2a1b33</span> tebal 2.6-3.</li>
+      <li>Setiap karakter harus punya siluet yang beda saat dikecilkan ke 32 px.</li>
+      <li>Sprite digambar sebagai SVG di kode. Hanya lantai arena yang berupa PNG hasil generate.</li>
+    </ul>
+  </div>
+
+  <h2>1. Kandidat karakter</h2>
+  <p class="hint">Tiap kartu menampilkan lima keadaan: diam, jalan, tanam bom, panik karena sumbu sudah menyala, dan KO. Pose panik dan KO adalah keadaan yang paling sering bikin game terasa murah, jadi keduanya ikut diuji di sini.</p>
+  <div class="row" id="cands"></div>
+
+  <h2>2. Properti arena</h2>
+  <p class="hint">Bom dalam tiga tahap waktu, bata lunak yang bisa dihancurkan, tembok keras, dan empat powerup. Semua memakai garis luar dan palet yang sama dengan karakter.</p>
+  <div class="card"><div class="props" id="props"></div></div>
+
+  <h2>3. Lab efek</h2>
+  <p class="hint">Sembilan efek berputar otomatis. Klik satu panggung untuk memutar ulang dari awal.</p>
+  <div class="row" id="fxrow"></div>
+
+  <h2>4. Latar lantai</h2>
+  <p class="hint">Tiga tekstur hasil generate, dipasang berulang di atas arena 11x9 dengan satu karakter di atasnya. Yang dinilai di sini kontrasnya terhadap sprite, bukan cantiknya sendiri.</p>
+  <div class="grid3" id="floors"></div>
+
+  <h2>5. Demo playable</h2>
+  <p class="hint">
+    Gerak dengan <kbd>&larr;</kbd><kbd>&uarr;</kbd><kbd>&darr;</kbd><kbd>&rarr;</kbd> atau <kbd>WASD</kbd>, tanam bom dengan <kbd>Space</kbd>. Di ponsel pakai tombol bundar.
+    Bot di pojok kanan bawah menanam bom dan kabur. Hancurkan bata lunak untuk mencari powerup.
+  </p>
+  <div class="card">
+    <div class="pick" id="pick"></div>
+    <div class="hud">
+      <div class="slot" id="status" aria-live="polite"></div>
+      <button id="again" type="button">Main lagi</button>
+    </div>
+    <div id="boardwrap" style="position:relative">
+      <svg id="board" viewBox="0 0 440 360" role="img" aria-label="Arena Bomberman 11 kali 9 petak"></svg>
+      <div class="flash" id="flash"></div>
+    </div>
+    <div class="pad">
+      <button class="u" data-dir="up" type="button" aria-label="Naik">&#9650;</button>
+      <button class="l" data-dir="left" type="button" aria-label="Kiri">&#9664;</button>
+      <button class="bom" data-bom type="button">BOM</button>
+      <button class="r" data-dir="right" type="button" aria-label="Kanan">&#9654;</button>
+      <button class="d" data-dir="down" type="button" aria-label="Turun">&#9660;</button>
+    </div>
+  </div>
+
+  <div class="contract" style="margin-top:30px">
+    <b>Yang sudah terbukti di file ini, dan yang belum</b>
+    <ul>
+      <li>Sudah: sprite ter-render di browser sungguhan, efek berjalan, gerakan dan ledakan berantai bisa dimainkan.</li>
+      <li>Sudah: langkah pemain selalu pindah satu petak dan posisi di-tween, jadi state-nya bisa diserialisasi untuk mode online nanti.</li>
+      <li>Belum: keseimbangan jumlah bot, dan apakah gaya ini masih terbaca di layar 360 px saat arena penuh api.</li>
+      <li>Belum: suara. Repo ini sudah punya <span style="font-family:var(--mono)">src/games/common/audio.ts</span>, jadi suara ikut saat game dipasang ke registry.</li>
+    </ul>
+  </div>
+
+</div>
+
+<script>
+const L = '#2a1b33';
+const CHARS = {
+  robo:    { label:'Bola Luncur',   role:'Robot kurir, helm kaca bening', main:'#4dabf7', dark:'#2f7fc4', skin:'#fff6e5', belly:'#fff6e5', trim:'#ffcf5c' },
+  tupai:   { label:'Tupai Gudang',  role:'Tupai bertopi, ekor besar',     main:'#ff5d5d', dark:'#d94141', skin:'#ffd9b3', belly:'#fff6e5', trim:'#ffcf5c' },
+  radar:   { label:'Kacang Radar',  role:'Anak gudang, kacamata di dahi', main:'#5fd06a', dark:'#3f9e4b', skin:'#ffd9b3', belly:'#fff6e5', trim:'#4dabf7' },
+  biskuit: { label:'Biskuit Karamel', role:'Biskuit hidup, mata besar',   main:'#f2c98d', dark:'#c98f4e', skin:'#f2c98d', belly:'#fff6e5', trim:'#8a5a2b' }
+};
+
+function stroke(w){ return `stroke="${L}" stroke-width="${w}" stroke-linejoin="round"`; }
+
+function eyesArt(kind, dx){
+  const a = 25 + dx, b = 39 + dx, y = 21;
+  if (kind === 'x') {
+    return `<g stroke="${L}" stroke-width="2.8" stroke-linecap="round">
+      <path d="M${a-3.4} ${y-3.4}l6.8 6.8M${a+3.4} ${y-3.4}l-6.8 6.8"/>
+      <path d="M${b-3.4} ${y-3.4}l6.8 6.8M${b+3.4} ${y-3.4}l-6.8 6.8"/></g>`;
+  }
+  if (kind === 'wide') {
+    return `<circle cx="${a}" cy="${y}" r="5.4" fill="#fff" ${stroke(2.2)}/><circle cx="${a}" cy="${y+1}" r="2.7" fill="${L}"/>
+            <circle cx="${b}" cy="${y}" r="5.4" fill="#fff" ${stroke(2.2)}/><circle cx="${b}" cy="${y+1}" r="2.7" fill="${L}"/>`;
+  }
+  if (kind === 'happy') {
+    return `<path d="M${a-4} ${y+1}a4 4 0 0 1 8 0M${b-4} ${y+1}a4 4 0 0 1 8 0" fill="none" stroke="${L}" stroke-width="2.9" stroke-linecap="round"/>`;
+  }
+  return `<ellipse cx="${a}" cy="${y}" rx="3.7" ry="4.3" fill="${L}"/><circle cx="${a+1.3}" cy="${y-1.5}" r="1.5" fill="#fff"/>
+          <ellipse cx="${b}" cy="${y}" rx="3.7" ry="4.3" fill="${L}"/><circle cx="${b+1.3}" cy="${y-1.5}" r="1.5" fill="#fff"/>`;
+}
+
+function mouthArt(kind, dx){
+  const x = 32 + dx;
+  if (kind === 'o')    return `<ellipse cx="${x}" cy="30" rx="2.6" ry="3.1" fill="${L}"/>`;
+  if (kind === 'open') return `<path d="M${x-4.4} 28.5a4.6 4.6 0 0 0 8.8 0z" fill="${L}"/>`;
+  if (kind === 'flat') return `<path d="M${x-3.6} 30h7.2" stroke="${L}" stroke-width="2.5" stroke-linecap="round"/>`;
+  return `<path d="M${x-4.2} 28.6a5 5 0 0 0 8.4 0" fill="none" stroke="${L}" stroke-width="2.5" stroke-linecap="round"/>`;
+}
+
+/* Kepala digambar per karakter karena siluetnya yang bikin mereka beda di 32 px. */
+function headArt(c, id, back, eyeKind, dx){
+  const faceFront = !back;
+  let base = '';
+  if (id === 'biskuit') {
+    base = `<rect x="12" y="0.5" width="40" height="39" rx="14" fill="${c.skin}" ${stroke(3)}/>
+            <g fill="${c.trim}"><circle cx="21" cy="9" r="2.4"/><circle cx="43" cy="7.5" r="2"/><circle cx="36" cy="12.5" r="1.7"/></g>`;
+  } else {
+    base = `<circle cx="32" cy="20" r="20" fill="${c.skin}" ${stroke(3)}/>`;
+  }
+  if (id === 'robo') {
+    base = `<circle cx="32" cy="20" r="20" fill="${c.main}" ${stroke(3)}/>
+            <path d="M32 0v-6.5" stroke="${L}" stroke-width="3" stroke-linecap="round"/>
+            <circle cx="32" cy="-9" r="4.4" fill="${c.trim}" ${stroke(2.4)}/>`;
+    if (back) return base + `<rect x="21" y="12" width="22" height="9" rx="4.5" fill="${c.dark}" ${stroke(2.4)}/>`;
+    return base + `<rect x="13.5" y="12" width="37" height="21" rx="10.5" fill="${c.skin}" ${stroke(2.8)}/>`
+      + eyesArt(eyeKind, dx) + mouthArt('smile', dx);
+  }
+  if (id === 'tupai') {
+    const ears = `<g><circle cx="17.5" cy="4" r="7" fill="${c.skin}" ${stroke(2.8)}/><circle cx="17.5" cy="4.5" r="3.3" fill="#f0b184"/>
+                      <circle cx="46.5" cy="4" r="7" fill="${c.skin}" ${stroke(2.8)}/><circle cx="46.5" cy="4.5" r="3.3" fill="#f0b184"/></g>`;
+    if (back) return base + ears + `<path d="M26 14h12" stroke="${c.dark}" stroke-width="3" stroke-linecap="round"/>`;
+    return base + ears
+      + `<ellipse cx="32" cy="26.5" rx="10" ry="7" fill="${c.belly}" ${stroke(2.2)}/>`
+      + `<ellipse cx="32" cy="22.5" rx="2.7" ry="2.1" fill="${L}"/>`
+      + eyesArt(eyeKind, dx) + mouthArt(eyeKind === 'x' ? 'o' : 'smile', dx);
+  }
+  if (id === 'radar') {
+    const hair = `<path d="M12.2 20a19.8 19.8 0 0 1 39.6 0z" fill="#4a3b2f" ${stroke(3)}/>`;
+    if (back) return base + hair + `<path d="M20 26h24" stroke="#4a3b2f" stroke-width="6" stroke-linecap="round"/>`;
+    return base + hair
+      + `<g transform="translate(0 -11)"><circle cx="24.5" cy="21" r="6.2" fill="#cfe9ff" ${stroke(2.6)}/>
+         <circle cx="39.5" cy="21" r="6.2" fill="#cfe9ff" ${stroke(2.6)}/>
+         <path d="M30.7 21h2.6" stroke="${c.trim}" stroke-width="3"/></g>`
+      + eyesArt(eyeKind, dx) + mouthArt('smile', dx);
+  }
+  if (back) return base + `<rect x="22" y="14" width="20" height="12" rx="5" fill="${c.dark}" opacity=".5"/>`;
+  return base + eyesArt(eyeKind, dx) + mouthArt(eyeKind === 'x' ? 'o' : 'smile', dx);
+}
+
+function tailArt(id, c){
+  if (id !== 'tupai') return '';
+  return `<path d="M45 47c16-7 20 12 8 19-9 5-19 1-16-7" fill="${c.skin}" ${stroke(2.8)}/>`;
+}
+
+function sprite(id, pose, dir){
+  pose = pose || 'idle';
+  dir = dir || 'front';
+  const c = CHARS[id];
+  const back = dir === 'back';
+  const side = dir === 'left' || dir === 'right';
+  const dx = side ? (dir === 'right' ? 3.2 : -3.2) : 0;
+  const ko = pose === 'ko';
+  const eyeKind = ko ? 'x' : pose === 'panic' ? 'wide' : pose === 'win' ? 'happy' : 'open';
+  const mouth = pose === 'panic' ? 'open' : pose === 'place' ? 'o' : ko ? 'o' : 'smile';
+
+  let armL = 8, armR = -8, lean = 0, legShift = 0, cls = '';
+  if (pose === 'walk') { cls = ' walking'; armL = 16; armR = -16; }
+  if (pose === 'place') { armL = -14; armR = -86; lean = -7; }
+  if (pose === 'panic') { armL = -146; armR = 146; lean = 4; cls = ' bob'; }
+  if (pose === 'idle') cls = ' bob';
+
+  const body = `
+    <g class="tor${cls}" transform="${lean ? `rotate(${lean} 32 58)` : ''}">
+      ${tailArt(id, c)}
+      <g class="arm-l" transform="rotate(${armL} 13 41)"><rect x="5.5" y="38" width="10.5" height="15" rx="5.2" fill="${c.dark}" ${stroke(2.6)}/></g>
+      <g class="arm-r" transform="rotate(${armR} 51 41)"><rect x="48" y="38" width="10.5" height="15" rx="5.2" fill="${c.dark}" ${stroke(2.6)}/></g>
+      <g class="lg-l"><rect x="20.5" y="54" width="9.5" height="15" rx="4.7" fill="${c.dark}" ${stroke(2.6)}/></g>
+      <g class="lg-r" transform="translate(${legShift} 0)"><rect x="34" y="54" width="9.5" height="15" rx="4.7" fill="${c.dark}" ${stroke(2.6)}/></g>
+      <rect x="17.5" y="35" width="29" height="25" rx="12.5" fill="${c.main}" ${stroke(2.8)}/>
+      <ellipse cx="32" cy="49" rx="8.6" ry="7.6" fill="${c.belly}" opacity="${id === 'robo' ? '.95' : '.9'}"/>
+      <g>${headArt(c, id, back, eyeKind, dx)}</g>
+      ${pose === 'panic' ? `<path d="M50 6c3 4 3 7 .6 8.6-2.6 1.8-5-1.4-3.4-4z" fill="#8fd0ff" ${stroke(2)}/>` : ''}
+      ${ko ? `<g class="stars"><g transform="translate(14 -6)">${star(4.6, '#ffcf5c')}</g>
+                <g transform="translate(50 -2)">${star(3.8, '#ffcf5c')}</g></g>` : ''}
+    </g>`;
+
+  return `<svg class="ch" viewBox="0 -16 64 92" aria-hidden="true">
+    <ellipse cx="32" cy="71" rx="${ko ? 19 : 15.5}" ry="4" fill="${L}" opacity=".13"/>
+    <g transform="${ko ? 'rotate(74 32 60) translate(-4 6)' : ''}">${body}</g>
+  </svg>`;
+}
+
+function star(r, fill){
+  const p = [];
+  for (let i = 0; i < 8; i++) {
+    const rad = i % 2 ? r * .42 : r;
+    const a = (Math.PI / 4) * i - Math.PI / 2;
+    p.push(`${(Math.cos(a) * rad).toFixed(1)},${(Math.sin(a) * rad).toFixed(1)}`);
+  }
+  return `<polygon points="${p.join(' ')}" fill="${fill}" ${stroke(2)}/>`;
+}
+
+/* ---------- properti ---------- */
+function bombSVG(range, urgent, scale){
+  scale = scale || 1;
+  const blink = urgent ? ' class="blink"' : '';
+  return `<svg class="ch" viewBox="0 0 64 64" style="width:${44 * scale}px;height:${44 * scale}px" aria-hidden="true">
+    <ellipse cx="32" cy="57" rx="14" ry="3.6" fill="${L}" opacity=".14"/>
+    <g${blink}>
+      <circle cx="32" cy="36" r="19" fill="#3d3550" ${stroke(3)}/>
+      <circle cx="25" cy="29" r="5.4" fill="#fff" opacity=".5" stroke="none"/>
+      <path d="M27 15h10v6H27z" fill="#8a8270" ${stroke(2.6)}/>
+      <path d="M32 15c0-6 6-5 6-9" fill="none" stroke="${L}" stroke-width="3" stroke-linecap="round"/>
+      <g class="fuse"><circle cx="38" cy="5" r="4.2" fill="#ffcf5c"/><circle cx="38" cy="5" r="1.9" fill="#fff6e5"/></g>
+    </g>
+    ${range ? `<text x="32" y="42" text-anchor="middle" font-size="15" font-weight="700" fill="#fff" font-family="var(--mono)">${range}</text>` : ''}
+  </svg>`;
+}
+function softSVG(){
+  return `<svg class="ch" viewBox="0 0 64 64" style="width:44px;height:44px" aria-hidden="true">
+    <rect x="6" y="10" width="52" height="46" rx="10" fill="#f0c48a" ${stroke(3)}/>
+    <path d="M6 32h52M32 10v46" stroke="${L}" stroke-width="2.4" opacity=".35"/>
+    <rect x="6" y="10" width="52" height="12" rx="6" fill="#fff" opacity=".22"/>
+  </svg>`;
+}
+function hardSVG(){
+  return `<svg class="ch" viewBox="0 0 64 64" style="width:44px;height:44px" aria-hidden="true">
+    <rect x="6" y="8" width="52" height="48" rx="8" fill="#8a8270" ${stroke(3)}/>
+    <rect x="6" y="8" width="52" height="13" rx="6" fill="#fff" opacity=".18"/>
+  </svg>`;
+}
+const POWERS = {
+  flame:  { label:'+1 API',   color:'#ff5d5d' },
+  speed:  { label:'LARI',     color:'#4dabf7' },
+  count:  { label:'+1 BOM',   color:'#ffcf5c' },
+  shield: { label:'PERISAI',  color:'#5fd06a' }
+};
+function powerSVG(kind){
+  const p = POWERS[kind];
+  let glyph = '';
+  if (kind === 'flame') glyph = `<path d="M32 14c10 10 12 16 12 21a12 12 0 0 1-24 0c0-6 4-10 12-21z" fill="#fff6e5" ${stroke(2.8)}/>`;
+  if (kind === 'speed') glyph = `<path d="M22 16l16 12-9 2 11 18-6 0-9-14-5 12z" fill="#fff6e5" ${stroke(2.6)}/>`;
+  if (kind === 'count') glyph = `<circle cx="26" cy="34" r="9" fill="#fff6e5" ${stroke(2.6)}/><circle cx="40" cy="30" r="7" fill="#fff6e5" ${stroke(2.6)}/>`;
+  if (kind === 'shield') glyph = `<path d="M32 15l14 5v11c0 9-7 14-14 18-7-4-14-9-14-18V20z" fill="#fff6e5" ${stroke(2.8)}/>`;
+  return `<svg class="ch" viewBox="0 0 64 64" style="width:44px;height:44px" aria-hidden="true">
+    <ellipse cx="32" cy="58" rx="12" ry="3" fill="${L}" opacity=".13"/>
+    <circle cx="32" cy="34" r="21" fill="${p.color}" ${stroke(3)}>${''}</circle>
+    ${glyph}
+  </svg>`;
+}
+
+/* ---------- mount: kandidat ---------- */
+const POSES = [['idle','diam'],['walk','jalan'],['place','tanam'],['panic','panik'],['ko','KO']];
+document.getElementById('cands').innerHTML = Object.keys(CHARS).map(id => {
+  const c = CHARS[id];
+  return `<div class="cand">
+    <h3>${c.label}</h3><div class="role">${c.role}</div>
+    <div class="poses">${POSES.map(([p, n]) => `<div class="pose">${sprite(id, p, p === 'ko' ? 'front' : 'front')}<span>${n}</span></div>`).join('')}</div>
+    <div class="poses" style="margin-top:6px">${['front','right','back'].map(d => `<div class="pose">${sprite(id, 'idle', d)}<span>${d}</span></div>`).join('')}</div>
+    <div class="sw">${[c.main, c.dark, c.skin, c.trim].map(x => `<i style="background:${x}"></i>`).join('')}</div>
+  </div>`;
+}).join('');
+
+document.getElementById('props').innerHTML =
+  `<div class="prop">${bombSVG(0, false, .9)}<em>bom 0-1.5s</em></div>
+   <div class="prop">${bombSVG(0, true, .9)}<em>bom 1.5-2s</em></div>
+   <div class="prop">${bombSVG(2, false, .9)}<em>bom + range</em></div>
+   <div class="prop">${softSVG()}<em>bata lunak</em></div>
+   <div class="prop">${hardSVG()}<em>tembok</em></div>
+   ${Object.keys(POWERS).map(k => `<div class="prop">${powerSVG(k)}<em>${POWERS[k].label}</em></div>`).join('')}`;
+
+/* ---------- lab efek ---------- */
+const FX = [
+  { id:'boom',  t:'Ledakan salib + inti putih', d:'Inti putih, lalu kuning, lalu oranye, lalu asap. Lengan api berhenti di tembok keras, dan bata lunak menyerap api tanpa membakar petaknya sendiri.' },
+  { id:'chain', t:'Ledakan berantai',           d:'Tiga bom sejajar. Bom pertama menyalakan sumbu bom kedua, dan rentetannya berjalan sendiri.' },
+  { id:'break', t:'Bata hancur',                d:'Empat pecahan melayang dengan rotasi, plus debu bulat yang memudar.' },
+  { id:'squash',t:'Squash, stretch, knockback', d:'Badan memipih saat mendarat, memanjang saat terpental, lalu pulih.' },
+  { id:'ko',    t:'KO dan bintang',             d:'Karakter jatuh miring, bintang berputar di atas kepala, api sisa di belakang.' },
+  { id:'shake', t:'Guncangan layar',            d:'Lantai arena bergeser 3 px selama 0.34s, dengan kilatan oranye di tepi layar.' },
+  { id:'pop',   t:'Ambil powerup',              d:'Cincin melebar dan memudar, label naik, karakter mengangkat tangan.' },
+  { id:'tele',  t:'Bahaya: bom di lantai',      d:'Lingkaran merah berdenyut di petak bom supaya pemain tahu harus lari sebelum sumburnya habis.' },
+  { id:'smoke', t:'Asap dan bara sisa',         d:'Setelah api padam, bara kecil tetap naik beberapa saat.' }
+];
+document.getElementById('fxrow').innerHTML = FX.map(f =>
+  `<div class="card fx"><h3>${f.t}</h3><div class="stage" id="st-${f.id}" data-fx="${f.id}"></div><p>${f.d}</p></div>`
+).join('');
+
+function svgStage(el, inner){ el.innerHTML = `<svg viewBox="0 0 300 170">${inner}</svg>`; }
+const S = { x:150, y:96 };
+
+function flameArm(len, rot){
+  return `<g transform="rotate(${rot} ${S.x} ${S.y})">
+    <rect x="${S.x}" y="${S.y - 13}" width="${len}" height="26" rx="13" fill="#ff8a3d" ${stroke(3)}/>
+    <rect x="${S.x + 6}" y="${S.y - 7}" width="${Math.max(len - 12, 0)}" height="14" rx="7" fill="#ffcf5c" stroke="none"/>
+    <circle cx="${S.x + len}" cy="${S.y}" r="15" fill="#ff8a3d" ${stroke(3)}/>
+    <circle cx="${S.x + len}" cy="${S.y}" r="8" fill="#fff6e5" stroke="none"/>
+  </g>`;
+}
+function boomGroup(scale, dur){
+  scale = scale || 1; dur = dur || 1.1;
+  const len = 62 * scale;
+  return `<g class="fx-boom" style="animation:boompop ${dur}s ease-out forwards">
+    ${flameArm(len, 0)}${flameArm(len, 90)}${flameArm(len, 180)}${flameArm(len, 270)}
+    <circle cx="${S.x}" cy="${S.y}" r="${26 * scale}" fill="#ff5d5d" ${stroke(3)}/>
+    <circle cx="${S.x}" cy="${S.y}" r="${18 * scale}" fill="#ffcf5c" stroke="none"/>
+    <circle cx="${S.x}" cy="${S.y}" r="${9 * scale}" fill="#fffdf5" stroke="none"/>
+  </g>
+  <style>@keyframes boompop{0%{transform:scale(.25);opacity:0}18%{transform:scale(1.06);opacity:1}55%{transform:scale(1);opacity:1}100%{transform:scale(1.18);opacity:0}}</style>`;
+}
+function smokePuff(n, y0){
+  let s = '';
+  for (let i = 0; i < n; i++) {
+    const a = (Math.PI * 2 / n) * i;
+    s += `<circle class="puff" cx="${S.x + Math.cos(a) * 22}" cy="${y0}" r="${9 + i % 3 * 3}" fill="#6b6472" opacity=".55"
+            style="animation:puff 1.15s ease-out ${0.35 + i * .06}s forwards"/>`;
+  }
+  return s + `<style>@keyframes puff{from{transform:translateY(0) scale(.6);opacity:.55}to{transform:translateY(-46px) scale(1.5);opacity:0}}</style>`;
+}
+function embers(n){
+  let s = '';
+  for (let i = 0; i < n; i++) {
+    s += `<circle class="emb" cx="${S.x + (i * 37 % 90) - 45}" cy="${S.y}" r="${1.8 + (i % 3)}" fill="#ffcf5c"
+            style="animation:emb ${1 + (i % 4) * .22}s ease-out ${i * .1}s infinite"/>`;
+  }
+  return s + `<style>@keyframes emb{from{transform:translateY(0);opacity:1}to{transform:translateY(-58px);opacity:0}}</style>`;
+}
+function floorTile(){
+  return `<rect x="0" y="0" width="300" height="170" fill="#dff0cf"/>
+    <g stroke="#b9d8a4" stroke-width="1.4">${Array.from({length: 6}, (_, i) => `<line x1="0" y1="${i * 28 + 14}" x2="300" y2="${i * 28 + 14}"/>`).join('')}
+    ${Array.from({length: 11}, (_, i) => `<line x1="${i * 28 + 10}" y1="0" x2="${i * 28 + 10}" y2="170"/>`).join('')}</g>`;
+}
+
+const runners = {};
+function playFx(id){
+  const el = document.getElementById('st-' + id);
+  if (!el) return;
+  const c = sprite(currentChar, 'idle', 'front');
+  if (id === 'boom') {
+    svgStage(el, `${floorTile()}<ellipse cx="${S.x}" cy="${S.y + 26}" rx="34" ry="9" fill="#7f9b6e" opacity=".5" style="animation:fade 1.1s forwards"/>${boomGroup(1, 1.1)}${smokePuff(6, S.y)}`);
+  }
+  if (id === 'chain') {
+    svgStage(el, `${floorTile()}
+      ${[70, 150, 230].map((x, i) => `<g id="cb${i}" transform="translate(${x - S.x} ${20})">${bombSVG(0, i === 0, .7).replace('<svg class="ch" viewBox="0 0 64 64" style="width:31px;height:31px"', '<svg viewBox="0 0 64 64" width="31" height="31"')}</g>`).join('')}
+      <g id="cbfx"></g>`);
+    const fx = el.querySelector('#cbfx');
+    const order = [[70, 0], [150, 620], [230, 1240]];
+    order.forEach(([x, ms]) => setTimeout(() => {
+      fx.insertAdjacentHTML('beforeend', `<g style="animation:boompop .9s ease-out forwards" transform="translate(${x - S.x} 20)">${boomGroup(.42, .9)}</g>`);
+    }, ms));
+  }
+  if (id === 'break') {
+    svgStage(el, `${floorTile()}
+      <g id="brk" transform="translate(${S.x - 26} ${S.y - 30})">${softSVG().replace('width:44px;height:44px', 'width:52px;height:52px')}</g>
+      <g id="frag"></g>`);
+    setTimeout(() => {
+      el.querySelector('#brk').setAttribute('opacity', '0');
+      let f = '';
+      for (let i = 0; i < 5; i++) {
+        const a = -Math.PI / 2 + (i - 2) * .55;
+        f += `<rect x="${S.x - 8}" y="${S.y - 8}" width="${11 + i % 3 * 4}" height="${9 + i % 2 * 5}" rx="3" fill="#f0c48a" ${stroke(2.4)}
+               style="animation:frag .85s cubic-bezier(.2,.7,.4,1) forwards;--dx:${Math.cos(a) * 74}px;--dy:${Math.sin(a) * 62}px;--rot:${i * 90 - 60}deg"/>`;
+      }
+      el.querySelector('#frag').innerHTML = f + smokePuff(4, S.y + 6);
+    }, 320);
+  }
+  if (id === 'squash') {
+    svgStage(el, `${floorTile()}
+      <g transform="translate(96 42) scale(1.35)"><g style="animation:squash 1.5s ease-in-out infinite">${sprite(currentChar, 'walk', 'right').replace(/<\?xml[^>]*\? >/,'').replace('<svg class="ch" viewBox="0 -16 64 92" aria-hidden="true">','<svg viewBox="0 -16 64 92" width="64" height="92">').replace('</svg>','')}</g></g>`);
+    el.querySelector('svg').innerHTML += `<style>@keyframes squash{0%,100%{transform:scale(1,1)}22%{transform:scale(1.14,.86)}45%{transform:scale(.9,1.16)}70%{transform:scale(1.22,.78)}85%{transform:scale(.96,1.05)}}</style>`;
+  }
+  if (id === 'ko') {
+    svgStage(el, `${floorTile()}
+      <g transform="translate(118 46) scale(1.3)">${sprite(currentChar, 'ko', 'right').replace('<svg class="ch" viewBox="0 -16 64 92" aria-hidden="true">', '<svg viewBox="0 -16 64 92" width="64" height="92">').replace('</svg>', '')}</g>
+      <g class="orbit" transform="translate(150 46)">${star(6, '#ffcf5c')}</g>
+      ${embers(5)}`);
+    el.querySelector('svg').innerHTML += `<style>.orbit{animation:orb 1.6s linear infinite;transform-origin:0 0}@keyframes orb{from{transform:rotate(0) translate(26px,0)}to{transform:rotate(360deg) translate(26px,0)}}</style>`;
+  }
+  if (id === 'shake') {
+    svgStage(el, `${floorTile()}<g id="shaker"><g transform="translate(112 40) scale(1.25)">${sprite(currentChar, 'panic', 'front').replace('<svg class="ch" viewBox="0 -16 64 92" aria-hidden="true">', '<svg viewBox="0 -16 64 92" width="64" height="92">').replace('</svg>', '')}</g>${boomGroup(.7, .9)}</g>`);
+    const sh = el.querySelector('#shaker');
+    sh.style.animation = 'shkx .34s cubic-bezier(.36,.07,.19,.97) both';
+    el.querySelector('svg').innerHTML += `<style>@keyframes shkx{10%,90%{transform:translate(-2px,0)}20%,80%{transform:translate(3px,-2px)}30%,50%,70%{transform:translate(-4px,2px)}40%,60%{transform:translate(4px,-2px)}}</style>`;
+  }
+  if (id === 'pop') {
+    svgStage(el, `${floorTile()}
+      <g transform="translate(${S.x - 21} ${S.y - 6}) scale(.66)">${powerSVG('flame').replace('<svg class="ch" viewBox="0 0 64 64" style="width:44px;height:44px"', '<svg viewBox="0 0 64 64" width="44" height="44"')}</g>
+      <circle cx="${S.x}" cy="${S.y + 14}" r="10" fill="none" stroke="#ffcf5c" stroke-width="5" style="animation:ring .7s ease-out forwards"/>
+      <g transform="translate(196 44) scale(1.15)">${sprite(currentChar, 'place', 'front').replace('<svg class="ch" viewBox="0 -16 64 92" aria-hidden="true">', '<svg viewBox="0 -16 64 92" width="64" height="92">').replace('</svg>', '')}</g>
+      <text x="${S.x}" y="${S.y - 6}" text-anchor="middle" font-size="17" font-weight="700" fill="#b42318" style="animation:rise .9s ease-out forwards">+1 API</text>`);
+    el.querySelector('svg').innerHTML += `<style>@keyframes ring{from{transform:scale(.3);opacity:1}to{transform:scale(3.2);opacity:0}}@keyframes rise{from{transform:translateY(6px);opacity:1}to{transform:translateY(-30px);opacity:0}}</style>`;
+  }
+  if (id === 'tele') {
+    svgStage(el, `${floorTile()}
+      <ellipse cx="${S.x}" cy="${S.y + 22}" rx="40" ry="14" fill="none" stroke="#ff5d5d" stroke-width="3.4" stroke-dasharray="7 6" style="animation:tele 1.1s ease-in-out infinite"/>
+      <g transform="translate(${S.x - 22} ${S.y - 34})">${bombSVG(0, true, .95).replace('width:39.6px;height:39.6px', 'width:44px;height:44px')}</g>
+      <g transform="translate(38 44) scale(1.1)">${sprite(currentChar, 'panic', 'right').replace('<svg class="ch" viewBox="0 -16 64 92" aria-hidden="true">', '<svg viewBox="0 -16 64 92" width="64" height="92">').replace('</svg>', '')}</g>`);
+    el.querySelector('svg').innerHTML += `<style>@keyframes tele{0%,100%{opacity:.35;transform:scale(.9)}50%{opacity:1;transform:scale(1.05)}}</style>`;
+  }
+  if (id === 'smoke') {
+    svgStage(el, `${floorTile()}<ellipse cx="${S.x}" cy="${S.y + 20}" rx="30" ry="8" fill="#8d7f6b" opacity=".35"/>${smokePuff(7, S.y + 8)}${embers(7)}`);
+  }
+}
+let currentChar = 'robo';
+Object.keys(runners).length;
+FX.forEach(f => {
+  playFx(f.id);
+  runners[f.id] = setInterval(() => playFx(f.id), f.id === 'chain' ? 2200 : 2400);
+  document.getElementById('st-' + f.id).addEventListener('click', () => playFx(f.id));
+});
+document.getElementById('cands').addEventListener('click', e => {
+  const card = e.target.closest('.cand');
+  if (!card) return;
+  const id = Object.keys(CHARS)[[...card.parentNode.children].indexOf(card)];
+  currentChar = id;
+  FX.forEach(f => playFx(f.id));
+  renderPick();
+});
+
+/* ---------- lantai ---------- */
+const FLOORS = [
+  { f:'floor-grass.png', bg:'#8fd08f', n:'Rumput mainan', v:'Ukuran corak kecil, tidak berkelahi dengan grid 11x9. Kontras paling aman untuk sprite terang.' },
+  { f:'floor-sand.png',  bg:'#f0d79a', n:'Pasir halaman', v:'Sama aman, tapi warna kuningnya dekat dengan api ledakan. Api bisa hilang di lantai ini.' },
+  { f:'floor-stone.png', bg:'#b9b2ac', n:'Batu paving',   v:'Coraknya lebih besar dari satu petak, jadi tiap petak memotong satu batu secara acak. Berisik di belakang grid.' }
+];
+document.getElementById('floors').innerHTML = FLOORS.map(x => `
+  <div class="floor" style="background-image:url('${x.f}');background-size:220px 220px;background-color:${x.bg}">
+    <b>${x.n}</b>
+    <div class="who">${sprite(currentChar, 'idle', 'front')}</div>
+    <div class="verdict">${x.v}</div>
+  </div>`).join('');
+
+/* ---------- demo playable ---------- */
+const COLS = 11, ROWS = 9, CELL = 40;
+const board = document.getElementById('board');
+const statusEl = document.getElementById('status');
+const G = { grid:[], bombs:[], flames:[], powers:[], players:[], over:null, nid:1, t:0 };
+
+function isSpawn(x, y){
+  return [[1,1],[2,1],[1,2],[COLS-2,ROWS-2],[COLS-3,ROWS-2],[COLS-2,ROWS-3]].some(p => p[0] === x && p[1] === y);
+}
+function mkPlayer(x, y, bot){
+  return { x, y, ax:x, ay:y, mv:null, dir:bot ? 'back' : 'front', alive:true, bot, range:2, maxBombs:1, speed:6.6, cool:0, think:0, place:0, safe:null };
+}
+function newGame(){
+  G.grid = []; G.bombs = []; G.flames = []; G.powers = []; G.over = null; G.nid = 1;
+  for (let y = 0; y < ROWS; y++) {
+    const row = [];
+    for (let x = 0; x < COLS; x++) {
+      if (x === 0 || y === 0 || x === COLS - 1 || y === ROWS - 1) row.push('hard');
+      else if (x % 2 === 0 && y % 2 === 0) row.push('hard');
+      else if (isSpawn(x, y)) row.push('empty');
+      else row.push(Math.random() < .66 ? 'soft' : 'empty');
+    }
+    G.grid.push(row);
+  }
+  G.players = [mkPlayer(1, 1, false), mkPlayer(COLS - 2, ROWS - 2, true)];
+  nodes.clear();
+  drawStatic();
+  say();
+}
+function say(msg){
+  const me = G.players[0], bot = G.players[1];
+  statusEl.innerHTML = msg || (G.over
+    ? `<b>${G.over === 'win' ? 'Bot kena. Kamu menang.' : 'Kamu kena. Coba lagi.'}</b>`
+    : `Merah: <b>${me.alive ? 'hidup' : 'KO'}</b> &middot; bom ${count(me)} &middot; jangkauan ${me.range} &middot; Biru: <b>${bot.alive ? 'hidup' : 'KO'}</b>`);
+}
+function count(p){ return G.bombs.filter(b => b.owner === p).length; }
+function at(x, y){ return (G.bombs || []).find(b => b.x === x && b.y === y); }
+
+function tryMove(p, dx, dy){
+  if (!p.alive || p.mv || G.over) return;
+  p.dir = dx < 0 ? 'left' : dx > 0 ? 'right' : dy < 0 ? 'up' : 'down';
+  const nx = p.x + dx, ny = p.y + dy;
+  if (nx < 0 || ny < 0 || nx >= COLS || ny >= ROWS) return;
+  if (G.grid[ny][nx] !== 'empty') return;
+  if (at(nx, ny)) return;
+  p.mv = { fx:p.x, fy:p.y, tx:nx, ty:ny, t:0 };
+}
+function place(p){
+  if (!p.alive || G.over || p.cool > 0) return;
+  if (at(p.x, p.y)) return;
+  if (count(p) >= p.maxBombs) return;
+  G.bombs.push({ id:G.nid++, x:p.x, y:p.y, t:2.2, range:p.range, owner:p, lit:false });
+  p.cool = .38;
+}
+/* Murni: hanya membaca grid, tidak mengubah apa pun. Dipanggil tiap frame oleh
+   render() dan botThink(), jadi efek sampingnya harus hidup di explode().
+   Bata lunak menyerap api: petaknya dihancurkan tapi tidak ikut terbakar, jadi ia memotong
+   lengan api dan memperpendek jangkauan yang harus dihindari. */
+function blastCells(b){
+  const cells = [{ x:b.x, y:b.y, core:true }];
+  const softs = [], lit = [], powers = [];
+  for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+    for (let i = 1; i <= b.range; i++) {
+      const x = b.x + dx * i, y = b.y + dy * i;
+      if (x < 0 || y < 0 || x >= COLS || y >= ROWS) break;
+      const g = G.grid[y][x];
+      if (g === 'hard') break;
+      if (g === 'soft') { softs.push({ x, y }); break; }
+      cells.push({ x, y, end:i === b.range });
+      const other = at(x, y);
+      if (other) lit.push(other);
+      const pu = G.powers.find(u => u.x === x && u.y === y);
+      if (pu) powers.push(pu);
+    }
+  }
+  return { cells, softs, lit, powers };
+}
+function smash(x, y){
+  G.grid[y][x] = 'empty';
+  if (Math.random() < .22) {
+    const kinds = Object.keys(POWERS);
+    G.powers.push({ x, y, kind:kinds[Math.floor(Math.random() * kinds.length)] });
+  }
+}
+function explode(b){
+  const i = G.bombs.indexOf(b);
+  if (i < 0) return;
+  G.bombs.splice(i, 1);
+  const { cells, softs, lit, powers } = blastCells(b);
+  cells.forEach(c => G.flames.push({ id:G.nid++, x:c.x, y:c.y, life:.42, kind:c.core ? 'core' : c.end ? 'tip' : 'arm' }));
+  softs.forEach(s => smash(s.x, s.y));
+  powers.forEach(u => { const i = G.powers.indexOf(u); if (i >= 0) G.powers.splice(i, 1); });
+  lit.forEach(o => { o.lit = true; o.t = Math.min(o.t, .08); });
+  shake();
+}
+function shake(){
+  const w = document.getElementById('boardwrap');
+  w.classList.remove('shake'); void w.offsetWidth; w.classList.add('shake');
+  const f = document.getElementById('flash');
+  f.classList.remove('on'); void f.offsetWidth; f.classList.add('on');
+}
+
+function dangerCells(){
+  const s = new Set();
+  G.flames.forEach(f => s.add(f.x + ',' + f.y));
+  G.bombs.forEach(b => { blastCells(b).cells.forEach(c => s.add(c.x + ',' + c.y)); });
+  return s;
+}
+const DIRS = [[1,0],[-1,0],[0,1],[0,-1]];
+function walkable(x, y){
+  return x >= 0 && y >= 0 && x < COLS && y < ROWS && G.grid[y][x] === 'empty' && !at(x, y);
+}
+/* Semua tetangga bom ikut terbakar, jadi satu langkah tidak pernah cukup. Yang menyelamatkan
+   adalah jarak: cari petak di luar jangkauan yang bisa diinjak sebelum sumbu habis. */
+function escapeTarget(from, burn, maxSteps){
+  const seen = new Set([from.x + ',' + from.y]);
+  const q = [[from.x, from.y, 0]];
+  while (q.length) {
+    const [x, y, d] = q.shift();
+    if (d > 0 && !burn.has(x + ',' + y)) return { x, y, d };
+    if (d >= maxSteps) continue;
+    for (const [dx, dy] of DIRS) {
+      const nx = x + dx, ny = y + dy, k = nx + ',' + ny;
+      if (!walkable(nx, ny) || seen.has(k)) continue;
+      seen.add(k);
+      q.push([nx, ny, d + 1]);
+    }
+  }
+  return null;
+}
+function bombPlan(x, y, range){
+  if (!walkable(x, y)) return null;
+  const { cells } = blastCells({ x, y, range });
+  const burn = new Set(cells.map(c => c.x + ',' + c.y));
+  const target = escapeTarget({ x, y }, burn, 9);
+  return target ? { x, y, target } : null;
+}
+/* Langkah pertama menuju target lewat jalur BFS nyata. Manhattan serakah tersangkut di
+   pilar kisi dan membuat bot mati di depan api. */
+function stepToward(p, target){
+  const key = (x, y) => x + ',' + y;
+  const start = key(p.x, p.y), goal = key(target.x, target.y);
+  if (start === goal) return null;
+  const prev = new Map([[start, null]]);
+  const q = [[p.x, p.y]];
+  while (q.length) {
+    const [x, y] = q.shift();
+    for (const [dx, dy] of DIRS) {
+      const nx = x + dx, ny = y + dy, k = key(nx, ny);
+      if (!walkable(nx, ny) || prev.has(k)) continue;
+      prev.set(k, [x, y]);
+      if (k === goal) {
+        let cur = [nx, ny];
+        let par = prev.get(key(cur[0], cur[1]));
+        while (par && key(par[0], par[1]) !== start) {
+          cur = par;
+          par = prev.get(key(cur[0], cur[1]));
+        }
+        return [cur[0] - p.x, cur[1] - p.y];
+      }
+      q.push([nx, ny]);
+    }
+  }
+  return null;
+}
+function botThink(p, dt){
+  p.think -= dt;
+  if (p.think > 0) return;
+  p.think = .3;
+  p.place -= 18;
+  const me = G.players[0];
+  const dist = o => Math.abs(o[2] - me.x) + Math.abs(o[3] - me.y);
+  const d = dangerCells();
+  const any = DIRS.map(([dx, dy]) => [dx, dy, p.x + dx, p.y + dy]).filter(o => walkable(o[2], o[3]));
+  const open = any.filter(o => !d.has(o[2] + ',' + o[3]));
+  if (!any.length) return;
+
+  /* Kabur ke target yang dihitung saat menanam. Boleh melintasi petak yang nanti terbakar,
+     karena apinya baru muncul pada detik ledakan. Target dipegang sampai bomnya meledak:
+     begitu dilepas di petak aman, bot ini malah balik lagi ke dalam api. */
+  if (p.safe) {
+    if (!count(p)) p.safe = null;
+    else {
+      if (p.x === p.safe.x && p.y === p.safe.y) return;
+      const step = stepToward(p, p.safe) || open[0] || any[0];
+      tryMove(p, step[0], step[1]);
+      return;
+    }
+  }
+  if (d.has(p.x + ',' + p.y)) {
+    const m = (open.length ? open : any)[0];
+    tryMove(p, m[0], m[1]);
+    return;
+  }
+  const armed = count(p) < p.maxBombs && p.place <= 0;
+  if (armed) {
+    const here = bombPlan(p.x, p.y, p.range);
+    if (here && Math.random() < .55) {
+      place(p);
+      if (at(p.x, p.y)) { p.safe = here.target; p.place = 60 + Math.random() * 90; }
+      return;
+    }
+    /* Petak sekarang tidak layak ditanami: jalan dulu ke tetangga yang punya rencana kabur. */
+    const spots = open.map(o => bombPlan(o[2], o[3], p.range)).filter(Boolean);
+    if (spots.length) {
+      spots.sort((a, b) => (Math.abs(a.x - me.x) + Math.abs(a.y - me.y)) - (Math.abs(b.x - me.x) + Math.abs(b.y - me.y)));
+      const mv = open.find(o => o[2] === spots[0].x && o[3] === spots[0].y);
+      if (mv) { tryMove(p, mv[0], mv[1]); return; }
+    }
+  }
+  if (!open.length) return;
+  open.sort((a, b) => dist(a) - dist(b));
+  const pick = Math.random() < .62 ? open[0] : open[Math.floor(Math.random() * open.length)];
+  tryMove(p, pick[0], pick[1]);
+}
+
+function tick(dt){
+  if (G.over) return;
+  G.t += dt;
+  for (const p of G.players) {
+    p.cool = Math.max(0, p.cool - dt);
+    if (p.mv) {
+      p.mv.t += dt * p.speed;
+      if (p.mv.t >= 1) { p.x = p.mv.tx; p.y = p.mv.ty; p.mv = null; }
+    }
+    p.ax = p.mv ? p.mv.fx + (p.mv.tx - p.mv.fx) * p.mv.t : p.x;
+    p.ay = p.mv ? p.mv.fy + (p.mv.ty - p.mv.fy) * p.mv.t : p.y;
+    if (p.bot) botThink(p, dt);
+    const pu = G.powers.find(u => u.x === p.x && u.y === p.y);
+    if (pu) {
+      if (pu.kind === 'flame') p.range++;
+      if (pu.kind === 'count') p.maxBombs++;
+      if (pu.kind === 'speed') p.speed += 1.1;
+      G.powers.splice(G.powers.indexOf(pu), 1);
+      say();
+    }
+  }
+  for (const b of G.bombs.slice()) { b.t -= dt; if (b.t <= 0) explode(b); }
+  for (const f of G.flames.slice()) {
+    f.life -= dt;
+    if (f.life <= 0) {
+      const i = G.flames.indexOf(f);
+      if (i >= 0) G.flames.splice(i, 1);
+      continue;
+    }
+    for (const p of G.players) if (p.alive && p.x === f.x && p.y === f.y) { p.alive = false; checkEnd(); }
+  }
+}
+function checkEnd(){
+  const me = G.players[0], bot = G.players[1];
+  if (!me.alive) G.over = 'lose';
+  else if (!bot.alive) G.over = 'win';
+  /* tick() berhenti saat over, jadi sisa api harus dibersihkan di sini atau membeku di layar. */
+  if (G.over) { G.flames.length = 0; G.bombs.length = 0; }
+  say();
+}
+
+/* render dengan node yang dipakai ulang supaya animasi CSS tidak diulang dari nol */
+const nodes = new Map();
+function drawStatic(){
+  let s = `<defs>
+    <radialGradient id="gcore"><stop offset="0%" stop-color="#fffdf5"/><stop offset="55%" stop-color="#ffcf5c"/><stop offset="100%" stop-color="#ff5d5d"/></radialGradient>
+  </defs><rect width="440" height="360" fill="#dff0cf"/>`;
+  for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
+    const alt = (x + y) % 2 ? 'rgba(0,0,0,.035)' : 'rgba(255,255,255,.05)';
+    s += `<rect x="${x * CELL}" y="${y * CELL}" width="${CELL}" height="${CELL}" fill="${alt}"/>`;
+    if (G.grid[y][x] === 'hard') {
+      s += `<g transform="translate(${x * CELL + 3} ${y * CELL + 2})"><rect width="34" height="34" rx="7" fill="#8a8270" stroke="${L}" stroke-width="2.6"/><rect width="34" height="9" rx="4" fill="#fff" opacity=".16"/></g>`;
+    }
+  }
+  s += `<g id="dyn"></g>`;
+  board.innerHTML = s;
+}
+function svgNode(markup){
+  const tmp = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+  tmp.innerHTML = markup;
+  return tmp.firstChild;
+}
+function inline(inner){
+  return inner.replace(/<svg class="ch" viewBox="([^"]+)"[^>]*>/, (m, vb) => `<svg viewBox="${vb}" width="${CELL}" height="${CELL}">`);
+}
+function render(){
+  const dyn = board.querySelector('#dyn');
+  const want = new Map();
+  for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
+    if (G.grid[y][x] === 'soft') want.set('s' + x + '_' + y, { k:'soft', x, y, m:softSVG() });
+  }
+  G.powers.forEach(u => want.set('u' + u.x + '_' + u.y, { k:'pow', x:u.x, y:u.y, m:powerSVG(u.kind) }));
+  G.bombs.forEach(b => want.set('b' + b.id, { k:'bomb', x:b.x, y:b.y, m:bombSVG(0, b.t < 1) }));
+  G.flames.forEach(f => want.set('f' + f.id, { k:'flame', x:f.x, y:f.y, m:flameMark(f) }));
+  const dz = dangerCells();
+  G.players.forEach((p, i) => {
+    const pose = !p.alive ? 'ko' : p.mv ? 'walk' : p.cool > 0 ? 'place' : (dz.has(p.x + ',' + p.y) ? 'panic' : 'idle');
+    want.set('p' + i, { k:'player', x:p.ax, y:p.ay, sig:'player:' + currentChar + ':' + pose + ':' + p.dir, m:sprite(currentChar, pose, p.dir) });
+  });
+  for (const [key, spec] of want) {
+    let n = nodes.get(key);
+    const sig = spec.sig || spec.k;
+    if (!n) {
+      n = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      n.innerHTML = inline(spec.m);
+      n.dataset.sig = sig;
+      dyn.appendChild(n);
+      nodes.set(key, n);
+    } else if (n.dataset.sig !== sig) {
+      n.innerHTML = inline(spec.m);
+      n.dataset.sig = sig;
+    }
+    const px = spec.x * CELL, py = spec.y * CELL;
+    if (n.dataset.px !== String(px) || n.dataset.py !== String(py)) {
+      n.setAttribute('transform', `translate(${px} ${py})`);
+      n.dataset.px = px; n.dataset.py = py;
+    }
+  }
+  for (const [key, n] of nodes) if (!want.has(key)) { n.remove(); nodes.delete(key); }
+}
+function flameMark(f){
+  const cx = CELL / 2, cy = CELL / 2;
+  if (f.kind === 'core') return `<svg viewBox="0 0 40 40" width="40" height="40">
+    <circle cx="20" cy="20" r="19" fill="url(#gcore)" stroke="${L}" stroke-width="2.6"/>
+    <circle cx="20" cy="20" r="9" fill="#fffdf5"/></svg>`;
+  if (f.kind === 'arm') return `<svg viewBox="0 0 40 40" width="40" height="40">
+    <rect x="0" y="4" width="40" height="32" rx="16" fill="#ff8a3d" stroke="${L}" stroke-width="2.6"/>
+    <rect x="4" y="12" width="32" height="16" rx="8" fill="#ffcf5c"/></svg>`;
+  return `<svg viewBox="0 0 40 40" width="40" height="40">
+    <circle cx="20" cy="20" r="18" fill="#ff8a3d" stroke="${L}" stroke-width="2.6"/>
+    <circle cx="20" cy="20" r="9" fill="#fff6e5"/></svg>`;
+}
+
+let last = performance.now();
+function loop(now){
+  const dt = Math.min((now - last) / 1000, .05);
+  last = now;
+  tick(dt);
+  render();
+  requestAnimationFrame(loop);
+}
+
+const KEYMAP = { ArrowUp:[0,-1], KeyW:[0,-1], ArrowDown:[0,1], KeyS:[0,1], ArrowLeft:[-1,0], KeyA:[-1,0], ArrowRight:[1,0], KeyD:[1,0] };
+addEventListener('keydown', e => {
+  if (KEYMAP[e.code]) { e.preventDefault(); tryMove(G.players[0], KEYMAP[e.code][0], KEYMAP[e.code][1]); }
+  if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); place(G.players[0]); }
+});
+document.querySelectorAll('.pad [data-dir]').forEach(b => {
+  const d = { up:[0,-1], down:[0,1], left:[-1,0], right:[1,0] }[b.dataset.dir];
+  b.addEventListener('pointerdown', e => { e.preventDefault(); tryMove(G.players[0], d[0], d[1]); });
+});
+document.querySelector('.pad [data-bom]').addEventListener('pointerdown', e => { e.preventDefault(); place(G.players[0]); });
+document.getElementById('again').addEventListener('click', newGame);
+
+function renderPick(){
+  document.getElementById('pick').innerHTML = Object.keys(CHARS).map(id =>
+    `<button type="button" data-ch="${id}" aria-pressed="${id === currentChar}">${CHARS[id].label}</button>`).join('')
+    + `<span style="font-size:12.5px;color:var(--ink-faint);align-self:center">klik kartu kandidat di atas untuk ganti sprite demo dan efek</span>`;
+}
+document.getElementById('pick').addEventListener('click', e => {
+  const b = e.target.closest('[data-ch]');
+  if (!b) return;
+  currentChar = b.dataset.ch;
+  FX.forEach(f => playFx(f.id));
+  renderPick();
+});
+
+renderPick();
+newGame();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
