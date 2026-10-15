@@ -84,6 +84,11 @@ mengecilkannya lewat canvas di browser yang sama menjadi WebP 256 px: 4,8 KB, 2,
 7,8 KB, total 15 KB. Natnya hilang karena dipola pada dua petak dalam user space, jadi
 teksturnya rata dengan grid dan tidak memotong satu batu secara acak di tiap petak.
 
+Di artefak build hanya dua file WebP yang muncul sebagai aset terpisah. Yang ketiga tidak
+hilang: 2.476 byte berada di bawah `assetsInlineLimit` 4096 milik Vite, sehingga ikut
+ter-inline ke dalam chunk sebagai data URI. `img-src 'self' data:` di CSP sudah
+mengizinkannya, jadi tidak ada yang perlu diubah di `vercel.json`.
+
 ### Bagian atribusi README ikut diubah
 
 README sebelumnya mengklaim "seluruh aset SVG di repositori ini ditulis secara independen".
