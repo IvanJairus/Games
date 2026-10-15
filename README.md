@@ -12,7 +12,7 @@ Koleksi mini game taktis dan strategi web modern di portal `ivanjairus.xyz/games
 1. **WallGo: Race to the Golden Core**
    - Game strategi penempatan dinding taktis (2-6 pemain).
    - Validasi jalur anti-jebakan menggunakan pathfinder BFS murni.
-   - Papan SVG interaktif dengan kontrol *touch-drag* (geser dinding) dan penempatan aman *two-step preview*.
+   - Papan SVG interaktif dengan kontrol *touch-drag* (geser pratinjau dinding), area sentuh 44 px, dan penempatan aman *two-step preview* (tap pertama pratinjau, tap kedua pasang).
    - Mode Hotseat Lokal, Solo lawan bot (3 tingkat: Santai, Sedang, Sempurna), dan Online Multiplayer (Supabase Realtime).
 
 2. **Tic Tac Toe: No-Draw Edition**

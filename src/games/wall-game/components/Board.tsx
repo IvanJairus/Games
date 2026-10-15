@@ -39,9 +39,16 @@ export const Board: React.FC<BoardProps> = ({
   const dragMovedRef = useRef(false);
   const dragStartClientPos = useRef<{ x: number; y: number } | null>(null);
 
+  // A tap raises pointerdown and click in one gesture, so the board cannot tell "second tap to
+  // confirm" from "first tap to stage" without a gesture id.
+  const gestureRef = useRef(0);
+  const stagedByGestureRef = useRef(-1);
+
   const cellSize = 50;
   const grooveThickness = 10;
   const padding = 20;
+  const touchTarget = 44;
+  const touchPad = (touchTarget - grooveThickness) / 2;
 
   const totalSize = padding * 2 + gridSize * cellSize + (gridSize - 1) * grooveThickness;
 
@@ -115,6 +122,7 @@ export const Board: React.FC<BoardProps> = ({
     const slot = getSlotFromPointer(e.clientX, e.clientY);
     if (!slot) return;
 
+    const gesture = ++gestureRef.current;
     isDraggingRef.current = true;
     dragMovedRef.current = false;
     dragStartClientPos.current = { x: e.clientX, y: e.clientY };
@@ -125,10 +133,12 @@ export const Board: React.FC<BoardProps> = ({
       // Ignore in environments without pointer capture
     }
 
-    setStagedWall((prev) => {
-      const curOri = prev?.orientation || wallOrientation;
-      return { orientation: curOri, x: slot.x, y: slot.y };
-    });
+    // Leaving a preview that already sits on this slot untouched is what lets the following click
+    // recognise itself as the confirming tap rather than the one that staged the preview.
+    if (stagedWall && stagedWall.x === slot.x && stagedWall.y === slot.y) return;
+
+    stagedByGestureRef.current = gesture;
+    setStagedWall({ orientation: stagedWall?.orientation || wallOrientation, x: slot.x, y: slot.y });
   };
 
   const handlePointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
@@ -144,13 +154,14 @@ export const Board: React.FC<BoardProps> = ({
     const slot = getSlotFromPointer(e.clientX, e.clientY);
     if (!slot) return;
 
-    setStagedWall((prev) => {
-      const curOri = prev?.orientation || wallOrientation;
-      if (prev && prev.x === slot.x && prev.y === slot.y && prev.orientation === curOri) {
-        return prev;
-      }
-      return { orientation: curOri, x: slot.x, y: slot.y };
-    });
+    const orientation = stagedWall?.orientation || wallOrientation;
+    if (stagedWall && stagedWall.x === slot.x && stagedWall.y === slot.y && stagedWall.orientation === orientation) {
+      return;
+    }
+
+    // Gliding the preview to a new slot is still the same gesture, so it must not arm a confirm.
+    stagedByGestureRef.current = gestureRef.current;
+    setStagedWall({ orientation, x: slot.x, y: slot.y });
   };
 
   const handlePointerUp = (e: React.PointerEvent<SVGSVGElement>) => {
@@ -179,7 +190,7 @@ export const Board: React.FC<BoardProps> = ({
       stagedWall.y === wy &&
       stagedWall.orientation === orientation
     ) {
-      if (isStagedValid) {
+      if (stagedByGestureRef.current !== gestureRef.current && isStagedValid) {
         onPlaceWall(stagedWall);
         setStagedWall(null);
         setHoveredWall(null);
@@ -187,8 +198,8 @@ export const Board: React.FC<BoardProps> = ({
       return;
     }
 
-    const candidate: Wall = { orientation, x: wx, y: wy };
-    setStagedWall(candidate);
+    stagedByGestureRef.current = gestureRef.current;
+    setStagedWall({ orientation, x: wx, y: wy });
     onOrientationChange?.(orientation);
   };
 
@@ -199,6 +210,14 @@ export const Board: React.FC<BoardProps> = ({
       setStagedWall(null);
       setHoveredWall(null);
     }
+  };
+
+  // Tapping the preview happens to raise a pointerdown on the board first, so the gesture guard
+  // belongs here and not in handleConfirmStaged: the dock button must always confirm.
+  const handlePreviewClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (stagedByGestureRef.current === gestureRef.current) return;
+    handleConfirmStaged();
   };
 
   const handleRotateStaged = () => {
@@ -351,35 +370,35 @@ export const Board: React.FC<BoardProps> = ({
 
                 return (
                   <g key={`groove-slot-${wx}-${wy}`}>
-                    {/* Horizontal Wing (Left) with generous touch target */}
+                    {/* Horizontal Wing (Left) with a 44px touch band */}
                     <rect
                       x={getCellX(wx)}
-                      y={iy - 6}
+                      y={iy - touchPad}
                       width={cellSize}
-                      height={grooveThickness + 12}
+                      height={touchTarget}
                       fill="transparent"
                       style={{ cursor: 'pointer' }}
                       onMouseEnter={() => handleHoverSlot('H', wx, wy)}
                       onClick={(e) => handleSlotClick('H', wx, wy, e)}
                     />
 
-                    {/* Horizontal Wing (Right) with generous touch target */}
+                    {/* Horizontal Wing (Right) with a 44px touch band */}
                     <rect
                       x={ix + grooveThickness}
-                      y={iy - 6}
+                      y={iy - touchPad}
                       width={cellSize}
-                      height={grooveThickness + 12}
+                      height={touchTarget}
                       fill="transparent"
                       style={{ cursor: 'pointer' }}
                       onMouseEnter={() => handleHoverSlot('H', wx, wy)}
                       onClick={(e) => handleSlotClick('H', wx, wy, e)}
                     />
 
-                    {/* Vertical Wing (Top) with generous touch target */}
+                    {/* Vertical Wing (Top) with a 44px touch band */}
                     <rect
-                      x={ix - 6}
+                      x={ix - touchPad}
                       y={getCellY(wy)}
-                      width={grooveThickness + 12}
+                      width={touchTarget}
                       height={cellSize}
                       fill="transparent"
                       style={{ cursor: 'pointer' }}
@@ -387,11 +406,11 @@ export const Board: React.FC<BoardProps> = ({
                       onClick={(e) => handleSlotClick('V', wx, wy, e)}
                     />
 
-                    {/* Vertical Wing (Bottom) with generous touch target */}
+                    {/* Vertical Wing (Bottom) with a 44px touch band */}
                     <rect
-                      x={ix - 6}
+                      x={ix - touchPad}
                       y={iy + grooveThickness}
-                      width={grooveThickness + 12}
+                      width={touchTarget}
                       height={cellSize}
                       fill="transparent"
                       style={{ cursor: 'pointer' }}
@@ -399,19 +418,22 @@ export const Board: React.FC<BoardProps> = ({
                       onClick={(e) => handleSlotClick('V', wx, wy, e)}
                     />
 
-                    {/* Crossroads Center Box */}
+                    {/* Crossroads box: covers both bands near the junction and picks the axis the
+                         finger is furthest along, so a tap never depends on DOM stacking order */}
                     <rect
-                      x={ix - 6}
-                      y={iy - 6}
-                      width={grooveThickness + 12}
-                      height={grooveThickness + 12}
+                      x={ix - touchPad}
+                      y={iy - touchPad}
+                      width={touchTarget}
+                      height={touchTarget}
                       fill="transparent"
                       style={{ cursor: 'pointer' }}
                       data-testid={`groove-cross-${wx}-${wy}`}
                       onMouseMove={(e) => handleCrossMouseMove(wx, wy, e)}
                       onClick={(e) => {
-                        const curOri = stagedWall?.orientation || hoveredWall?.orientation || wallOrientation;
-                        handleSlotClick(curOri, wx, wy, e);
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const dx = Math.abs(e.clientX - (rect.left + rect.width / 2));
+                        const dy = Math.abs(e.clientY - (rect.top + rect.height / 2));
+                        handleSlotClick(dx >= dy ? 'H' : 'V', wx, wy, e);
                       }}
                     />
                   </g>
@@ -451,10 +473,7 @@ export const Board: React.FC<BoardProps> = ({
               <g
                 data-testid="staged-wall-preview"
                 style={{ cursor: isStagedValid ? 'grab' : 'not-allowed' }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleConfirmStaged();
-                }}
+                onClick={handlePreviewClick}
               >
                 {(() => {
                   const isH = stagedWall.orientation === 'H';
@@ -789,7 +808,9 @@ export const Board: React.FC<BoardProps> = ({
                 letterSpacing: '.01em',
               }}
             >
-              {activePlayer.wallsRemaining > 0 ? 'Tahan & geser atau tap celah' : 'Dinding habis'}
+              {activePlayer.wallsRemaining > 0
+                ? 'Tap celah untuk pratinjau, tap lagi atau tahan-geser untuk mengatur'
+                : 'Dinding habis'}
             </span>
           </div>
         )}
