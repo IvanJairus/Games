@@ -93,8 +93,21 @@ async function run() {
     });
     const page = await ctx.newPage();
     const errors = [];
-    page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
+    /* Vercel injects its analytics bundle at /_vercel/*, which only exists when Vercel
+       is the one serving. Against a local preview it 404s for every page, so counting it
+       would fail the build for something unrelated to this game. */
+    const noise = (text) => /_vercel\/(insights|speed-insights)/.test(text ?? '');
+    /* A failed subresource reaches the console as "Failed to load resource" with no URL
+       in the text, so the location and the response event carry the only usable signal. */
+    page.on('console', (m) => {
+      if (m.type() !== 'error') return;
+      if (noise(m.text()) || noise(m.location()?.url)) return;
+      errors.push(`${m.text()} @ ${m.location()?.url ?? '?'}`);
+    });
     page.on('pageerror', (e) => errors.push(String(e)));
+    page.on('response', (r) => {
+      if (r.status() >= 400 && !noise(r.url())) errors.push(`HTTP ${r.status()} ${r.url()}`);
+    });
 
     await page.goto(`${BASE}/bomberman/local${vp.floor ? `?floor=${vp.floor}` : ''}`, { waitUntil: 'load' });
     await page.waitForSelector('[data-testid="bomberman-start"]', { timeout: 15000 });
@@ -132,6 +145,22 @@ async function run() {
         }),
     );
     check(`${vp.name}: frame rate stays playable`, fps >= 40, `${fps} fps`);
+
+    // The floor texture is a real asset request; a wrong path returns index.html with
+    // a 200, so the decoded image, not the status, is the thing to check.
+    const floorOk = await page.evaluate(() => {
+      const img = document.querySelector('.bm-board image');
+      const href = img?.getAttribute('href');
+      if (!href) return Promise.resolve('no texture');
+      // SVGImageElement has no decode(); load the same URL through a real Image instead.
+      const probe = new Image();
+      return new Promise((done) => {
+        probe.onload = () => done(`${probe.naturalWidth}x${probe.naturalHeight}`);
+        probe.onerror = () => done('broken');
+        probe.src = href;
+      });
+    });
+    check(`${vp.name}: floor texture decodes`, floorOk !== 'broken' && floorOk !== 'no texture', String(floorOk));
 
     await page.screenshot({ path: `${OUT}/${vp.name}-board.png` });
     const topBefore = before.boardTop;
