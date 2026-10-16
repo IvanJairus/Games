@@ -8,6 +8,45 @@ terpisah saat kamu menerbitkan rilis.
 Entri dimulai dari 14 Oktober 2026. Perubahan sebelum tanggal itu ada pada riwayat git dan daftar
 pull request, karena tidak dicatat saat terjadi.
 
+## 2026-10-17 - Database: room basi dibersihkan, riwayat tidak disentuh
+
+Tidak ada satu pun mekanisme pembersihan sebelumnya: tanpa TTL, tanpa penjadwal, tanpa fungsi delete.
+Baris menumpuk selamanya di free tier. Sekarang ada `public.cleanup_stale_rooms()`, dan ia sengaja
+tidak bisa dipanggil pengunjung.
+
+### Ditambah
+
+- Migrasi `006_cleanup_stale_rooms.sql`: fungsi `security definer` dengan `search_path` terkunci.
+  Menghapus room `waiting` yang `updated_at`-nya lebih tua dari 24 jam dan tidak punya baris di
+  `match_results`, lalu menghapus `match_moves` dari laga `completed` atau `abandoned` yang tidak
+  berubah selama 30 hari. Mengembalikan jumlah yang dihapus, dihitung sebelum tiap penghapusan.
+- `revoke execute ... from public, anon, authenticated`: kemampuan hanya untuk pemilik tabel dan
+  penjadwal.
+- Penjadwalan pg_cron tiap hari 03:17, di dalam blok terlindung supaya Postgres tanpa pg_cron tetap
+  lolos. Rollback `006` melepas jadwal lalu menjatuhkan fungsinya.
+- Enam assertion baru (blok 15a sampai 15h dan 16) di `supabase/tests/protocol.sql`.
+
+### Diubah
+
+- `scripts/verify-sql.mjs` ternyata hanya menerapkan 001 dan 002, jadi 003, 004 dan 005 tidak pernah
+  ikut teruji. Sekarang keempatnya plus 006 diterapkan, dan jalur rollback menguji 006 juga.
+- Peran `authenticated` ikut dibuat di container, karena 005 memberi grant ke peran itu dan tanpa
+  peran tersebut migrasi gagal di CI.
+
+### Terukur
+
+| Uji | Hasil |
+| --- | --- |
+| Blok assertion `do $$` sebelum / sesudah | 16 / 18 |
+| `npm run db:verify` pada tree akhir | hijau, 18 blok lulus, rollback 002 dan 006 terbukti |
+| Bukti merah: ambang 24 jam diubah sementara jadi `interval '0 seconds'` | `ASSERT 15b FAIL: room waiting 1 jam ikut terhapus, sisa 0 baris` |
+| pg_cron di image CI `postgres:16-alpine` | `count = 0`, jadi cabang `cron.schedule` tidak pernah jalan di CI |
+
+Bahaya yang dijaga: `match_results.match_id` memakai `on delete cascade`, jadi menghapus `matches`
+yang punya riwayat ikut menghapus riwayat dan angka laga selesai di Hub. Karena itu penghapusan room
+mensyaratkan tidak ada baris riwayat, dan assertion 15f membandingkan jumlah riwayat sebelum dan
+sesudah pemanggilan.
+
 ## 2026-10-17 - Hub: chunk lobby mulai diunduh saat kartunya disentuh
 
 Tiap game sudah di-lazy, tapi chunk baru diunduh setelah pengguna menekan kartu. Perubahan ini
