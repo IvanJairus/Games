@@ -8,6 +8,69 @@ terpisah saat kamu menerbitkan rilis.
 Entri dimulai dari 14 Oktober 2026. Perubahan sebelum tanggal itu ada pada riwayat git dan daftar
 pull request, karena tidak dicatat saat terjadi.
 
+## 2026-10-17 - Bomberman online: gerak pemain lain diukur, hasilnya lompat maju bukan mundur
+
+Dugaan lama adalah klien Bomberman menampilkan pemain lain dengan tersendat, karena `applySnapshot`
+di `src/games/bomberman/engine/sim.ts:457` melakukan `target.players = next.players` sehingga objek
+pemain klien diganti utuh tiap snapshot dan `step.t` kembali ke nilai host. Sebelum ada kartu
+perbaikan, angkanya diambil dulu. Kartu ini sengaja tidak mengubah perilaku apa pun.
+
+### Diubah
+
+- `smooth()` dipindah apa adanya dari `pages/BombermanMatch.tsx` ke `engine/smooth.ts` supaya bisa
+  diukur dari test unit. Badannya dicek byte-identik terhadap versi lama (348 karakter, komentar
+  dokumentasinya ikut). Halaman tinggal mengimpor `smooth` dari engine; `BombermanState` dilepas dari
+  daftar impor tipe halaman karena satu-satunya pemakai sudah pindah.
+- `tests/unit/bomberman-smooth.test.ts` mengalir-relay dua `BombermanSim`: host jalan per 16 ms,
+  dunia di-broadcast tiap `TICK_MS` 66 ms, kliennya hanya `applySnapshot` lalu `smooth`, persis dua
+  cabang loop rAF di halaman. Host berbelok di batas langkah berikutnya kalau jalannya terhalang,
+  karena jalan lurus di board ber-seed mati di balik blok pertama setelah sekitar dua sel.
+
+### Terukur
+
+n = 8 baris (empat arah jalan x dua durasi), 2.500 frame direkam, 1.816 di antaranya bergerak,
+500 snapshot diterapkan. `speed` 6,6 sel/dtk, jadi satu langkah frame normal = 0,1056 sel dan satu
+sel penuh = 9,47 langkah frame (151,5 ms). Semua angka dicetak `console.log` di dalam test supaya
+perubahan nanti bisa dibandingkan dengan angka yang sama.
+
+| Yang diukur | Hasil |
+| --- | --- |
+| Frame di mana posisi animasi bergerak mundur | 0 dari 2.500 |
+| Mundur terbesar tepat saat snapshot mendarat | 0 langkah frame |
+| Frame bergerak yang lompatnya di atas 1,2 langkah frame | 183 dari 1.816 (10,1%) |
+| Lompatan itu terjadi di frame yang menerapkan snapshot | 183 dari 183, nol di luar itu |
+| Lompatan di atas 2 langkah frame | 156 |
+| Lompatan di atas 4 langkah frame | 93 |
+| Lompatan maju terbesar | 5,000 langkah frame = 0,528 sel |
+| Snapshot yang memicu lompatan di atas 1,2 langkah | 183 dari 500 (36,6%) |
+
+Kesimpulan satu kalimat: gerak pemain lain **tidak** pernah mundur, tapi melompat maju sampai lima
+kali langkah satu frame pada 36,6% snapshot, jadi ada kartu perbaikan sungguhan dan bentuknya lompat
+maju, bukan mundurnya posisi.
+
+### Batas
+
+- Harness ini menjatuhkan snapshot tepat di batas frame 16 ms. Di halaman, `applySnapshot` dipanggil
+  dari callback realtime sehingga bisa mendarat di tengah frame. Mekanisme yang diukur sama, tapi
+  distribusinya bisa berbeda di browser nyata.
+- Satu seed, satu kecepatan dasar 6,6, tanpa bom, api, powerup, atau tabrakan antar pemain.
+- Tidak mengukur RTT, frame drop, atau perangkat nyata. Test ini tidak membuktikan mata manusia
+  melihat lompatan 0,528 sel sebagai patah; itu keputusan kartu perbaikan.
+- Assertion yang ditulis hanya menggambarkan angka di atas, termasuk dua baris yang memang sengaja
+  harus dibalik oleh kartu perbaikan nanti.
+
+### Gerbang lokal
+
+`npx tsc -b` lulus. `test:unit` 244/244 lulus (15 file, satu di antaranya baru). `test:ui` 109/109
+lulus. `release:check` 5/5 tahap lulus. `guard:check` bersih, tiga cek lolos dengan `engine/smooth.ts`
+yang baru.
+
+Setelah merge dengan `main`, `release:check` pertama melaporkan `Unit Tests FAILED (31.85s)` dengan
+stack dari runner Vitest sendiri (`runWithTimeout`), bukan dari assertion repo ini. Dua kali jalan
+berikutnya hijau: `test:unit` 249/249 langsung dan `release:check` 5/5 dengan unit 33,74 detik.
+Angka test saya sendiri 40 ms, jadi yang gagal itu bukan test ini; penyebabnya belum diketahui dan
+mesin sedang dipakai banyak proses sekaligus. CI yang jadi penentu.
+
 ## 2026-10-17 - Hub: web manifest untuk mode standalone dari Layar Utama
 
 Situs yang dibuka dari tab Safari selalu membawa bilah browser, dan tinggi bilah itulah yang
