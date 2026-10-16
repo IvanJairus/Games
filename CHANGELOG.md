@@ -41,6 +41,71 @@ perintah yang sudah ada di CI.
 
 Cek lama (host pratinjau vendor) dipertahankan apa adanya, polanya tidak digabung dengan dua cek baru.
 
+## 2026-10-17 - Slap Arena: three.js jadi vendor chunk sendiri
+
+`SlapArenaMatch-*.js` adalah lazy chunk terbesar di repo ini, dan sebagian besar isinya bukan kode
+game: tiga.js ikut dibundel ke sana lewat `Arena3D.tsx`, `components/three/world.ts`, dan
+`components/three/brawler.ts`. Akibatnya deploy yang cuma mengubah satu string di halaman slap arena
+membuat pemain mengunduh ulang 588 kB yang nyaris tidak berubah.
+
+### Diubah
+
+- `vite.config.ts`: `build.rollupOptions.output.manualChunks = { three: ['three'] }`. Tidak ada file
+  sumber yang ikut berubah. `base`, `outDir`, `emptyOutDir`, `resolve.alias` dan `plugins` dibiarkan
+  persis seperti sebelumnya.
+
+### Terukur
+
+Satu build per kolom. Angkanya dari `wc -c` dan `gzip -c <file> | wc -c` pada artefak
+`npx vite build --outDir /tmp/t3-* --emptyOutDir` di commit `81cbe9e`, bukan dari browser.
+
+| Chunk | Sebelum | Sesudah |
+| --- | --- | --- |
+| `index-*.js` (entry) | 358.152 raw / 112.440 gzip | 358.182 / 112.467 |
+| `SlapArenaMatch-*.js` | 588.139 / 152.962 | 56.786 / 20.575 |
+| `three-*.js` | belum ada | 530.983 / 132.360 |
+
+Biaya kunjungan pertama ke slap arena hampir tidak berubah: 946.291 raw / 265.402 gzip sebelum,
+945.951 raw / 265.402 gzip sesudah. Yang berubah adalah kunjungan setelah deploy kode.
+
+Vendor hash-nya terbukti stabil. Ujiannya: ubah satu string `'MAX'` menjadi `'MAXTEMP'` di
+`SlapArenaMatch.tsx`, build, lalu kembalikan filenya dengan `git checkout --`.
+
+| Build | Chunk three | Chunk SlapArenaMatch |
+| --- | --- | --- |
+| tanpa perubahan | `three-DITxZxkJ.js` | `SlapArenaMatch-Dyp7HJVq.js` |
+| build ulang, kode sama | `three-DITxZxkJ.js` | `SlapArenaMatch-Dyp7HJVq.js` |
+| satu string game diubah | `three-DITxZxkJ.js`, byte-identik (`cmp` lulus) | `SlapArenaMatch-Bf8CiXMu.js` |
+
+Untuk pemain yang sudah pernah membuka slap arena, deploy yang hanya menyentuh kode game turun dari
+sekitar 265 kB gzip (entry plus chunk 152.962 gzip yang berisi tiga) menjadi sekitar 133 kB gzip,
+karena 132.360 gzip three.js diambil dari cache `immutable` milik `vercel.json`.
+
+### Batas
+
+- Cascade hash tidak hilang oleh split ini. Mengubah satu string di slap arena mengganti **30 nama
+  file JS**, sama banyaknya pada konfigurasi sebelum maupun sesudah. Pada build sebelumnya ada 8 nama
+  yang tahan: `index-*.css`, dua chunk `ai-*.js`, `index-CoQTFVA9.js`, `index-DAe9IAmn.js`, dan aset
+  webp/woff2. Build ini menambah tepat satu nama ke daftar tahan itu, yaitu `three-*.js`; 30 lainnya
+  tetap ikut bergeser. Alasannya: setiap chunk yang mengimpor entry membawa nama file entry di kode hasil
+  render, jadi hash-nya ikut. three lolos karena dia chunk daun yang tidak mengimpor apa pun
+  dari kode game.
+- Enam puluh nama muncul kalau diff dihitung dua arah (nama lama dan nama baru), tapi hanya 30 file
+  yang benar-benar diganti; angka 30 itulah yang saya pakai.
+- Masuk ke slap arena sekarang membuat **satu request JS tambahan**: 7 chunk versus 6 pada build
+  sebelumnya. Canvas tetap 393x852 dengan `WebGL 2.0 (OpenGL ES 3.0 Chromium)` aktif di kedua build
+  dan tanpa `pageerror`.
+- Vite tetap mengeluarkan warning chunk di atas 500 kB, dan sekarang yang kena `three-*.js`
+  (530.98 kB). `chunkSizeWarningLimit` sengaja tidak dinaikkan.
+- Angka ini dari `vite build` di laptop. Belum diukur: perilaku cache browser HP asli setelah deploy,
+  dan durasi build di runner.
+
+### Gerbang lokal
+
+`npx tsc -b` lulus. `test:unit` 243/243 lulus. `test:ui` 104/104 lulus. `release:check` 5/5 tahap
+lulus. `guard:check` bersih. `gameplay:check` 115/115 lulus pada `vite preview` artefak build hasil
+split, di viewport desktop, potret HP, dan lanskap HP.
+
 ## 2026-10-17 - Dependabot dipasang, dan angka audit hari ini dicatat tanpa gerbang
 
 762 entri di `package-lock.json` sekarang dijaga otomatis: satu PR mingguan hari Senin untuk
