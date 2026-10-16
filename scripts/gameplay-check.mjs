@@ -38,6 +38,11 @@ const VIEWPORTS = [
   { name: 'phone-portrait', width: 375, height: 667, touch: true, floor: 'sand' },
   { name: 'phone-landscape', width: 667, height: 375, touch: true, floor: 'stone' },
   { name: 'small-phone', width: 360, height: 640, touch: true },
+  /* The large board is a choice a player can make per seat count, so the worst case gets
+     measured rather than guessed: 21 columns of a four-seat arena on a 375 px phone. */
+  { name: 'desktop-large', width: 1280, height: 800, floor: 'stone', size: 'besar', seats: 4 },
+  { name: 'phone-portrait-large', width: 375, height: 667, touch: true, floor: 'grass', size: 'besar', seats: 4 },
+  { name: 'phone-landscape-large', width: 667, height: 375, touch: true, floor: 'sand', size: 'besar', seats: 4 },
 ];
 
 const results = [];
@@ -109,12 +114,23 @@ async function run() {
       if (r.status() >= 400 && !noise(r.url())) errors.push(`HTTP ${r.status()} ${r.url()}`);
     });
 
-    await page.goto(`${BASE}/bomberman/local${vp.floor ? `?floor=${vp.floor}` : ''}`, { waitUntil: 'load' });
+    const query = new URLSearchParams();
+    if (vp.floor) query.set('floor', vp.floor);
+    if (vp.size) query.set('size', vp.size);
+    if (vp.seats) query.set('seats', String(vp.seats));
+    const qs = query.toString();
+    await page.goto(`${BASE}/bomberman/local${qs ? `?${qs}` : ''}`, { waitUntil: 'load' });
     await page.waitForSelector('[data-testid="bomberman-start"]', { timeout: 15000 });
     check(`${vp.name}: setup screen renders`, true);
+    await page.screenshot({ path: `${OUT}/${vp.name}-setup.png` });
 
     await page.click('[data-testid="bomberman-start"]');
     await page.waitForSelector('[data-testid="bomberman-board"]', { timeout: 5000 });
+    if (vp.size || vp.seats) {
+      const box = await page.evaluate(() => document.querySelector('[data-testid="bomberman-board"]')?.getAttribute('viewBox'));
+      const want = vp.seats === 4 ? (vp.size === 'besar' ? '0 0 840 600' : '0 0 600 440') : (vp.size === 'besar' ? '0 0 600 520' : '0 0 440 360');
+      check(`${vp.name}: opens the arena it was asked for`, box === want, `${box} vs ${want}`);
+    }
     if (vp.touch) {
       /* The pad appears because a real touch was seen, not because the screen is small.
          Playwright's click() reports pointerType "mouse", so this tap is the thing under test. */
@@ -130,6 +146,36 @@ async function run() {
     );
     check(`${vp.name}: board has real pixels`, before.boardWidth > 100, `${before.boardWidth}x${before.boardHeight}`);
     check(`${vp.name}: sprites are painted`, before.sprites >= 20, `${before.sprites} svg nodes, cell ${before.cellPx}px`);
+
+    /* A thumb pushed at 45 degrees has to become one of the four board directions, and it
+       has to stay that direction while the finger jitters. The facing is written into the
+       player node signature by the rule itself, so a flip shows up as two directions inside
+       one drag. Done here, straight after the countdown, while the seat is alive and the
+       arena is open: a later drag could land in a round break, where input is ignored and
+       the facing would freeze into a false pass. */
+    if (vp.touch) {
+      const zone = await page.locator('[data-testid="bomberman-stick"]').boundingBox();
+      if (zone) {
+        const cx = Math.round(zone.x + zone.width * 0.3);
+        const cy = Math.round(zone.y + zone.height * 0.5);
+        const facing = () =>
+          page.evaluate(() => {
+            const sig = document.querySelector('[data-sig^="player"]')?.getAttribute('data-sig') ?? '';
+            return /^player:[^:]+:[^:]+:([^:]+)/.exec(sig)?.[1] ?? '';
+          });
+        await page.mouse.move(cx, cy);
+        await page.mouse.down();
+        const seen = new Set();
+        for (const [jx, jy] of [[20, 17], [17, 20], [20, 17], [17, 20], [21, 18], [18, 21]]) {
+          await page.mouse.move(cx + jx, cy + jy);
+          await page.waitForTimeout(140);
+          const f = await facing();
+          if (f) seen.add(f);
+        }
+        await page.mouse.up();
+        check(`${vp.name}: a diagonal drag keeps one direction`, seen.size <= 1, [...seen].join(', ') || 'no direction');
+      }
+    }
 
     const fps = await page.evaluate(
       () =>
@@ -173,10 +219,25 @@ async function run() {
     await page.waitForTimeout(400);
 
     // Abnormal: a burst of presses must not put more bombs on the floor than the quota.
+    // Counted per owner, because the other seats are bots that plant their own bombs, and
+    // the quota under test is the one the human seat holds.
     for (let i = 0; i < 40; i++) await page.keyboard.press('Space');
     await page.waitForTimeout(300);
-    const bombs = await page.evaluate(() => document.querySelectorAll('[data-sig^="bomb"]').length);
-    check(`${vp.name}: key spam cannot beat the bomb quota`, bombs <= 2, `${bombs} bombs`);
+    const quota = await page.evaluate(() => {
+      const text = document.querySelector('[data-testid="bomberman-status"]')?.textContent ?? '';
+      const m = /Bom \d+\/(\d+)/.exec(text);
+      return {
+        mine: document.querySelectorAll('[data-sig^="bomb:0"]').length,
+        all: document.querySelectorAll('[data-sig^="bomb"]').length,
+        max: m ? Number(m[1]) : 1,
+        text,
+      };
+    });
+    check(
+      `${vp.name}: key spam cannot beat the bomb quota`,
+      quota.mine <= quota.max,
+      `${quota.mine} own bombs, quota ${quota.max}, ${quota.all} on the floor [${quota.text}]`,
+    );
 
     // Abnormal: the board must not slide when the status line changes length.
     const afterMove = await page.evaluate(MEASURE);

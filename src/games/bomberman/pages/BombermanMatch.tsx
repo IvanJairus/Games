@@ -19,8 +19,9 @@ import { buzzThud } from '../../common/haptics';
 import { BombermanSim } from '../engine/sim';
 import { BombermanBot } from '../engine/ai';
 import { BombermanNet, type WorldPayload } from '../engine/net';
-import { CHAR_IDS, characterById } from '../sprites';
-import { type BombermanState, type Facing, type FloorKind, type InputState, type SimEvent, boardFor } from '../engine/types';
+import { CHAR_IDS, characterById, spriteMarkup } from '../sprites';
+import { readCharId } from '../charPreference';
+import { type BombermanState, type BoardSize, type Facing, type FloorKind, type InputState, type SimEvent, boardFor, sizeForBoard } from '../engine/types';
 import { createFpsController, fxGates, levelAtMount, readFxMode, writeFxMode, type FxLevel } from '../engine/fxMode';
 import { Arena, type ArenaHandle } from '../components/Arena';
 import { Hud, StatusLine } from '../components/Hud';
@@ -39,16 +40,25 @@ interface RoomConfig {
   seed: string;
   floor: FloorKind;
   seats: number;
+  size: BoardSize;
   roster: SeatInfo[];
 }
 
 const FLOORS: FloorKind[] = ['grass', 'sand', 'stone'];
 const pickChar = (i: number): string => CHAR_IDS[i % CHAR_IDS.length];
+const readSize = (raw: unknown): BoardSize => (raw === 'besar' ? 'besar' : 'kecil');
 
 const readConfig = (raw: unknown): RoomConfig | null => {
   const c = raw as Partial<RoomConfig> | null;
   if (!c || typeof c.seed !== 'string' || !Array.isArray(c.roster) || c.roster.length === 0) return null;
-  return { gameType: 'bomberman', seed: c.seed, floor: c.floor ?? 'grass', seats: c.seats ?? c.roster.length, roster: c.roster };
+  return {
+    gameType: 'bomberman',
+    seed: c.seed,
+    floor: c.floor ?? 'grass',
+    seats: c.seats ?? c.roster.length,
+    size: readSize(c.size),
+    roster: c.roster,
+  };
 };
 
 /**
@@ -106,6 +116,10 @@ export function BombermanMatch() {
   /* Bot memory lives per seed: a rematch draws a new map, so a bot must not carry an
      escape target from the previous match into the next one. */
   const brainRef = useRef(new Map<string, BombermanBot>());
+  /* Which character each seat asked for. Every tab knows its own pick, and only the host
+     owns the roster, so guests hand theirs over as one broadcast claim. */
+  const claimsRef = useRef(new Map<number, string>());
+  const myCharRef = useRef(readCharId());
   const hostBrain = useCallback((seat: number, seed: string): BombermanBot => {
     const key = `${seed}:${seat}`;
     let brain = brainRef.current.get(key);
@@ -135,9 +149,10 @@ export function BombermanMatch() {
   }, []);
 
   const makeSim = useCallback((cfg: RoomConfig): BombermanSim => {
-    const board = boardFor(cfg.seats);
+    const board = boardFor(cfg.seats, cfg.size);
     return new BombermanSim({
       seats: board.seats,
+      size: cfg.size,
       seed: cfg.seed,
       floor: cfg.floor,
       players: cfg.roster.map((r) => ({ seat: r.seat, name: r.name, charId: r.charId, bot: r.bot })),
@@ -151,8 +166,9 @@ export function BombermanMatch() {
     const roster: SeatInfo[] = [];
     for (let seat = 0; seat < board.seats; seat++) {
       const name = taken.get(seat);
-      if (name) roster.push({ seat, name, charId: pickChar(seat), bot: false });
-      else if (fillBots) roster.push({ seat, name: `Bot ${seat + 1}`, charId: pickChar(seat + 2), bot: true });
+      const charId = claimsRef.current.get(seat) ?? pickChar(name ? seat : seat + 2);
+      if (name) roster.push({ seat, name, charId, bot: false });
+      else if (fillBots) roster.push({ seat, name: `Bot ${seat + 1}`, charId, bot: true });
     }
     return roster;
   }, [fillBots]);
@@ -166,6 +182,7 @@ export function BombermanMatch() {
       seed: Math.random().toString(36).slice(2, 14),
       floor: FLOORS[Math.floor(Math.random() * FLOORS.length)],
       seats: boardFor(data.match.max_players).seats,
+      size: readSize((data.match.game_state as { size?: unknown } | null)?.size),
       roster,
     };
     simRef.current = makeSim(cfg);
@@ -196,6 +213,7 @@ export function BombermanMatch() {
       setSync(data);
       isHostRef.current = !!data.isHost;
       mySeatRef.current = data.myPlayerIndex;
+      if (data.isHost) claimsRef.current.set(data.myPlayerIndex, myCharRef.current);
 
       if (data.match.status === 'abandoned') {
         setPhase('gone');
@@ -236,6 +254,16 @@ export function BombermanMatch() {
               return { t: performance.now(), state: sim ? sim.snapshot() : (null as never), fx: sim ? sim.drainEvents() : [] };
             },
             onInput: (seat, input) => simRef.current?.setInput(seat, input),
+            getCharClaim: () =>
+              mySeatRef.current >= 0 ? { seat: mySeatRef.current, charId: myCharRef.current } : null,
+            onChar: (seat, charId) => {
+              if (!CHAR_IDS.includes(charId)) return;
+              const sim = simRef.current;
+              if (sim && seat >= sim.state.seats) return;
+              claimsRef.current.set(seat, charId);
+              const p = sim?.state.players.find((q) => q.seat === seat && !q.bot);
+              if (p) p.charId = charId;
+            },
             onWorld: (world) => {
               if (!world.state) return;
               /* A frame can arrive before this tab's first room sync, so the sim is built
@@ -245,6 +273,7 @@ export function BombermanMatch() {
                 const st = world.state;
                 simRef.current = new BombermanSim({
                   seats: st.seats,
+                  size: sizeForBoard(st.seats, st.cols),
                   seed: st.seed,
                   floor: st.floor,
                   players: st.players.map((p) => ({ seat: p.seat, name: p.name, charId: p.charId, bot: p.bot })),
@@ -406,6 +435,7 @@ export function BombermanMatch() {
   }, [sync, isHost]);
 
   const sim = simRef.current;
+  const board = boardFor(sync?.match.max_players ?? 2, readSize((sync?.match.game_state as { size?: unknown } | null)?.size));
 
   if (phase === 'gone' || error) {
     return (
@@ -430,8 +460,8 @@ export function BombermanMatch() {
           </Link>
           <h2>Room {code}</h2>
           <p className="lede">
-            {`${sync?.players.length ?? 0} dari ${sync?.match.max_players ?? 0} kursi terisi. `}
-            {fillBots ? 'Kursi kosong diisi bot.' : 'Kursi kosong dibiarkan kosong.'}
+            {`${sync?.players.length ?? 0} dari ${board.seats} kursi terisi \u00b7 papan ${board.cols} x ${board.rows}. `}
+            {fillBots ? 'Kursi yang belum terisi akan diisi bot.' : 'Kursi kosong dibiarkan kosong.'}
           </p>
           <div className="bm-roster" data-testid="bomberman-roster">
             {(sync?.players ?? []).map((p) => (
@@ -442,6 +472,14 @@ export function BombermanMatch() {
               </span>
             ))}
           </div>
+          <p className="bm-mychar" data-testid="bomberman-my-char">
+            <span
+              className="bm-char__art"
+              aria-hidden="true"
+              dangerouslySetInnerHTML={{ __html: spriteMarkup(myCharRef.current, 'idle', 'down') }}
+            />
+            <span>{`Karakter kamu: ${characterById(myCharRef.current).label}. Ganti di lobby sebelum masuk room.`}</span>
+          </p>
           <p className="bm-row" style={{ marginTop: 12 }}>
             <label>
               <input type="checkbox" checked={fillBots} onChange={(e) => setFillBots(e.target.checked)} /> Isi kursi kosong dengan bot
@@ -467,7 +505,7 @@ export function BombermanMatch() {
       <Hud
         state={sim.state}
         mySeat={mySeat}
-        modeLabel={`Online ${sim.state.seats} kursi`}
+        modeLabel={`Online ${sim.state.seats} kursi \u00b7 ${sim.state.players.filter((p) => p.bot).length} bot`}
         fxMode={fxMode}
         fxLevel={fxLevel}
         muted={muted}

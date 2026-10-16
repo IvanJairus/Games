@@ -4,8 +4,11 @@ import { Link, useNavigate } from 'react-router-dom';
 import { createOnlineRoom } from '../../common/multiplayer';
 import { getStoredPlayerName, isSupabaseConfigured, setStoredPlayerName } from '../../../lib/supabase';
 import { BOMBER_BOT_LEVELS } from '../engine/ai';
-import { CHARACTERS, CHAR_IDS, characterById } from '../sprites';
-import { boardFor } from '../engine/types';
+import { characterById } from '../sprites';
+import { readCharId, writeCharId } from '../charPreference';
+import { boardFor, type BoardSize } from '../engine/types';
+import { CharacterPicker } from '../components/CharacterPicker';
+import { BoardPicker } from '../components/BoardPicker';
 
 type Tab = 'solo' | 'online';
 
@@ -25,7 +28,12 @@ export function BombermanLobby() {
   const [tab, setTab] = useState<Tab>('solo');
   const [name, setName] = useState(getStoredPlayerName());
   const [seats, setSeats] = useState(2);
-  const [charId, setCharId] = useState(CHAR_IDS[0]);
+  const [size, setSize] = useState<BoardSize>('kecil');
+  const [charId, setCharId] = useState(readCharId);
+  const pickChar = (id: string): void => {
+    setCharId(id);
+    writeCharId(id);
+  };
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -44,13 +52,13 @@ export function BombermanLobby() {
     setStoredPlayerName(host);
     setBusy(true);
     setError('');
-    const board = boardFor(seats);
+    const board = boardFor(seats, size);
     try {
       const { roomCode } = await createOnlineRoom({
         gameType: 'bomberman',
         maxPlayers: board.seats,
         hostName: host,
-        initialState: { gameType: 'bomberman', charId, seats: board.seats },
+        initialState: { gameType: 'bomberman', seats: board.seats, size },
       });
       navigate(`/bomberman/m/${roomCode}`);
     } catch (err) {
@@ -97,16 +105,7 @@ export function BombermanLobby() {
 
         <fieldset className="bm-pick">
           <legend>Karakter kamu</legend>
-          <div className="bm-pick__row">
-            {CHARACTERS.map((c) => (
-              <button key={c.id} type="button" aria-pressed={charId === c.id} onClick={() => setCharId(c.id)} data-testid={`bomberman-char-${c.id}`}>
-                {c.label}
-              </button>
-            ))}
-            <button type="button" onClick={() => setCharId(CHAR_IDS[Math.floor(Math.random() * CHAR_IDS.length)])} data-testid="bomberman-char-random">
-              Acak
-            </button>
-          </div>
+          <CharacterPicker value={charId} onChange={pickChar} />
           <p className="bm-note">{characterById(charId).blurb}</p>
         </fieldset>
 
@@ -130,15 +129,21 @@ export function BombermanLobby() {
             </fieldset>
 
             <fieldset className="bm-pick">
-              <legend>Ukuran room</legend>
+              <legend>Kursi dan papan</legend>
               <div className="bm-pick__row">
                 {[2, 4].map((n) => (
                   <button key={n} type="button" aria-pressed={seats === n} onClick={() => setSeats(n)} data-testid={`bomberman-seats-${n}`}>
-                    {n} kursi &middot; {boardFor(n).cols}x{boardFor(n).rows}
+                    {n} kursi
                   </button>
                 ))}
               </div>
-              <p className="bm-note">Kursi yang tidak terisi bisa diisi bot saat pertandingan dimulai.</p>
+              <div className="bm-field">
+                <span className="bm-field__label">Ukuran arena</span>
+                <BoardPicker seats={seats} value={size} onChange={setSize} />
+              </div>
+              <p className="bm-note">
+                Kursi yang tidak diisi pemain manusia akan diisi bot, jadi room 4 kursi bisa berjalan dengan 2 manusia.
+              </p>
             </fieldset>
 
             <button className="bm-go" type="button" disabled={!online || busy} onClick={() => void create()} data-testid="bomberman-create">

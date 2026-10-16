@@ -208,7 +208,7 @@ export const Arena = forwardRef<ArenaHandle, ArenaProps>(function Arena(
         want.set(`b${b.id}`, {
           x: b.x,
           y: b.y,
-          sig: b.fuse < 1 ? 'bomb:urgent' : 'bomb',
+          sig: `bomb:${b.seat}${b.fuse < 1 ? ':urgent' : ''}`,
           markup: fit(bombMarkup(b.fuse < 1), BOMB_BOX),
         });
       }

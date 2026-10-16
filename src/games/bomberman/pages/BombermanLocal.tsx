@@ -3,10 +3,13 @@ import { Link, useSearchParams } from 'react-router-dom';
 
 import { BombermanSim } from '../engine/sim';
 import { BombermanBot, BOMBER_BOT_LEVELS, BotLevel, describeBombermanBot } from '../engine/ai';
-import { Facing, SCORE_TO_WIN, boardFor, type FloorKind } from '../engine/types';
-import { CHARACTERS, CHAR_IDS, characterById } from '../sprites';
+import { Facing, SCORE_TO_WIN, boardFor, type BoardSize, type FloorKind } from '../engine/types';
+import { CHAR_IDS, characterById } from '../sprites';
+import { readCharId, writeCharId } from '../charPreference';
 import { createFpsController, fxGates, levelAtMount, readFxMode, writeFxMode, FxLevel } from '../engine/fxMode';
 import { Arena, ArenaHandle } from '../components/Arena';
+import { CharacterPicker } from '../components/CharacterPicker';
+import { BoardPicker } from '../components/BoardPicker';
 import { Hud, StatusLine } from '../components/Hud';
 import { TouchPad } from '../components/TouchPad';
 import { KEYS } from './keyMap';
@@ -19,20 +22,24 @@ import { generateSeed } from '../engine/rng';
 interface Setup {
   level: BotLevel;
   seats: number;
+  size: BoardSize;
   charId: string;
   /** Pinned only for the screenshot pass; a normal match draws its floor from the seed. */
   floor?: FloorKind;
 }
 
 const FLOOR_NAMES: FloorKind[] = ['grass', 'sand', 'stone'];
+const SIZES: BoardSize[] = ['kecil', 'besar'];
 
 export function BombermanLocal() {
   const [params] = useSearchParams();
   const levelParam = (params.get('bot') ?? 'sedang') as BotLevel;
+  const sizeParam = params.get('size') as BoardSize | null;
   const [setup, setSetup] = useState<Setup>({
     level: BOMBER_BOT_LEVELS.some((l) => l.id === levelParam) ? levelParam : 'sedang',
     seats: params.get('seats') === '4' ? 4 : 2,
-    charId: CHAR_IDS.includes(params.get('char') ?? '') ? (params.get('char') as string) : 'robo',
+    size: SIZES.includes(sizeParam as BoardSize) ? (sizeParam as BoardSize) : 'kecil',
+    charId: CHAR_IDS.includes(params.get('char') ?? '') ? (params.get('char') as string) : readCharId(),
     floor: FLOOR_NAMES.includes(params.get('floor') as FloorKind) ? (params.get('floor') as FloorKind) : undefined,
   });
   const [sim, setSim] = useState<BombermanSim | null>(null);
@@ -62,8 +69,13 @@ export function BombermanLocal() {
     return () => window.removeEventListener('pointerdown', onFirstPress, { capture: true });
   }, []);
 
+  const chooseChar = (charId: string): void => {
+    setSetup({ ...setup, charId });
+    writeCharId(charId);
+  };
+
   const start = useCallback((cfg: Setup): void => {
-    const board = boardFor(cfg.seats);
+    const board = boardFor(cfg.seats, cfg.size);
     const players = [{ seat: 0, name: 'Kamu', charId: cfg.charId, bot: false }];
     const roster = cfg.seats >= 4 ? 3 : 1;
     for (let i = 0; i < roster; i++) {
@@ -78,6 +90,7 @@ export function BombermanLocal() {
       new BombermanSim({
         players,
         seats: board.seats,
+        size: cfg.size,
         seed: generateSeed(),
         floor: cfg.floor,
         rand: Math.random,
@@ -203,32 +216,13 @@ export function BombermanLocal() {
         </Link>
         <h2>Latihan melawan bot</h2>
         <p className="bm-lede">
-          Papan {setup.seats >= 4 ? '15 x 11 untuk empat kursi' : '11 x 9 untuk dua kursi'}. Menang{' '}
+          Tanam bom, bongkar bata lunak, dan keluar dari api sebelum sumburnya habis. Menang{' '}
           {SCORE_TO_WIN} ronde untuk jadi juara.
         </p>
 
         <fieldset className="bm-pick">
           <legend>Karakter</legend>
-          <div className="bm-pick__row">
-            {CHARACTERS.map((c) => (
-              <button
-                key={c.id}
-                type="button"
-                aria-pressed={setup.charId === c.id}
-                onClick={() => setSetup({ ...setup, charId: c.id })}
-                data-testid={`bomberman-char-${c.id}`}
-              >
-                {c.label}
-              </button>
-            ))}
-            <button
-              type="button"
-              onClick={() => setSetup({ ...setup, charId: CHAR_IDS[Math.floor(Math.random() * CHAR_IDS.length)] })}
-              data-testid="bomberman-char-random"
-            >
-              Acak
-            </button>
-          </div>
+          <CharacterPicker value={setup.charId} onChange={chooseChar} />
           <p className="bm-note">{characterById(setup.charId).blurb}</p>
         </fieldset>
 
@@ -251,20 +245,28 @@ export function BombermanLocal() {
         </fieldset>
 
         <fieldset className="bm-pick">
-          <legend>Kursi</legend>
-          <div className="bm-pick__row">
-            {[2, 4].map((n) => (
-              <button
-                key={n}
-                type="button"
-                aria-pressed={setup.seats === n}
-                onClick={() => setSetup({ ...setup, seats: n })}
-                data-testid={`bomberman-seats-${n}`}
-              >
-                {n} pemain
-              </button>
-            ))}
+          <legend>Papan</legend>
+          <div className="bm-field">
+            <span className="bm-field__label">Jumlah kursi</span>
+            <div className="bm-pick__row">
+              {[2, 4].map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  aria-pressed={setup.seats === n}
+                  onClick={() => setSetup({ ...setup, seats: n })}
+                  data-testid={`bomberman-seats-${n}`}
+                >
+                  {n} pemain
+                </button>
+              ))}
+            </div>
           </div>
+          <div className="bm-field">
+            <span className="bm-field__label">Ukuran arena</span>
+            <BoardPicker seats={setup.seats} value={setup.size} onChange={(size) => setSetup({ ...setup, size })} />
+          </div>
+          <p className="bm-note">Papan besar hampir dua kali jumlah petaknya. Di layar ponsel petaknya jadi lebih kecil.</p>
         </fieldset>
 
         <button className="bm-go" type="button" onClick={() => start(setup)} data-testid="bomberman-start">

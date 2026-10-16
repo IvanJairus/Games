@@ -17,6 +17,7 @@ import type { BombermanState, Facing, InputState, SimEvent } from './types';
 
 export const EV_INPUT = 'bm_in';
 export const EV_WORLD = 'bm_world';
+export const EV_CHAR = 'bm_char';
 export const TICK_MS = 66;
 /** Stated so the tests can hold the sender to it. */
 export const CHANNEL_BUDGET_PER_SECOND = 20;
@@ -26,6 +27,12 @@ export interface BombermanInput {
   dir: Facing | null;
   bomb: boolean;
   seq: number;
+}
+
+/** A seat announcing which character its owner picked. Cosmetic, and sent once. */
+export interface CharClaim {
+  seat: number;
+  charId: string;
 }
 
 export interface WorldPayload {
@@ -46,6 +53,12 @@ export function encodeInput(msg: BombermanInput): BombermanInput {
     seq,
   };
 }
+
+export const encodeChar = (msg: CharClaim | null | undefined): CharClaim | null => {
+  const seat = msg && Number.isFinite(msg.seat) ? Math.floor(msg.seat) : -1;
+  const charId = typeof msg?.charId === 'string' ? msg.charId.slice(0, 16) : '';
+  return seat >= 0 && charId ? { seat, charId } : null;
+};
 
 export function isInput(payload: unknown): payload is BombermanInput {
   const p = payload as Partial<BombermanInput> | null;
@@ -74,14 +87,18 @@ export interface NetOptions {
   localSeat: number;
   getInput: () => InputState;
   getWorld: () => WorldPayload;
+  /** Null until this tab knows both its seat and its player's character. */
+  getCharClaim?: () => CharClaim | null;
   onInput: (seat: number, input: InputState) => void;
   onWorld: (world: WorldPayload) => void;
+  onChar?: (seat: number, charId: string) => void;
   onDrop?: (count: number) => void;
 }
 
 export class BombermanNet {
   private timer: ReturnType<typeof setInterval> | null = null;
   private lastT = -Infinity;
+  private charSent = false;
   private dropped = 0;
   private warned = false;
   readonly stats = { sent: 0, drop: 0, byEvent: {} as Record<string, number>, lastState: 'init' };
@@ -106,6 +123,12 @@ export class BombermanNet {
       this.opts.onWorld(payload);
     });
 
+    channel.on('broadcast', { event: EV_CHAR }, (msg: { payload: unknown }) => {
+      if (!this.opts.isHost()) return;
+      const claim = encodeChar(msg.payload as CharClaim);
+      if (claim) this.opts.onChar?.(claim.seat, claim.charId);
+    });
+
     this.timer = setInterval(() => this.tick(), TICK_MS);
   }
 
@@ -118,6 +141,15 @@ export class BombermanNet {
     if (this.opts.isHost()) {
       this.send(EV_WORLD, this.opts.getWorld());
       return;
+    }
+    /* The claim waits until this tab knows its own seat, which can be a few ticks after
+       the channel is open. One message for the whole match, so it is not worth a clock. */
+    if (!this.charSent && this.opts.getCharClaim) {
+      const claim = encodeChar(this.opts.getCharClaim());
+      if (claim) {
+        this.charSent = true;
+        this.send(EV_CHAR, claim);
+      }
     }
     const input = this.opts.getInput();
     this.send(EV_INPUT, encodeInput({ seat: this.opts.localSeat, dir: input.dir, bomb: input.bomb, seq: input.seq }));

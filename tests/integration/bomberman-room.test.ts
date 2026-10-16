@@ -83,6 +83,15 @@ describe('room config handshake', () => {
     expect(fromConfig(configFor(4, 'b')).state.cols).toBe(15);
     expect(fromConfig(configFor(4, 'b')).state.rows).toBe(11);
   });
+
+  it('doubles the field for the large boards', () => {
+    const small = boardFor(2, 'kecil');
+    const large = boardFor(2, 'besar');
+    expect(large.cols * large.rows / (small.cols * small.rows)).toBeGreaterThan(1.8);
+    const smallFfa = boardFor(4, 'kecil');
+    const largeFfa = boardFor(4, 'besar');
+    expect(largeFfa.cols * largeFfa.rows / (smallFfa.cols * smallFfa.rows)).toBeGreaterThan(1.8);
+  });
 });
 
 describe('host and client agree after a match', () => {

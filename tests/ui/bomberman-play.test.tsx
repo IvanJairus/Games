@@ -7,6 +7,7 @@ import { resolve } from 'node:path';
 import { BombermanLobby } from '@/games/bomberman/pages/BombermanLobby';
 import { BombermanLocal } from '@/games/bomberman/pages/BombermanLocal';
 import { BombermanMatch } from '@/games/bomberman/pages/BombermanMatch';
+import { readCharId } from '@/games/bomberman/charPreference';
 
 const renderAt = (path: string) =>
   render(
@@ -46,6 +47,32 @@ describe('lobby', () => {
     fireEvent.click(screen.getByTestId('bomberman-char-sekrup'));
     expect(screen.getByTestId('bomberman-char-sekrup')).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByText(/Robot baut/)).toBeInTheDocument();
+  });
+
+  it('draws the character inside its own tile', () => {
+    renderAt('/bomberman');
+    const tile = screen.getByTestId('bomberman-char-tupai');
+    expect(tile.querySelector('svg')).not.toBeNull();
+    expect(tile).toHaveTextContent('Tupai Gudang');
+    expect(screen.getByTestId('bomberman-char-random').querySelector('svg')).not.toBeNull();
+  });
+
+  it('keeps the chosen character on the device for the room page to claim', () => {
+    renderAt('/bomberman');
+    fireEvent.click(screen.getByTestId('bomberman-char-sekrup'));
+    // Read through the app's own store: jsdom has no usable localStorage, and the
+    // storage helper falls back to a process-local map, which is what the room page
+    // would read in the same situation.
+    expect(readCharId()).toBe('sekrup');
+  });
+
+  it('shows both arena sizes and grows the large one with the seat count', () => {
+    renderAt('/bomberman');
+    fireEvent.click(screen.getByTestId('bomberman-tab-online'));
+    expect(screen.getByTestId('bomberman-size-besar')).toHaveTextContent('Besar 15 x 13');
+    fireEvent.click(screen.getByTestId('bomberman-seats-4'));
+    expect(screen.getByTestId('bomberman-size-kecil')).toHaveTextContent('Kecil 15 x 11');
+    expect(screen.getByTestId('bomberman-size-besar')).toHaveTextContent('Besar 21 x 15');
   });
 
   it('keeps online actions unavailable without a game server, and solo reachable', () => {
@@ -93,6 +120,33 @@ describe('solo arena', () => {
     expect(screen.getByTestId('bomberman-status')).toBeInTheDocument();
   });
 
+  it('plays the large board when the setup asks for it', async () => {
+    renderAt('/bomberman/local?size=besar');
+    expect(screen.getByTestId('bomberman-size-besar')).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByTestId('bomberman-start'));
+    const board = await waitFor(() => {
+      const el = screen.getByTestId('bomberman-board');
+      expect(el).toBeInTheDocument();
+      return el;
+    });
+    expect(board).toHaveAttribute('viewBox', '0 0 600 520');
+    await frames(20);
+  });
+
+  it('grows the arena with the seat count it was paired with', async () => {
+    renderAt('/bomberman/local');
+    fireEvent.click(screen.getByTestId('bomberman-seats-4'));
+    fireEvent.click(screen.getByTestId('bomberman-size-besar'));
+    fireEvent.click(screen.getByTestId('bomberman-start'));
+    const board = await waitFor(() => {
+      const el = screen.getByTestId('bomberman-board');
+      expect(el).toBeInTheDocument();
+      return el;
+    });
+    expect(board).toHaveAttribute('viewBox', '0 0 840 600');
+    await frames(20);
+  });
+
   it('plants one bomb per press and never more than the quota', async () => {
     renderAt('/bomberman/local?bot=sedang');
     fireEvent.click(screen.getByTestId('bomberman-start'));
@@ -101,8 +155,10 @@ describe('solo arena', () => {
 
     for (let i = 0; i < 30; i++) fireEvent.keyDown(window, { code: 'Space' });
     await frames(10);
-    const bombs = document.querySelectorAll('[data-sig^="bomb"]');
-    expect(bombs.length).toBeLessThanOrEqual(2);
+    // Seat 0 is the human, and it never moved, so no bomb power could have raised its
+    // quota above the starting one. Bots plant their own bombs and are counted separately.
+    const bombs = document.querySelectorAll('[data-sig^="bomb:0"]');
+    expect(bombs.length).toBeLessThanOrEqual(1);
   });
 
   it('clears held keys on blur so the runner does not walk on its own', async () => {

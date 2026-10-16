@@ -13,10 +13,13 @@ import {
   ROUND_SECONDS,
   BombermanState,
   aliveSeats,
+  boardFor,
+  sizeForBoard,
   spawnCells,
 } from '@/games/bomberman/engine/types';
 import { buildGrid, generateSeed, validateGrid, SOFT_DENSITY } from '@/games/bomberman/engine/rng';
 import { blastCells, bombPlan, dangerCells, escapeTarget, firstStepToward } from '@/games/bomberman/engine/blast';
+import { resolvePadAxis, type PadAxis } from '@/games/bomberman/engine/padAxis';
 import { BombermanSim, SeatConfig, newSim } from '@/games/bomberman/engine/sim';
 
 const arena = (cols: number, rows: number, fill: (x: number, y: number) => CellKind = () => 'empty'): CellKind[][] =>
@@ -79,6 +82,9 @@ const run = (sim: BombermanSim, seconds: number, dt = 1 / 60): void => {
 const hold = (sim: BombermanSim, s: number, dir: Facing | null, bomb = false, seq = 0): void =>
   sim.setInput(s, { dir, bomb, seq });
 
+/** Every geometry a match can be played on, small and large, duel and free-for-all. */
+const ALL_BOARDS = [BOARDS.duel, BOARDS.duelLarge, BOARDS.freeFor, BOARDS.freeForLarge];
+
 describe('map generation', () => {
   it('builds the same arena twice from one seed', () => {
     for (let i = 0; i < 50; i++) {
@@ -87,8 +93,8 @@ describe('map generation', () => {
     }
   });
 
-  it('leaves every spawn open on both boards', () => {
-    for (const board of [BOARDS.duel, BOARDS.freeFor]) {
+  it('leaves every spawn open on every board', () => {
+    for (const board of ALL_BOARDS) {
       for (let i = 0; i < 50; i++) {
         const spawns = spawnCells(board.cols, board.rows, board.seats);
         const grid = buildGrid(generateSeed(), board.cols, board.rows, board.seats);
@@ -100,7 +106,7 @@ describe('map generation', () => {
   it('does not seal a spawn pocket shut', () => {
     // A seat with both exits blocked by soft blocks can never bomb safely, and the
     // bot used to sit there without planting anything at all.
-    for (const board of [BOARDS.duel, BOARDS.freeFor]) {
+    for (const board of ALL_BOARDS) {
       for (let i = 0; i < 50; i++) {
         const grid = buildGrid(generateSeed(), board.cols, board.rows, board.seats);
         for (const s of spawnCells(board.cols, board.rows, board.seats)) {
@@ -121,6 +127,17 @@ describe('map generation', () => {
     const open = grid.filter((c) => c !== 'hard');
     const soft = open.filter((c) => c === 'soft').length;
     expect(soft / open.length).toBeGreaterThan(SOFT_DENSITY * 0.8);
+  });
+
+  it('reads the arena size back out of a board geometry', () => {
+    /* A client rebuilds its sim from a world frame, which carries cols and rows but not
+       the lobby setting, so the geometry has to name the size it came from. */
+    for (const seats of [2, 4]) {
+      for (const size of ['kecil', 'besar'] as const) {
+        const board = boardFor(seats, size);
+        expect(sizeForBoard(board.seats, board.cols)).toBe(size);
+      }
+    }
   });
 });
 
@@ -199,6 +216,38 @@ describe('survival maths', () => {
     const state = bareState(grid);
     const step = firstStepToward(state, { x: 1, y: 1 }, { x: 5, y: 1 });
     expect(step).toBe('down');
+  });
+});
+
+describe('thumb pad axis', () => {
+  const LOCK = 1.4;
+
+  it('resolves a diagonal to the dominant axis', () => {
+    expect(resolvePadAxis(-40, -8, null, LOCK).dir).toBe('left');
+    expect(resolvePadAxis(-8, -40, null, LOCK).dir).toBe('up');
+  });
+
+  it('keeps the chosen axis when the thumb jitters across 45 degrees', () => {
+    // The complaint this exists for: at 45 degrees a raw dominant-axis pick alternates
+    // left/up every sample, so the character steps one cell each way and looks lost.
+    const drag = [
+      [30, 26], [26, 30], [30, 26], [26, 30], [29, 27], [27, 29],
+    ];
+    let axis: PadAxis = null;
+    const dirs: (Facing | null)[] = [];
+    for (const [dx, dy] of drag) {
+      const r = resolvePadAxis(dx, dy, axis, LOCK);
+      axis = r.axis;
+      dirs.push(r.dir);
+    }
+    expect(new Set(dirs).size).toBe(1);
+    expect(dirs[0]).toBe('right');
+  });
+
+  it('switches axis only when the other one clearly wins', () => {
+    expect(resolvePadAxis(30, 20, 'h', LOCK).dir).toBe('right');
+    expect(resolvePadAxis(30, 34, 'h', LOCK).dir).toBe('right');
+    expect(resolvePadAxis(30, 50, 'h', LOCK).dir).toBe('down');
   });
 });
 

@@ -1,6 +1,16 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { BombermanNet, EV_INPUT, EV_WORLD, TICK_MS, encodeInput, isInput, isWorld } from '@/games/bomberman/engine/net';
+import {
+  BombermanNet,
+  EV_CHAR,
+  EV_INPUT,
+  EV_WORLD,
+  TICK_MS,
+  encodeChar,
+  encodeInput,
+  isInput,
+  isWorld,
+} from '@/games/bomberman/engine/net';
 import { BombermanSim } from '@/games/bomberman/engine/sim';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import type { InputState } from '@/games/bomberman/engine/types';
@@ -211,5 +221,66 @@ describe('host-authoritative link', () => {
     const bytes = new TextEncoder().encode(JSON.stringify(sim.snapshot())).length;
     // Four seats on a 15x11 board must still leave room for the effect batch.
     expect(bytes).toBeLessThan(12_000);
+  });
+});
+
+describe('character claim', () => {
+  it('reaches the host once, and only after the seat is known', () => {
+    FakeChannel.reset();
+    vi.useFakeTimers();
+    const hostSim = makeSim(2);
+    const claims = new Map<number, string>();
+    const idle: InputState = { dir: null, bomb: false, seq: 0 };
+    /* The channel opens before the first room sync lands, so a client can be asked for its
+       claim while it still does not know which seat it owns. Sending seat -1 would hand the
+       host a claim it cannot apply, and the guest would then never be able to say its pick. */
+    let mySeat = -1;
+
+    const host = new BombermanNet({
+      channel: new FakeChannel('claim') as unknown as RealtimeChannel,
+      isHost: () => true,
+      localSeat: 0,
+      getInput: () => idle,
+      getWorld: () => ({ t: performance.now(), state: hostSim.snapshot(), fx: [] }),
+      onInput: () => undefined,
+      onWorld: () => undefined,
+      onChar: (seat, charId) => claims.set(seat, charId),
+    });
+    const clientChannel = new FakeChannel('claim');
+    const client = new BombermanNet({
+      channel: clientChannel as unknown as RealtimeChannel,
+      isHost: () => false,
+      localSeat: 1,
+      getInput: () => idle,
+      getWorld: () => ({ t: 0, state: hostSim.snapshot(), fx: [] }),
+      getCharClaim: () => (mySeat < 0 ? null : { seat: mySeat, charId: 'sekrup' }),
+      onInput: () => undefined,
+      onWorld: () => undefined,
+    });
+    host.start();
+    client.start();
+
+    vi.advanceTimersByTime(TICK_MS * 3);
+    expect(claims.size).toBe(0);
+    expect(clientChannel.sent.some((m) => m.event === EV_CHAR)).toBe(false);
+
+    mySeat = 1;
+    vi.advanceTimersByTime(TICK_MS * 5);
+    expect(claims.get(1)).toBe('sekrup');
+    // One message for the whole match. Repeating it would spend the shared budget.
+    expect(clientChannel.sent.filter((m) => m.event === EV_CHAR)).toHaveLength(1);
+
+    host.stop();
+    client.stop();
+    vi.useRealTimers();
+  });
+
+  it('drops a claim that cannot name a seat and a character', () => {
+    expect(encodeChar({ seat: 1, charId: 'robo' })).toEqual({ seat: 1, charId: 'robo' });
+    expect(encodeChar({ seat: -1, charId: 'robo' })).toBeNull();
+    expect(encodeChar({ seat: 1, charId: '' })).toBeNull();
+    expect(encodeChar(null)).toBeNull();
+    expect(encodeChar({ seat: Number.NaN, charId: 'robo' })).toBeNull();
+    expect(encodeChar({ seat: 1, charId: 'x'.repeat(80) })?.charId).toHaveLength(16);
   });
 });
