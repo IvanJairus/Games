@@ -25,28 +25,35 @@ perbaikan, angkanya diambil dulu. Kartu ini sengaja tidak mengubah perilaku apa 
   dunia di-broadcast tiap `TICK_MS` 66 ms, kliennya hanya `applySnapshot` lalu `smooth`, persis dua
   cabang loop rAF di halaman. Host berbelok di batas langkah berikutnya kalau jalannya terhalang,
   karena jalan lurus di board ber-seed mati di balik blok pertama setelah sekitar dua sel.
+- Lompatan dibaca dengan dua instrumen sekaligus supaya tidak bergantung pada satu cara hitung:
+  proyeksi bertanda sepanjang arah langkah, dan besar perpindahan 2D antar frame tanpa arah.
 
 ### Terukur
 
-n = 8 baris (empat arah jalan x dua durasi), 2.500 frame direkam, 1.816 di antaranya bergerak,
-500 snapshot diterapkan. `speed` 6,6 sel/dtk, jadi satu langkah frame normal = 0,1056 sel dan satu
-sel penuh = 9,47 langkah frame (151,5 ms). Semua angka dicetak `console.log` di dalam test supaya
-perubahan nanti bisa dibandingkan dengan angka yang sama.
+n = 10 baris: delapan baris berbelok (empat arah x dua durasi) dan dua baris kontrol jalan lurus.
+Baris berbelok: 2.500 frame direkam, 1.816 bergerak, 500 snapshot. Baris lurus: 625 frame, 125
+snapshot, tapi hanya 19 frame bergerak pada tiap durasi. `speed` 6,6 sel/dtk, jadi satu langkah frame
+normal = 0,1056 sel dan satu sel penuh = 9,47 langkah frame (151,5 ms). Semua angka dicetak
+`console.log` di dalam test supaya perubahan nanti dibandingkan dengan angka yang sama.
 
-| Yang diukur | Hasil |
-| --- | --- |
-| Frame di mana posisi animasi bergerak mundur | 0 dari 2.500 |
-| Mundur terbesar tepat saat snapshot mendarat | 0 langkah frame |
-| Frame bergerak yang lompatnya di atas 1,2 langkah frame | 183 dari 1.816 (10,1%) |
-| Lompatan itu terjadi di frame yang menerapkan snapshot | 183 dari 183, nol di luar itu |
-| Lompatan di atas 2 langkah frame | 156 |
-| Lompatan di atas 4 langkah frame | 93 |
-| Lompatan maju terbesar | 5,000 langkah frame = 0,528 sel |
-| Snapshot yang memicu lompatan di atas 1,2 langkah | 183 dari 500 (36,6%) |
+| Yang diukur | Baris berbelok | Baris lurus |
+| --- | --- | --- |
+| Frame di mana posisi animasi bergerak mundur | 0 dari 2.500 | 0 dari 625 |
+| Mundur terbesar tepat saat snapshot mendarat | 0 langkah frame | 0 langkah frame |
+| Frame bergerak yang lompatnya di atas 1,2 langkah frame | 183 dari 1.816 (10,1%) | 0 |
+| Lompatan itu terjadi di frame yang menerapkan snapshot | 183 dari 183, nol di luar itu | tidak ada |
+| Lompatan di atas 2 langkah frame | 156 | 0 |
+| Lompatan di atas 4 langkah frame | 93 | 0 |
+| Lompatan maju terbesar | 5,000 langkah frame = 0,528 sel | 1,000 langkah frame |
+| Snapshot yang memicu lompatan di atas 1,2 langkah | 183 dari 500 (36,6%) | 0 dari 125 |
 
-Kesimpulan satu kalimat: gerak pemain lain **tidak** pernah mundur, tapi melompat maju sampai lima
-kali langkah satu frame pada 36,6% snapshot, jadi ada kartu perbaikan sungguhan dan bentuknya lompat
-maju, bukan mundurnya posisi.
+Dua instrumen itu memberi angka yang sama persis: 183 lompatan dan rasio terbesar 5,000 pada pembacaan
+proyeksi maupun pembacaan perpindahan 2D.
+
+Kesimpulan satu kalimat: gerak pemain lain **tidak** pernah mundur, tapi melompat maju sampai lima kali
+langkah satu frame pada 36,6% snapshot, jadi ada kartu perbaikan sungguhan dan bentuknya lompat maju,
+bukan mundurnya posisi. Lompatnya muncul di frame tempat host memulai langkah yang belum sempat digambar
+klien, dan tidak muncul sama sekali pada baris yang langkahnya tidak pernah berganti arah.
 
 ### Batas
 
@@ -56,8 +63,11 @@ maju, bukan mundurnya posisi.
 - Satu seed, satu kecepatan dasar 6,6, tanpa bom, api, powerup, atau tabrakan antar pemain.
 - Tidak mengukur RTT, frame drop, atau perangkat nyata. Test ini tidak membuktikan mata manusia
   melihat lompatan 0,528 sel sebagai patah; itu keputusan kartu perbaikan.
-- Assertion yang ditulis hanya menggambarkan angka di atas, termasuk dua baris yang memang sengaja
-  harus dibalik oleh kartu perbaikan nanti.
+- Assertion yang ditulis hanya menggambarkan angka di atas. Empat di antaranya (dua untuk baris
+  berbelok, dua untuk baris lurus) sengaja harus dibalik oleh kartu perbaikan nanti.
+- Baris kontrol lurus cuma punya 19 frame bergerak per durasi, karena pemblokiran board. Jadi ia
+  membuktikan "tidak ada lompatan saat pemain tersandar diam atau melangkah pendek", bukan "jalan
+  lurus yang panjang selalu halus".
 
 ### Gerbang lokal
 
