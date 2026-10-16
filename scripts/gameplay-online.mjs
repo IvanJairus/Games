@@ -136,8 +136,40 @@ const large = await Promise.all([
 ]);
 check('both tabs play the large board the lobby asked for', large.every(Boolean), large.join(' / '));
 
-// Let the countdown finish, then have the guest plant a bomb.
+// Let the countdown finish. The walk is tested before anything else can kill the runner.
 await host.page.waitForTimeout(3200);
+
+/* Guest movement is its own path: the host steps its seat locally, while a guest's held
+   direction only travels inside the per-tick input message. A press sent as an event can
+   reach the host while the held direction never moves anyone, which is exactly the report
+   this check exists to catch. It runs before the bomb test because a seat that has just
+   dropped a bomb and stood still for three seconds is dead, and a dead runner proves
+   nothing about a control. Seat 1 spawns in the bottom-right corner, so left is inward and
+   the clearance ring guarantees two open cells that way. */
+const guestSeat = await guest.page.evaluate(
+  () => Number(/-(\d+)$/.exec(document.querySelector('.bm-chip[data-me="1"]')?.getAttribute('data-testid') ?? '')?.[1] ?? -1),
+);
+const posOf = (page, seat) =>
+  page.evaluate(
+    (n) => document.querySelectorAll('[data-sig^="player"]')[n]?.getAttribute('transform') ?? 'missing',
+    seat,
+  );
+const alive = await host.page.evaluate(
+  (s) => document.querySelector(`[data-testid="bomberman-chip-${s}"]`)?.getAttribute('data-out') ?? '?',
+  guestSeat,
+);
+const guestBefore = await posOf(host.page, guestSeat);
+await guest.page.keyboard.down('ArrowLeft');
+await guest.page.waitForTimeout(900);
+await guest.page.keyboard.up('ArrowLeft');
+await guest.page.waitForTimeout(900);
+const guestAfter = await posOf(host.page, guestSeat);
+check(
+  'a guest walking with the keyboard moves in the host world',
+  guestSeat >= 0 && alive === '0' && guestBefore !== guestAfter,
+  `seat ${guestSeat}, alive marker ${alive}: ${guestBefore} -> ${guestAfter}`,
+);
+
 await guest.page.keyboard.press('Space');
 await guest.page.waitForTimeout(600);
 
@@ -157,30 +189,6 @@ await host.page.keyboard.up('ArrowRight');
 await host.page.waitForTimeout(900);
 const after = await guest.page.evaluate(() => document.querySelector('[data-sig*=":idle:"], [data-sig*=":walk:"]')?.getAttribute('transform'));
 check('host movement is visible to the guest', before !== after, `${before} -> ${after}`);
-
-/* And the other way round, because the two directions are different code paths: the host
-   steps its own seat locally, while a guest's held direction only travels inside the
-   per-tick input message. A press sent as an event can work while the held direction never
-   moves anyone, which is exactly the report this check exists to catch. */
-const guestSeat = await guest.page.evaluate(
-  () => Number(/-(\d+)$/.exec(document.querySelector('.bm-chip[data-me="1"]')?.getAttribute('data-testid') ?? '')?.[1] ?? -1),
-);
-const posOf = (page, seat) =>
-  page.evaluate(
-    (n) => document.querySelectorAll('[data-sig^="player"]')[n]?.getAttribute('transform') ?? 'missing',
-    seat,
-  );
-const guestBefore = await posOf(host.page, guestSeat);
-await guest.page.keyboard.down('ArrowDown');
-await guest.page.waitForTimeout(900);
-await guest.page.keyboard.up('ArrowDown');
-await guest.page.waitForTimeout(900);
-const guestAfter = await posOf(host.page, guestSeat);
-check(
-  'a guest walking with the keyboard moves in the host world',
-  guestSeat >= 0 && guestBefore !== guestAfter,
-  `seat ${guestSeat}: ${guestBefore} -> ${guestAfter}`,
-);
 
 // Both boards must agree on the map after a few seconds of play.
 await host.page.waitForTimeout(2500);

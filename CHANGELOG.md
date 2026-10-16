@@ -54,6 +54,34 @@ setelah merge.
 yang kursinya baru dikenal setelah empat tick harus tetap bisa menggeser kursinya di dunia tuan
 rumah. `gameplay:online` bertambah satu assertion (15 jadi 16).
 
+### Setelah tayang: urutan tes saya salah, dan ada satu penyebab lagi
+
+Perbaikan ini saya kirim ke produksi, lalu probe-nya saya jalankan ulang. Check tamu-berjalan
+masih merah, dan kali ini penyebabnya check-nya sendiri: saya menekan ArrowDown untuk kursi 1,
+yang spawn di sudut kanan-bawah, jadi yang saya ukur adalah dinding. Setelah itu saya pindahkan
+tesnya ke sebelum tes bom dan ke arah dalam (kiri), dan hasilnya di build tayang, tiga room
+beruntun:
+
+| room | kursi 1 sebelum -> sesudah | hasil |
+|---|---|---|
+| 1 | translate(760 520) -> translate(680 520) | PASS |
+| 2 | translate(760 520) -> translate(600 520) | PASS |
+| 3 | translate(760 520) -> translate(680 520) | PASS |
+
+Jadi: tamu bisa jalan, dan check sekarang membandingkan kursi yang sama di dunia tuan rumah
+sambil memastikan kursinya masih hidup. Tanpa penjaga "masih hidup" itu check ini bisa lulus
+atau gagal karena alasan yang salah, persis seperti sebelumnya.
+
+Satu temuan lain dari mengurutkan ulang: siapa pun yang masuk **setelah** tuan rumah menekan
+Mulai tidak masuk arena sama sekali. Ia disambut "Room tidak bisa dilanjutkan: Permainan di
+room ini sudah berlangsung". Itu perilaku yang sudah ada, bukan regresi, dan saya catat karena
+ia menghasilkan keluhan yang terdengar sama dari luar ("temanku tidak bisa main") padahal
+sebabnya beda.
+
+Satu flake kosmetik tertangkap sekali dari tiga jalan: "the guest's character pick reached the
+host world" merah di room kedua, dengan sisi tuan rumah sudah menampilkan karakter yang dipilih
+sedangkan sisi tamu belum. Belum saya perbaiki dan belum saya klaim selesai.
+
 ## 2026-10-16 - Bomberman: empat panah, dan ukuran petak yang saya salah baca
 
 Tiga permintaan dari pemain yang sama setelah rilis sebelumnya: kontrol diganti empat panah
