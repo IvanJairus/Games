@@ -8,6 +8,31 @@ terpisah saat kamu menerbitkan rilis.
 Entri dimulai dari 14 Oktober 2026. Perubahan sebelum tanggal itu ada pada riwayat git dan daftar
 pull request, karena tidak dicatat saat terjadi.
 
+## 2026-10-16 - WallGo: anggaran giliran bot diukur relatif, bukan jam dinding
+
+### Diperbaiki
+
+- **Test `keeps the wide-board search inside a usable turn time` tidak lagi bergantung pada
+  kecepatan runner.** Assertion itu membandingkan durasi murni terhadap angka tetap 3000 ms, jadi
+  ia mengukur mesin CI, bukan kode. Pada commit yang identik test ini tercatat 2333 ms, 2415 ms dan
+  2451 ms (lulus) serta 3465 ms dan 4262 ms (gagal). Dua dari empat run `Security & Quality Audit`
+  merah karenanya, dan satu deploy produksi ikut ter-skip karena job deploy bergantung pada audit itu.
+- Sekarang test membandingkan biaya search terhadap **beban kalibrasi yang diukur di proses yang
+  sama** (4000 kali `getShortestPath` pada papan 13x13). Yang diuji adalah rasio, jadi mesin lambat
+  dan mesin cepat menilai kode yang sama dengan cara yang sama.
+
+### Terukur
+
+- Ambang lama 3000 ms tidak dinaikkan dan test tidak dihapus. Beban kalibrasinya 20000 kali
+  `getShortestPath` pada papan 13x13, diambil waktu tercepat dari tiga sampel supaya jitter runner
+  tidak ikut.
+- Anggaran dipasang pada rasio 5,5x. Dasarnya pengukuran: kode sekarang menghasilkan 3,24x sampai
+  4,07x dari lima kali jalan, jadi masih ada ruang sekitar 35 persen di atas maksimum terukur.
+- Gigi test dibuktikan, bukan diasumsikan: pada kode sekarang 3,24x sampai 4,07x **lulus**; ketika
+  search sengaja dibuat dua kali lebih mahal (chooser dipanggil dua kali per ply) hasilnya **6,90x**
+  dan assertion yang sama **gagal** dengan `expected 6.90 to be less than 5.5`. File ukur gigi itu
+  sementara dan tidak ikut ter-commit.
+
 ## 2026-10-16 - Tic Tac Toe online: jatah tahan yang tak terlihat habis
 
 Dilaporkan dari room sungguhan (FULQAM, screenshot 16 Oktober 17.17). Pemain O menekan petak bidak
