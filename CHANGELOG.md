@@ -65,6 +65,12 @@ maju, bukan mundurnya posisi.
 lulus. `release:check` 5/5 tahap lulus. `guard:check` bersih, tiga cek lolos dengan `engine/smooth.ts`
 yang baru.
 
+Setelah merge dengan `main`, `release:check` pertama melaporkan `Unit Tests FAILED (31.85s)` dengan
+stack dari runner Vitest sendiri (`runWithTimeout`), bukan dari assertion repo ini. Dua kali jalan
+berikutnya hijau: `test:unit` 249/249 langsung dan `release:check` 5/5 dengan unit 33,74 detik.
+Angka test saya sendiri 40 ms, jadi yang gagal itu bukan test ini; penyebabnya belum diketahui dan
+mesin sedang dipakai banyak proses sekaligus. CI yang jadi penentu.
+
 ## 2026-10-16 - Bentuk state lintas game akhirnya dijaga compiler
 
 `src/games/common/multiplayer.ts` menyimpan `game_state: any`. Selama bentuknya `any`, salah baca field
