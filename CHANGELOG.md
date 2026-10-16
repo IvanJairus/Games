@@ -154,6 +154,56 @@ batasan PR ini.
   instalasi bersama yang dipakai beberapa sesi agen. Buktinya datang dari runner CI, dari langkah
   `Install Dependencies` yang lolos.
 
+## 2026-10-17 - gameplay:check masuk CI, dan README berhenti bercerita tentang 2026-10-15
+
+Dua pekerjaan satu PR: memasang gerbang browser nyata di runner, dan menulis ulang bagian CI/CD
+README yang sudah tertinggal beberapa hari.
+
+### Yang dipasang di workflow
+
+`npm run gameplay:check` jadi langkah **terakhir** job Security & Quality Audit, setelah
+`db:verify`. Alasannya sama seperti kemarin: gerbang baru tidak boleh menyembunyikan yang lama,
+dan sebaliknya.
+
+Runner Linux butuh tiga hal, dan tidak satu pun perlu diunduh:
+
+- biner: image `ubuntu-latest` sudah mengirim Chrome di `/usr/bin/google-chrome`, dan skrip
+  menghormati `BM_CHROME` sebelum ia mencari path cache macOS;
+- server: `npx vite preview --port 5199` dijalankan di step yang sama, dengan `trap` supaya
+  process-nya mati saat step selesai, dan loop tunggu 30 detik yang gagal dengan pesan jelas;
+- target: artefak build dari `release:check` di step sebelumnya, **bukan** dev server. Hanya build
+  yang membawa aset yang di-inline Vite dan susunan chunk yang benar-benar dikirim ke produksi.
+
+Durasi langkah ini di runner saya ukur dua kali pada dua commit berbeda, dan angkanya dilaporkan
+di PR. Kalau salah satunya merah atau tidak stabil, langkah ini dicabut lagi: gerbang yang tidak
+bisa diandalkan lebih buruk daripada tidak ada gerbang.
+
+Terukur di runner, commit pertama `5100f1c`, run 38950842573: langkah gameplay success
+18:57:08Z sampai 18:58:24Z, **76 detik**. Job Security & Quality Audit seluruhnya 4m33s
+(18:53:53Z sampai 18:58:26Z); tanpa langkah ini job yang sama ada di sekitar 3m17s. `db:verify`
+pada run yang sama 7 detik. Pembanding lokal saya 1m11s, jadi runner tidak lebih lambat dari
+laptop untuk gerbang ini. Angka kedua ada di komentar PR, dari push kedua.
+
+### README yang basi
+
+Bagian "Arsitektur CI/CD & Keamanan" hanya menyebut TypeScript, Game Engines, dan Viewport UI
+Automation. Kenyataan hari ini: gitleaks, `npm ci`, `tsc -b`, `test:unit`, `test:ui`,
+`release:check`, `guard:check`, `db:verify`, `gameplay:check`, plus branch protection dengan check
+wajib. Ditulis ulang sesuai itu, dengan tujuh lintasan viewport yang benar-benar dijalankan skrip.
+
+Dua hal yang sengaja tidak saya tulis sebagai fakta jadi:
+
+- **Rollback.** Laptop ini tidak punya kredensial Vercel CLI, satu-satunya token ada di secrets
+  Actions, jadi `vercel rollback` bukan opsi dari mesin ini. Jalur yang saya tulis adalah
+  `gh run rerun` pada push run lama di `main`. Itu **kesimpulan dari konfigurasi workflow**
+  (checkout tanpa `ref` memakai commit run, deploy bernames ke job audit), bukan rollback yang
+  pernah saya jalankan. Tandanya ada di README.
+- **Ukuran bundle, dan keputusan untuk tidak membuat gerbangnya.** Saya ukur sendiri di `df25a8c`
+  dan angkanya sama dengan yang saya dapat: `dist/` 1250,7 kB dari 41 file, 34 chunk JS total
+  1164,4 kB, `SlapArenaMatch` 574,3 kB raw / 149,4 kB gzip sebagai satu-satunya di atas 500 kB,
+  entry `index` 349,7 kB raw / 109,8 kB gzip. Chunk besar itu lazy. Jadi tidak ada gerbang ukuran,
+  dan alasannya ditulis supaya usulan berikutnya harus membawa data baru.
+
 ## 2026-10-17 - db:verify masuk CI, dan probe kesiapan yang menipu dirinya sendiri
 
 `npm run db:verify` lolos di laptop tapi mati di GitHub runner dengan `connection to server on
