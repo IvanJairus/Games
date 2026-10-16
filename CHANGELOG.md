@@ -154,6 +154,72 @@ batasan PR ini.
   instalasi bersama yang dipakai beberapa sesi agen. Buktinya datang dari runner CI, dari langkah
   `Install Dependencies` yang lolos.
 
+## 2026-10-16 - Bomberman: panah diperbesar, dan lanskap tidak ikut 2x
+
+Permintaan pemain: panah movement di tampilan ponsel bisa diperbesar 2 sampai 3 kali lipat.
+Saya ukur dulu, lalu sapu nilainya, dan hasilnya tidak seragam: potret dapat 2x, lanskap hanya
+naik 4 px.
+
+### Angka sebelum, terukur di artefak build
+
+| viewport | papan | tap area | kotak kontrol | petak | ruang bebas bawah papan |
+|---|---|---|---|---|---|
+| iPhone potret 390x844 | 11x9 | 46x46 px | 142x142 | 33,6 px | 397 px |
+| iPhone potret 390x844 | 21x15 | 46x46 px | 142x142 | 17,6 px | 436 px |
+| Android kecil 360x640 | 11x9 | 46x46 px | 142x142 | 30,9 px | 218 px |
+| Android kecil 360x640 | 21x15 | 46x46 px | 142x142 | 16,2 px | 253 px |
+| Lanskap 667x375 | 11x9 | 44x44 px | 136x136 | 27,9 px | 4 px |
+| Lanskap 844x390 | 21x15 | 44x44 px | 136x136 | 17,7 px | 4 px |
+
+Yang penting dari tabel itu: di potret papan dibatasi lebar, jadi ada pita kosong panjang di
+bawahnya tempat kontrol bisa tumbuh. Di lanskap papan dibatasi tinggi dan sudah menempel ke
+dasar stage, ruang bebasnya 4 px, jadi satu-satunya tempat panah adalah margin di samping
+arena.
+
+### Sapuan, bukan tebakan
+
+`--bm-dir` saya naikkan dari 44 px sampai 92 px dengan langkah 4, dan setiap nilai saya ukur
+lagi: kotak pad, luas tumpang tindih terhadap arena, apakah pad masih di layar, dan geometri
+papan. Nilai terbesar yang masih bersih (overlap 0 px² dan tidak keluar layar):
+
+| viewport | papan 11x9 | papan 21x15 |
+|---|---|---|
+| potret 390x844 | 92 px | 92 px |
+| potret 360x640 | 64 px | 76 px |
+| lanskap 667x375 | 56 px | 48 px |
+| lanskap 844x390 | 80 px | 72 px |
+
+Dua hal yang keluar dari permintaan awal dan lebih baik ditulis daripada ditutupi:
+
+1. **3x tidak mungkin.** Kotak kontrol jadi 418x418 px dan `offscreen=true` di enam-enam
+   kasus, termasuk iPhone potret papan 11x9. Panah mendorong keluar layar, bukan sekadar
+   menutupi arena.
+2. **2x di potret tidak bersih di semua ponsel.** Di 360x640 nilai 92 px menutup arena
+   21.419 px² pada papan 11x9, sekitar 22 petak. Angka 92 yang saya pakai untuk memutuskan
+   tadi hanya terbukti bersih di 390x844.
+
+### Yang dipasang
+
+- Potret layar tinggi: `--bm-dir: 92px`, dua kali lipat, overlap 0 px² di 11x9 maupun 21x15.
+- Potret layar pendek (tinggi 700 px ke bawah): 64 px, nilai terbesar yang terukur bersih di
+  360x640.
+- Lanskap: 48 px, naik dari 44 px. Ini batas nyata, bukan pilihan gaya: 52 px sudah menutup
+  993 px² arena 21x15 di 667x375. Papan tidak saya perkecil untuk memberi tempat pada panah.
+
+Ukuran petak papan tidak berubah di satu pun dari delapan kasus: 33,6 / 17,6 / 30,9 / 16,2 /
+27,9 / 16,7 / 29,6 / 17,7 px, sama persis seperti sebelum perubahan ini.
+
+### Gerbang
+
+`scripts/gameplay-check.mjs` sekarang memasang satu assertion baru per viewport sentuh,
+`arrows are the size the sweep allowed`, yang mengunci 92 / 64 / 48 ke angka hasil sapuan.
+Assertion itu bukan dibuat agar lolos: ia akan merah kalau suatu hari seseorang memperbesar
+panah lagi tanpa mengukur, dan ia merah di 360x640 kalau nilai 92 px dipasang di sana.
+
+`gameplay:check` 115/115 pada artefak build (naik dari 110 karena lima assertion baru),
+`npx tsc -b` bersih, `test:unit` dan `test:ui` hijau, `guard:check` bersih, `release:check`
+lulus lima tahap.
+
 ## 2026-10-16 - WallGo: anggaran giliran bot diukur relatif, bukan jam dinding
 
 ### Diperbaiki
