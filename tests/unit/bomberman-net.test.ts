@@ -332,3 +332,71 @@ describe('character claim', () => {
     expect(encodeChar({ seat: 1, charId: 'x'.repeat(80) })?.charId).toHaveLength(16);
   });
 });
+
+/**
+ * A broadcast that throws is the same fact the player needs to know as one that answers
+ * 'timedOut': the message never left this tab. The notice path exists already, so these
+ * hold the error path to it.
+ */
+describe('broadcast that throws', () => {
+  class FlakyChannel {
+    mode: 'timeout' | 'throw' = 'timeout';
+    handlers = new Map<string, (msg: { payload: unknown }) => void>();
+
+    on(_type: string, opts: { event: string }, cb: (msg: { payload: unknown }) => void): this {
+      this.handlers.set(opts.event, cb);
+      return this;
+    }
+
+    send(): Promise<string> {
+      if (this.mode === 'throw') throw new Error('websocket is not open');
+      return Promise.resolve('timedOut');
+    }
+  }
+
+  function client(channel: FlakyChannel, onDrop: (n: number) => void): BombermanNet {
+    const sim = makeSim(2);
+    const idle: InputState = { dir: null, bomb: false, seq: 0 };
+    return new BombermanNet({
+      channel: channel as unknown as RealtimeChannel,
+      isHost: () => false,
+      localSeat: () => 1,
+      getInput: () => idle,
+      getWorld: () => ({ t: 0, state: sim.snapshot(), fx: [] }),
+      onInput: () => undefined,
+      onWorld: () => undefined,
+      onDrop,
+    });
+  }
+
+  const flush = async (): Promise<void> => {
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+  };
+
+  it('counts a send that throws as a dropped message', () => {
+    const seen: number[] = [];
+    const channel = new FlakyChannel();
+    channel.mode = 'throw';
+    const net = client(channel, (n) => seen.push(n));
+    net.sendPress(1, null, 1);
+    expect(seen).toEqual([1]);
+  });
+
+  it('keeps counting after a slow link already reached the notice threshold', async () => {
+    /* The shared warning flag is what makes this its own case: once 20 timeouts had been
+       reported, the throw path answered nothing at all, so a socket that dies outright
+       stayed invisible to the player it froze. */
+    const seen: number[] = [];
+    const channel = new FlakyChannel();
+    const net = client(channel, (n) => seen.push(n));
+
+    for (let i = 0; i < 20; i++) net.sendPress(1, null, i + 1);
+    await flush();
+    expect(seen).toHaveLength(20);
+
+    channel.mode = 'throw';
+    net.sendPress(1, null, 21);
+    expect(seen).toHaveLength(21);
+    expect(seen[20]).toBe(21);
+  });
+});
