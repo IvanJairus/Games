@@ -108,6 +108,9 @@ psql(`
     if not exists (select 1 from pg_roles where rolname = 'anon') then
       create role anon nologin;
     end if;
+    if not exists (select 1 from pg_roles where rolname = 'authenticated') then
+      create role authenticated nologin;
+    end if;
   end $$;
   do $$ begin
     if not exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
@@ -129,6 +132,12 @@ psql(`
   grant select, insert, update, delete on all tables in schema public to anon;
   grant usage on all sequences in schema public to anon;
 `);
+
+psqlFile(join(root, 'supabase/migrations/003_protect_finished_matches.sql'));
+psqlFile(join(root, 'supabase/migrations/004_close_unused_writes_and_count_in_one.sql'));
+psqlFile(join(root, 'supabase/migrations/005_match_results_are_history.sql'));
+psqlFile(join(root, 'supabase/migrations/006_cleanup_stale_rooms.sql'));
+log('003 sampai 006 diterapkan, termasuk fungsi pembersih room basi');
 
 log('menjalankan assertion protokol sebagai role anon');
 try {
@@ -160,6 +169,19 @@ log('rollback terbukti: pemicu hilang dan aturan tidak lagi menegah');
 
 psqlFile(join(root, 'supabase/migrations/002_match_protocol.sql'));
 log('pemicu dipasang kembali agar container meninggalkan state yang sama dengan produksi');
+
+log('menguji rollback 006: fungsi pembersih harus benar-benar hilang');
+psqlFile(join(root, 'supabase/rollback/006_cleanup_stale_rooms.sql'));
+
+const leftAfter006 = psql(
+  `select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'public' and p.proname = 'cleanup_stale_rooms';`,
+  ['-q', '-t', '-A'],
+);
+if (leftAfter006.trim() !== '0') fail('rollback 006 tidak menghapus fungsi pembersih', leftAfter006);
+
+psqlFile(join(root, 'supabase/migrations/006_cleanup_stale_rooms.sql'));
+log('rollback 006 terbukti: fungsi hilang, lalu dipasang kembali');
 
 const blocks = (readFileSync(join(root, 'supabase/tests/protocol.sql'), 'utf8').match(/do \$\$/g) || []).length;
 log(`OK: ${blocks} blok assertion protokol lulus di Postgres nyata`);
