@@ -73,7 +73,7 @@ function wire(seats: number, hostSeat: number) {
     const net = new BombermanNet({
       channel: new FakeChannel('room') as unknown as RealtimeChannel,
       isHost: () => seat === hostSeat,
-      localSeat: seat,
+      localSeat: () => seat,
       getInput: () => inputs[seat],
       getWorld: () => ({ t: performance.now(), state: sim.snapshot(), fx: sim.drainEvents() }),
       onInput: (from, input) => sim.setInput(from, input),
@@ -239,7 +239,7 @@ describe('character claim', () => {
     const host = new BombermanNet({
       channel: new FakeChannel('claim') as unknown as RealtimeChannel,
       isHost: () => true,
-      localSeat: 0,
+      localSeat: () => 0,
       getInput: () => idle,
       getWorld: () => ({ t: performance.now(), state: hostSim.snapshot(), fx: [] }),
       onInput: () => undefined,
@@ -250,7 +250,7 @@ describe('character claim', () => {
     const client = new BombermanNet({
       channel: clientChannel as unknown as RealtimeChannel,
       isHost: () => false,
-      localSeat: 1,
+      localSeat: () => mySeat,
       getInput: () => idle,
       getWorld: () => ({ t: 0, state: hostSim.snapshot(), fx: [] }),
       getCharClaim: () => (mySeat < 0 ? null : { seat: mySeat, charId: 'sekrup' }),
@@ -263,12 +263,60 @@ describe('character claim', () => {
     vi.advanceTimersByTime(TICK_MS * 3);
     expect(claims.size).toBe(0);
     expect(clientChannel.sent.some((m) => m.event === EV_CHAR)).toBe(false);
+    // An input naming seat -1 is noise the host cannot apply, so it is not worth sending.
+    expect(clientChannel.sent.some((m) => m.event === EV_INPUT)).toBe(false);
 
     mySeat = 1;
     vi.advanceTimersByTime(TICK_MS * 5);
     expect(claims.get(1)).toBe('sekrup');
     // One message for the whole match. Repeating it would spend the shared budget.
     expect(clientChannel.sent.filter((m) => m.event === EV_CHAR)).toHaveLength(1);
+    expect(clientChannel.sent.filter((m) => m.event === EV_INPUT).every((m) => (m.payload as { seat: number }).seat === 1)).toBe(true);
+
+    host.stop();
+    client.stop();
+    vi.useRealTimers();
+  });
+
+  it('moves the seat the tab ended up with, not the one it had when the channel opened', () => {
+    /* The live bug: the realtime channel joined before the guest's own seat row came back,
+       so the net kept a seat of -1 for the whole match. The guest's bomb press still worked,
+       because it passes the seat at call time, which is exactly why the symptom read as
+       "the host can walk and the guest is stuck". */
+    FakeChannel.reset();
+    vi.useFakeTimers();
+    const hostSim = makeSim(2);
+    let mySeat = -1;
+    const input: InputState = { dir: 'right', bomb: false, seq: 0 };
+
+    const host = new BombermanNet({
+      channel: new FakeChannel('seat') as unknown as RealtimeChannel,
+      isHost: () => true,
+      localSeat: () => 0,
+      getInput: () => input,
+      getWorld: () => ({ t: performance.now(), state: hostSim.snapshot(), fx: [] }),
+      onInput: (seat, next) => hostSim.setInput(seat, next),
+      onWorld: () => undefined,
+    });
+    const client = new BombermanNet({
+      channel: new FakeChannel('seat') as unknown as RealtimeChannel,
+      isHost: () => false,
+      localSeat: () => mySeat,
+      getInput: () => input,
+      getWorld: () => ({ t: 0, state: hostSim.snapshot(), fx: [] }),
+      onInput: () => undefined,
+      onWorld: () => undefined,
+    });
+    host.start();
+    client.start();
+
+    vi.advanceTimersByTime(TICK_MS * 4);
+    mySeat = 1;
+    vi.advanceTimersByTime(TICK_MS * 4);
+    for (let i = 0; i < 40; i++) hostSim.step(1 / 60);
+
+    expect(hostSim.state.players[1].facing).toBe('right');
+    expect(hostSim.state.players[1].x).toBeGreaterThan(1);
 
     host.stop();
     client.stop();
