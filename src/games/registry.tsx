@@ -1,10 +1,10 @@
 import React from 'react';
 import { RouteObject } from 'react-router-dom';
-import { wallGameRoutes } from './wall-game/routes';
-import { ticTacToeRoutes } from './tic-tac-toe/routes';
-import { battleshipRoutes } from './battleship/routes';
-import { slapArenaRoutes } from './slap-arena/routes';
-import { bombermanRoutes } from './bomberman/routes';
+import { wallGameRoutes, loadWallgameLobby } from './wall-game/routes';
+import { ticTacToeRoutes, loadTicTacToeLobby } from './tic-tac-toe/routes';
+import { battleshipRoutes, loadBattleshipLobby } from './battleship/routes';
+import { slapArenaRoutes, loadSlapArenaLobby } from './slap-arena/routes';
+import { bombermanRoutes, loadBombermanLobby } from './bomberman/routes';
 import { GameType } from './common/multiplayer';
 
 export interface GameMetadata {
@@ -16,6 +16,7 @@ export interface GameMetadata {
   statusLabel: string;
   route: string;
   routes: RouteObject[];
+  preload: () => Promise<unknown>;
   thumbnail: React.ReactNode;
 }
 
@@ -29,6 +30,7 @@ export const GAMES_REGISTRY: GameMetadata[] = [
     statusLabel: 'Solo & Online',
     route: '/slap-arena',
     routes: slapArenaRoutes,
+    preload: loadSlapArenaLobby,
     thumbnail: (
       <svg viewBox="0 0 320 180" style={{ width: '100%', height: '100%' }} aria-hidden="true">
         <defs>
@@ -80,6 +82,7 @@ export const GAMES_REGISTRY: GameMetadata[] = [
     statusLabel: 'Solo & Online',
     route: '/bomberman',
     routes: bombermanRoutes,
+    preload: loadBombermanLobby,
     thumbnail: (
       <svg viewBox="0 0 320 180" style={{ width: '100%', height: '100%' }} aria-hidden="true">
         <rect width="320" height="180" rx="8" fill="#8fd08f" />
@@ -138,6 +141,7 @@ export const GAMES_REGISTRY: GameMetadata[] = [
     statusLabel: 'Lokal & Online',
     route: '/wall-game',
     routes: wallGameRoutes,
+    preload: loadWallgameLobby,
     thumbnail: (
       <svg viewBox="0 0 320 180" style={{ width: '100%', height: '100%' }} aria-hidden="true">
         <g fill="none" stroke="currentColor" strokeWidth="1.1" color="var(--ink-faint)">
@@ -161,6 +165,7 @@ export const GAMES_REGISTRY: GameMetadata[] = [
     statusLabel: 'Lokal & Online',
     route: '/tic-tac-toe',
     routes: ticTacToeRoutes,
+    preload: loadTicTacToeLobby,
     thumbnail: (
       <svg viewBox="0 0 320 180" style={{ width: '100%', height: '100%' }} aria-hidden="true">
         <g stroke="rgba(28, 25, 23, 0.18)" strokeWidth="2" strokeLinecap="round">
@@ -188,6 +193,7 @@ export const GAMES_REGISTRY: GameMetadata[] = [
     statusLabel: 'Lokal & Online',
     route: '/battleship',
     routes: battleshipRoutes,
+    preload: loadBattleshipLobby,
     thumbnail: (
       <svg viewBox="0 0 320 180" style={{ width: '100%', height: '100%' }} aria-hidden="true">
         <g stroke="rgba(30, 41, 59, 0.16)" strokeWidth="1">

@@ -3,9 +3,9 @@ import { RouteObject } from 'react-router-dom';
 import { RouteFallback } from '../../components/RouteFallback';
 import { RouteErrorBoundary } from '../../components/ErrorBoundary';
 
-const BattleshipLobby = lazy(() =>
-  import('./pages/BattleshipLobby').then((m) => ({ default: m.BattleshipLobby }))
-);
+export const loadBattleshipLobby = () => import('./pages/BattleshipLobby');
+
+const BattleshipLobby = lazy(() => loadBattleshipLobby().then((m) => ({ default: m.BattleshipLobby })));
 const BattleshipLocal = lazy(() =>
   import('./pages/BattleshipLocal').then((m) => ({ default: m.BattleshipLocal }))
 );
