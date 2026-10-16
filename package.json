@@ -17,6 +17,7 @@
     "guard:check": "node scripts/guard-check.mjs",
     "gameplay:check": "node scripts/gameplay-check.mjs",
     "floors:build": "node scripts/build-floors.mjs",
+    "icons:build": "node scripts/build-icons.mjs",
     "gameplay:online": "node scripts/gameplay-online.mjs"
   },
   "dependencies": {

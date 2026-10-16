@@ -8,6 +8,27 @@ terpisah saat kamu menerbitkan rilis.
 Entri dimulai dari 14 Oktober 2026. Perubahan sebelum tanggal itu ada pada riwayat git dan daftar
 pull request, karena tidak dicatat saat terjadi.
 
+## 2026-10-17 - Hub: web manifest untuk mode standalone dari Layar Utama
+
+Situs yang dibuka dari tab Safari selalu membawa bilah browser, dan tinggi bilah itulah yang
+membatasi ukuran petak Bomberman saat landscape. `display: standalone` membuang bilah itu ketika
+pengguna menambahkan halaman ke Layar Utama. Ini jalur paling murah ke layar penuh; auto-rotate
+sudah ditolak lebih awal karena iPhone tidak bisa memaksa rotasi di tab biasa. Kartu ini sengaja
+tanpa service worker, jadi tidak ada klaim bisa offline.
+
+### Ditambahkan
+
+- `public/manifest.webmanifest` dengan `start_url` dan `scope` `/games/`, `display: standalone`,
+  `background_color` dan `theme_color` `#ffffff`, serta dua entri ikon PNG.
+- `public/icon-192.png` (2264 B), `public/icon-512.png` (6364 B), dan `public/apple-touch-icon.png`
+  ukuran 180x180 (2082 B). Safari membutuhkan bitmap, bukan SVG, untuk ikon Layar Utama.
+- `scripts/build-icons.mjs` dan script `icons:build`: merender `public/favicon.svg` di viewport
+  pas lewat Chromium tanpa kepala, mencetak ukuran byte tiap hasil. Script ini satu kali jalan dan
+  tidak masuk CI; mesin pengembangan tidak punya ImageMagick maupun PIL, jadi PNG harus lahir dari
+  browser.
+- Empat baris di `<head>` `index.html`: `rel="manifest"`, `rel="apple-touch-icon"`,
+  `apple-mobile-web-app-capable`, dan `apple-mobile-web-app-title`.
+
 ## 2026-10-17 - Hub: chunk lobby mulai diunduh saat kartunya disentuh
 
 Tiap game sudah di-lazy, tapi chunk baru diunduh setelah pengguna menekan kartu. Perubahan ini
