@@ -178,6 +178,12 @@ Durasi langkah ini di runner saya ukur dua kali pada dua commit berbeda, dan ang
 di PR. Kalau salah satunya merah atau tidak stabil, langkah ini dicabut lagi: gerbang yang tidak
 bisa diandalkan lebih buruk daripada tidak ada gerbang.
 
+Terukur di runner, commit pertama `5100f1c`, run 38950842573: langkah gameplay success
+18:57:08Z sampai 18:58:24Z, **76 detik**. Job Security & Quality Audit seluruhnya 4m33s
+(18:53:53Z sampai 18:58:26Z); tanpa langkah ini job yang sama ada di sekitar 3m17s. `db:verify`
+pada run yang sama 7 detik. Pembanding lokal saya 1m11s, jadi runner tidak lebih lambat dari
+laptop untuk gerbang ini. Angka kedua ada di komentar PR, dari push kedua.
+
 ### README yang basi
 
 Bagian "Arsitektur CI/CD & Keamanan" hanya menyebut TypeScript, Game Engines, dan Viewport UI
