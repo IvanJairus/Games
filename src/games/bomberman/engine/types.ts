@@ -42,6 +42,12 @@ export const ROUND_OVER_SECONDS = 1.8;
  */
 export const SCORE_TO_WIN = 3;
 /**
+ * A round has to end even if nobody dies. Two cautious bots, or two players who both
+ * hide, otherwise stall the match forever: the only other ending was a death. Kept short
+ * enough that three stalled rounds are still under two minutes of play.
+ */
+export const ROUND_SECONDS = 40;
+/**
  * A shield pops once, but the flame that broke it keeps burning for FLAME_SECONDS.
  * Without a grace window the same fire kills the seat on the very next frame.
  */
@@ -78,6 +84,8 @@ export interface Flame extends Coord {
   id: number;
   kind: 'core' | 'arm' | 'tip';
   life: number;
+  /** Which seat's bomb lit this cell. Needed to tell a kill from a suicide. */
+  owner: number;
 }
 
 export interface PowerPickup extends Coord {
@@ -109,6 +117,8 @@ export interface PlayerState {
   shield: boolean;
   grace: number;
   wins: number;
+  /** Bombs planted in the current round, used to break a timeout without a death. */
+  roundBombs: number;
   step: StepAnim | null;
   cool: number;
   bombsPlaced: number;
@@ -122,7 +132,7 @@ export type SimEvent =
   | { t: 'power'; x: number; y: number; kind: PowerKind }
   | { t: 'take'; seat: number; kind: PowerKind; x: number; y: number }
   | { t: 'reject'; seat: number; reason: string }
-  | { t: 'ko'; seat: number }
+  | { t: 'ko'; seat: number; by: number }
   | { t: 'countdown'; value: number }
   | { t: 'start' }
   | { t: 'round'; winner: number | null; round: number }

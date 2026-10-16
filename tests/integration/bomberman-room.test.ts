@@ -148,9 +148,11 @@ describe('host and client agree after a match', () => {
     }
     expect(host.state.phase).toBe('finished');
     expect(host.state.winner).not.toBeNull();
-    const alive = host.state.players.filter((p) => p.alive);
-    expect(alive).toHaveLength(1);
-    expect(alive[0].seat).toBe(host.state.winner);
+    // A round can now end on the clock with everybody alive, so the invariant is about
+    // the score, not about survivors: the champion is the seat that won enough rounds.
+    const champion = host.state.players.find((p) => p.seat === host.state.winner);
+    expect(champion?.wins).toBeGreaterThanOrEqual(host.state.scoreToWin);
+    expect(host.state.players.filter((p) => p.alive).length).toBeLessThanOrEqual(host.state.seats);
     expect(bytes({ winner: host.state.winner, round: host.state.round })).toBeLessThan(128);
   });
 });

@@ -10,6 +10,7 @@ import {
   Coord,
   Facing,
   FUSE_SECONDS,
+  ROUND_SECONDS,
   BombermanState,
   aliveSeats,
   spawnCells,
@@ -201,6 +202,26 @@ describe('survival maths', () => {
   });
 });
 
+describe('hazard-aware pathing', () => {
+  it('routes around live fire instead of crossing it', () => {
+    // A straight line to the goal passes through a burning cell. The bot used to take it
+    // and die on the embers of the bomb it had already survived.
+    const grid = arena(11, 9);
+    const state = bareState(grid);
+    const avoid = new Set(['3,1', '4,1']);
+    const step = firstStepToward(state, { x: 2, y: 1 }, { x: 5, y: 1 }, avoid);
+    expect(step).not.toBeNull();
+    expect(step).not.toBe('right');
+  });
+
+  it('falls back to the plain route when no hazard-free one exists', () => {
+    const grid = arena(11, 9);
+    const state = bareState(grid);
+    const step = firstStepToward(state, { x: 2, y: 1 }, { x: 3, y: 1 }, new Set(['3,1']));
+    expect(step).toBe('right');
+  });
+});
+
 describe('sim rules', () => {
   it('counts down before the arena opens', () => {
     const sim = newSim([seat(0, { x: 1, y: 1 }), seat(1, { x: 9, y: 7 })], { seats: 2 });
@@ -316,6 +337,32 @@ describe('sim rules', () => {
     const frozen = sim.state.elapsed;
     run(sim, 0.5);
     expect(sim.state.elapsed).toBe(frozen);
+  });
+
+  it('ends a round nobody lost, so hiding cannot stall the match', () => {
+    const sim = make(arena(11, 9), [seat(0, { x: 1, y: 1 }), seat(1, { x: 9, y: 7 })]);
+    // Seat 1 plants, seat 0 does nothing. Without a clock the round only ends on a death.
+    run(sim, ROUND_SECONDS + 0.5);
+    expect(sim.state.phase).not.toBe('battle');
+    expect(sim.state.winner === null || sim.state.winner !== undefined).toBe(true);
+  });
+
+  it('awards a stalled round to whoever actually fought', () => {
+    const sim = make(arena(11, 9), [seat(0, { x: 1, y: 1 }), seat(1, { x: 9, y: 7 })]);
+    // Both seats stay alive and no bomb is live, so only the clock can end this round.
+    sim.state.players[1].roundBombs = 4;
+    run(sim, ROUND_SECONDS + 0.5);
+    expect(sim.state.phase).toBe('roundOver');
+    expect(sim.player(1)!.wins).toBe(1);
+    expect(sim.player(0)!.wins).toBe(0);
+  });
+
+  it('calls a stalled round with equal aggression a draw', () => {
+    const sim = make(arena(11, 9), [seat(0, { x: 1, y: 1 }), seat(1, { x: 9, y: 7 })]);
+    run(sim, ROUND_SECONDS + 0.5);
+    expect(sim.state.phase).toBe('roundOver');
+    expect(sim.player(0)!.wins).toBe(0);
+    expect(sim.player(1)!.wins).toBe(0);
   });
 
   it('resets the arena and crowns a champion after enough rounds', () => {

@@ -82,6 +82,7 @@ export const escapeTarget = (
   from: Coord,
   burn: Set<string>,
   maxSteps: number = ESCAPE_DEPTH,
+  avoid?: Set<string>,
 ): (Coord & { d: number }) | null => {
   const seen = new Set<string>([key(from.x, from.y)]);
   const queue: Array<{ x: number; y: number; d: number }> = [{ x: from.x, y: from.y, d: 0 }];
@@ -95,6 +96,9 @@ export const escapeTarget = (
       const ny = cur.y + dir.y;
       const k = key(nx, ny);
       if (seen.has(k) || !walkable(state, nx, ny)) continue;
+      /* A route that crosses a blast that already exists is not an escape. Only the new
+         bomb's own arms may be crossed, and the caller keeps those out of `avoid`. */
+      if (avoid?.has(k)) continue;
       seen.add(k);
       queue.push({ x: nx, y: ny, d: cur.d + 1 });
     }
@@ -110,11 +114,17 @@ export interface Plan {
 }
 
 /** Is planting here survivable, and where do we run afterwards? */
-export const bombPlan = (state: BombermanState, x: number, y: number, range: number): Plan | null => {
+export const bombPlan = (
+  state: BombermanState,
+  x: number,
+  y: number,
+  range: number,
+  avoid?: Set<string>,
+): Plan | null => {
   if (!walkable(state, x, y)) return null;
   const blast = blastCells(state, { x, y, range });
   const burn = burnSet(blast);
-  const target = escapeTarget(state, { x, y }, burn);
+  const target = escapeTarget(state, { x, y }, burn, ESCAPE_DEPTH, avoid);
   return target ? { x, y, target, burn } : null;
 };
 
@@ -145,11 +155,27 @@ export const facingFor = (dx: number, dy: number): Facing =>
  * straight into the pillar lattice and leaves a bot standing in the fire while it
  * decides what to do next.
  */
+/**
+ * `avoid` is what makes this usable for fleeing. A plain shortest path happily walks a
+ * bot straight through a fire that is still burning from the bomb it planted two seconds
+ * ago, which is how the "careful" bot kept dying: not on the new blast, but on the embers
+ * of the last one. When no hazard-free route exists the caller gets the plain path back,
+ * because standing still inside a blast is never better than crossing one.
+ */
 export const firstStepToward = (
   state: BombermanState,
   from: Coord,
   to: Coord,
-): Facing | null => {
+  avoid?: Set<string>,
+): Facing | null =>
+  routeStep(state, from, to, avoid) ?? (avoid ? routeStep(state, from, to) : null);
+
+function routeStep(
+  state: BombermanState,
+  from: Coord,
+  to: Coord,
+  avoid?: Set<string>,
+): Facing | null {
   if (from.x === to.x && from.y === to.y) return null;
   const start = key(from.x, from.y);
   const goal = key(to.x, to.y);
@@ -163,6 +189,7 @@ export const firstStepToward = (
       const ny = cur.y + dir.y;
       const k = key(nx, ny);
       if (prev.has(k) || !walkable(state, nx, ny)) continue;
+      if (avoid?.has(k)) continue;
       prev.set(k, key(cur.x, cur.y));
       if (k === goal) {
         let step: string = k;
@@ -178,4 +205,4 @@ export const firstStepToward = (
     }
   }
   return null;
-};
+}
