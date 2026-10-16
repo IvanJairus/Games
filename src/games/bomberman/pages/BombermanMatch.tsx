@@ -17,11 +17,12 @@ import { playBombDrop, playExplosion, playKo, playPowerup, unlockAudio } from '.
 import { buzzThud } from '../../common/haptics';
 
 import { BombermanSim } from '../engine/sim';
+import { smooth } from '../engine/smooth';
 import { BombermanBot } from '../engine/ai';
 import { BombermanNet, type WorldPayload } from '../engine/net';
 import { CHAR_IDS, characterById, spriteMarkup } from '../sprites';
 import { readCharId } from '../charPreference';
-import { type BombermanState, type BoardSize, type Facing, type FloorKind, type InputState, type SimEvent, boardFor, sizeForBoard } from '../engine/types';
+import { type BoardSize, type Facing, type FloorKind, type InputState, type SimEvent, boardFor, sizeForBoard } from '../engine/types';
 import { createFpsController, fxGates, levelAtMount, readFxMode, writeFxMode, type FxLevel } from '../engine/fxMode';
 import { Arena, type ArenaHandle } from '../components/Arena';
 import { Hud, StatusLine } from '../components/Hud';
@@ -60,23 +61,6 @@ const readConfig = (raw: unknown): RoomConfig | null => {
     roster: c.roster,
   };
 };
-
-/**
- * A client keeps advancing its own animation between host frames. Without this a 15 Hz
- * snapshot renders a 6.6 cell/s walk as a visible 15 fps slide.
- */
-function smooth(state: BombermanState, dt: number): void {
-  for (const p of state.players) {
-    if (!p.step) {
-      p.ax = p.x;
-      p.ay = p.y;
-      continue;
-    }
-    p.step.t = Math.min(1, p.step.t + dt * p.speed);
-    p.ax = p.step.fx + (p.step.tx - p.step.fx) * p.step.t;
-    p.ay = p.step.fy + (p.step.ty - p.step.fy) * p.step.t;
-  }
-}
 
 function playEvent(e: SimEvent, shake: boolean): void {
   if (e.t === 'boom') {
