@@ -688,6 +688,24 @@ sudah dikonfirmasi baik di HP lewat rekaman kedua.
 - Test UI mengunci bentuknya: satu kurung per kapal (bukan per petak), sandi dan sumbunya benar,
   dan kapal tenggelam menghasilkan simbol bangkai.
 
+## 2026-10-16 - Battleship online: giliran komitmen ikut berpindah
+
+### Diperbaiki
+
+- **Kunci armada di room online tidak pernah tuntas untuk pemain kedua.** `applyCommitment` hanya
+  menggeser `game_state.currentTurn` saat dua komitmen sudah masuk, sedangkan baris
+  `matches.current_turn` langsung pindah ke kursi lain. Halaman membaca `game_state`, jadi kursi
+  pertama tetap melihat "Saatnya mengunci armada Anda" setelah komitmennya tersimpan, dan kursi
+  kedua tidak pernah diundang mengunci. Klik kedua dari kursi pertama menghasilkan
+  `failure: 'turn'` dengan pesan "Langkah tidak diterima karena giliran sudah berpindah", padahal
+  langkah pertamanya berhasil.
+- Diukur pada tabel palsu: sesudah kursi 0 mengirim, `current_turn` baris 1 tetapi
+  `game_state.currentTurn` 0, sehingga kursi 0 melihat giliran sendiri true dan kursi 1 false.
+  Sesudah perbaikan keduanya berbalik, dan `COMMIT` kursi 1 membawa papan ke fase `BATTLE` dengan
+  status room `playing`. Test regresi ada di `tests/integration/battleship-protocol.test.ts`.
+- Cacat ini ada sejak commit pertama Battleship (`d7f1f10`), bukan bawaan perubahan pop-up hasil
+  atau tanda armada.
+
 ## 2026-10-15 - Battleship: pop-up hasil dan rematch satu room
 
 ### Ditambahkan

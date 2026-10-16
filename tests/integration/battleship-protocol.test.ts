@@ -454,4 +454,52 @@ describe('Battleship online protocol against the matches table', () => {
     );
     expect(honestVerdict.ok).toBe(true);
   });
+
+  it('hands the commit turn to the other seat so both sides can lock', async () => {
+    db.reset(
+      {
+        game_state: createInitialState(),
+        status: 'waiting',
+        current_turn: 0,
+        winner_index: null,
+      },
+      [
+        { match_id: 'match-1', player_index: 0, session_id: 'p1', name: 'Host', is_host: true, connected: true },
+        { match_id: 'match-1', player_index: 1, session_id: 'p2', name: 'Tamu', is_host: false, connected: true },
+      ]
+    );
+    currentSession = 'p1';
+
+    const commitSeat = async (seat: 0 | 1, commitment: string) => {
+      const applied = applyCommitment(readGame(), seat, commitment);
+      expect(applied.error).toBeUndefined();
+      const wrote = await submitOnlineMove({
+        matchId: db.row.id,
+        playerIndex: seat,
+        action: 'COMMIT',
+        nextState: applied.state,
+        nextTurn: otherSeat(seat),
+        newStatus: applied.state.phase === 'BATTLE' ? 'playing' : undefined,
+        basedOn: db.row.updated_at,
+        moveSummary: { phase: applied.state.phase },
+      });
+      expect(wrote.ok).toBe(true);
+      return readGame();
+    };
+
+    // The page only offers the placer to a seat whose index matches game_state.currentTurn, so the
+    // state has to move with the row or the second player is never invited to lock.
+    const seesOwnTurn = (state: BattleshipState, seat: 0 | 1) =>
+      state.phase === 'PLACEMENT' && state.currentTurn === seat;
+
+    const afterHost = await commitSeat(0, 'c0');
+    expect(seesOwnTurn(afterHost, 0)).toBe(false);
+    expect(seesOwnTurn(afterHost, 1)).toBe(true);
+    expect(db.row.current_turn).toBe(1);
+
+    const afterGuest = await commitSeat(1, 'c1');
+    expect(afterGuest.phase).toBe('BATTLE');
+    expect(afterGuest.currentTurn).toBe(0);
+    expect(db.row.status).toBe('playing');
+  });
 });
