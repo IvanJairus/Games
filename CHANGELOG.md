@@ -39,6 +39,52 @@ hijau.
 - Test lama yang menjaga aturan sentuh (tap pertama hanya pratinjau, tap kedua pasang) tetap lulus,
   jadi perilaku HP yang baru diperbaiki tidak berubah.
 
+## 2026-10-16 - Bomberman online: tamu bisa menaruh bom tapi tidak bisa jalan
+
+Laporan pemain yang menjalankan room sungguhan: pembuat room bisa jalan dengan WASD, pemain
+lainnya diam total walaupun tombolnya ditekan. Benar, dan ini bug yang tidak bisa dilihat
+probe saya sendiri.
+
+### Yang terjadi
+
+`BombermanNet` menerima `localSeat` sebagai angka saat objeknya dibuat. Kanal realtime bisa
+selesai bergabung sebelum baris kursi tamu kembali dari server, jadi nilai itu tertahan di -1
+sepanjang pertandingan. Setiap tick tamu mengirim pesan input yang menyebut kursi -1, dan tuan
+rumah menyimpannya tanpa efek: tidak ada pemain di kursi itu.
+
+Yang membuat gejalanya terlihat aneh adalah perbedaan dua jalur input. Tekanan bom dikirim
+dengan kursi yang dibaca saat itu juga (`sendPress(mySeatRef.current, ...)`), jadi bom tamu
+sampai dan meledak. Arah yang ditahan naik di pesan tick yang memakai kursi yang dibaca saat
+konstruksi. Jadi: bom jalan, jalan tidak. WASD tidak pernah jadi masalahnya; tombol panah juga
+sama macetnya.
+
+Perbaikannya membuat `localSeat` dibaca live, sama seperti `isHost`, `getInput`, dan
+`getWorld` yang memang sudah getter. Sambil kursi belum diketahui, tamu tidak mengirim input
+sama sekali, bukan mengirim nomor kursi yang tidak ada.
+
+### Kenapa probe saya tidak menemukannya
+
+Probe dua tab menguji "gerakan tuan rumah terlihat oleh tamu" dan "bom tamu terlihat oleh tuan
+rumah". Keduanya jalur yang benar-benar bekerja, dan tidak ada satu pun yang menguji tamu yang
+berjalan. Arah yang tidak diuji adalah arah yang salah, persis seperti soak bot semua-bot yang
+membuat bunuh diri bot lolos minggu lalu.
+
+Sekarang ada assertion-nya, dan ia tertangkap oleh build tayang sebelum perbaikan ini:
+
+```
+FAIL  a guest walking with the keyboard moves in the host world
+      [seat 1: translate(760 520) -> translate(760 520)]
+```
+
+Setelah perbaikan, probe yang sama harus hijau 16/16, dan itu saya jalankan lagi ke build tayang
+setelah merge.
+
+### Terukur
+
+338 tes hijau di 27 file, termasuk satu tes unit yang membangun ulang balapan waktunya: tamu
+yang kursinya baru dikenal setelah empat tick harus tetap bisa menggeser kursinya di dunia tuan
+rumah. `gameplay:online` bertambah satu assertion (15 jadi 16).
+
 ## 2026-10-16 - Bomberman: empat panah, dan ukuran petak yang saya salah baca
 
 Tiga permintaan dari pemain yang sama setelah rilis sebelumnya: kontrol diganti empat panah

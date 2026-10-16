@@ -158,6 +158,30 @@ await host.page.waitForTimeout(900);
 const after = await guest.page.evaluate(() => document.querySelector('[data-sig*=":idle:"], [data-sig*=":walk:"]')?.getAttribute('transform'));
 check('host movement is visible to the guest', before !== after, `${before} -> ${after}`);
 
+/* And the other way round, because the two directions are different code paths: the host
+   steps its own seat locally, while a guest's held direction only travels inside the
+   per-tick input message. A press sent as an event can work while the held direction never
+   moves anyone, which is exactly the report this check exists to catch. */
+const guestSeat = await guest.page.evaluate(
+  () => Number(/-(\d+)$/.exec(document.querySelector('.bm-chip[data-me="1"]')?.getAttribute('data-testid') ?? '')?.[1] ?? -1),
+);
+const posOf = (page, seat) =>
+  page.evaluate(
+    (n) => document.querySelectorAll('[data-sig^="player"]')[n]?.getAttribute('transform') ?? 'missing',
+    seat,
+  );
+const guestBefore = await posOf(host.page, guestSeat);
+await guest.page.keyboard.down('ArrowDown');
+await guest.page.waitForTimeout(900);
+await guest.page.keyboard.up('ArrowDown');
+await guest.page.waitForTimeout(900);
+const guestAfter = await posOf(host.page, guestSeat);
+check(
+  'a guest walking with the keyboard moves in the host world',
+  guestSeat >= 0 && guestBefore !== guestAfter,
+  `seat ${guestSeat}: ${guestBefore} -> ${guestAfter}`,
+);
+
 // Both boards must agree on the map after a few seconds of play.
 await host.page.waitForTimeout(2500);
 const same = await Promise.all([
