@@ -8,6 +8,37 @@ terpisah saat kamu menerbitkan rilis.
 Entri dimulai dari 14 Oktober 2026. Perubahan sebelum tanggal itu ada pada riwayat git dan daftar
 pull request, karena tidak dicatat saat terjadi.
 
+## 2026-10-16 - WallGo: kalibrasi anggaran test saya sendiri yang membuat main merah
+
+Entri sebelumnya mengganti assertion jam dinding dengan rasio terhadap beban kalibrasi. Gagasnya benar,
+ukurannya salah, dan sayalah yang memasangnya ke `main`.
+
+### Diperbaiki
+
+- Test anggaran giliran bot **timeout pada Vitest default 5000 ms** di runner, jadi `main` merah lagi
+  dan `Deploy to Vercel` kembali ter-skip. Assertion rasionya tidak pernah dijalankan sampai selesai:
+  log-nya `Error: Test timed out in 5000ms`. Test-nya sendiri butuh sekitar 4,6 detik di runner,
+  karena kalibrasi tiga sampel yang saya pasang terlalu mahal untuk plafon default itu.
+- Beban kalibrasi diturunkan dari 20000 menjadi 5000 kali `getShortestPath` (tetap tiga sampel,
+  diambil yang tercepat). Satu sampel kini sekitar 105 ms di laptop, dan biaya per BFS terukur stabil
+  20,3 sampai 21,1 mikrodetik pada semua ukuran yang saya coba, jadi penurunan ini tidak mengubah
+  sifat pengukuran.
+- Test itu sekarang membawa timeout sendiri, `{ timeout: 30000 }`, supaya marginnya tertulis di tempat
+  dan tidak diwarisi dari default yang bisa berubah.
+
+### Terukur
+
+| Kondisi | Rasio | Hasil |
+| --- | --- | --- |
+| Kode sekarang, lima kali jalan | 10,60x sampai 14,14x | lulus (anggaran 22x) |
+| Search dibuat 2x lebih mahal, tiga kali jalan | 27,89x, 28,66x, 29,89x | gagal pada assertion yang sama |
+| Durasi test | 1,74 sampai 1,87 detik normal, 2,96 detik saat mesin terganggu | margin 10x terhadap timeout 30 detik |
+
+Runner GitHub terukur sekitar 1,7x lebih lambat dari laptop pada kedua sisi rasio (search 2501 ms vs
+1450 ms, kalibrasi 711 ms vs 420 ms pada 20000 iterasi), dan itu justru yang membuat rasio bertahan
+saat mesinnya sibuk. Pada satu run lokal yang terganggu, kedua sisi naik bersama dan rasionya turun ke
+10,60x.
+
 ## 2026-10-16 - Slap Arena online: aktor remote diterbangkan, bukan ditunggu
 
 Menyusul pertanyaan: kenapa pembuat room mulus tapi anggota lain patah-patah.
