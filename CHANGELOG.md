@@ -8,6 +8,39 @@ terpisah saat kamu menerbitkan rilis.
 Entri dimulai dari 14 Oktober 2026. Perubahan sebelum tanggal itu ada pada riwayat git dan daftar
 pull request, karena tidak dicatat saat terjadi.
 
+## 2026-10-17 - Guard: engine game dijaga murni secara mesin
+
+Aturan "file engine game tidak boleh menyentuh Supabase runtime atau modul bersama" selama ini
+hanya kebiasaan. Sekarang scripts/guard-check.mjs yang menjaganya, lewat tiga cek terpisah di satu
+perintah yang sudah ada di CI.
+
+### Ditambah
+
+- Cek 2: tidak ada file di `src/games/*/engine/` yang mengimpor modul bersama (`games/common`,
+  `/common/`, `lib/supabase`).
+- Cek 3: tidak ada file engine yang mengimpor klien runtime `@supabase/supabase-js`. Yang diawali
+  `import type` boleh lewat, jadi dua baris yang sudah ada tetap sah:
+  `src/games/bomberman/engine/net.ts:14` dan `src/games/slap-arena/engine/net.ts:1`.
+- Pesan gagal menyebut cek mana yang jatuh dan mencetak `file:baris` tiap pelanggaran, dalam Bahasa
+  Indonesia. Pesan sukses menyebut ketiga cek.
+
+### Diperbaiki
+
+- Pathspec `src/games/*/engine/` yang direncanakan kartu ternyata mengembalikan nol kecocokan di
+  `git grep`, sehingga guard-nya tidak akan pernah bisa gagal. Yang benar `src/games/*/engine/*`.
+  Terukur: 0 baris untuk bentuk dengan garis miring di ujung, 35 baris untuk bentuk yang dipakai.
+
+### Terukur, bukti guard bisa gagal
+
+| Uji | Hasil |
+| --- | --- |
+| `npm run guard:check` pada tree bersih | hijau, exit 0 |
+| `import { getSupabase } from '../../../lib/supabase';` di engine | merah, cek 2, `src/games/wall-game/engine/types.ts:63`, exit 1 |
+| `import { createClient } from '@supabase/supabase-js';` di engine | merah, cek 3, baris dan file yang sama, exit 1 |
+| Setelah kedua sisipan dikembalikan | hijau lagi, `git status` hanya menyebut `scripts/guard-check.mjs` |
+
+Cek lama (host pratinjau vendor) dipertahankan apa adanya, polanya tidak digabung dengan dua cek baru.
+
 ## 2026-10-16 - WallGo: kalibrasi anggaran test saya sendiri yang membuat main merah
 
 Entri sebelumnya mengganti assertion jam dinding dengan rasio terhadap beban kalibrasi. Gagasnya benar,
