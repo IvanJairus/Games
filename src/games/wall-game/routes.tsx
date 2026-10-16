@@ -3,7 +3,9 @@ import { RouteObject, Navigate } from 'react-router-dom';
 import { RouteFallback } from '../../components/RouteFallback';
 import { RouteErrorBoundary } from '../../components/ErrorBoundary';
 
-const WallgameLobby = lazy(() => import('./pages/WallgameLobby').then((m) => ({ default: m.WallgameLobby })));
+export const loadWallgameLobby = () => import('./pages/WallgameLobby');
+
+const WallgameLobby = lazy(() => loadWallgameLobby().then((m) => ({ default: m.WallgameLobby })));
 const WallgameLocal = lazy(() => import('./pages/WallgameLocal').then((m) => ({ default: m.WallgameLocal })));
 const WallgameMatch = lazy(() => import('./pages/WallgameMatch').then((m) => ({ default: m.WallgameMatch })));
 

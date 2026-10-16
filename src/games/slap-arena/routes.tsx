@@ -5,7 +5,9 @@ import './slap-arena.css';
 
 // three.js and the character GLBs are only worth downloading once somebody
 // actually opens the arena, so the routes stay out of the hub bundle.
-const SlapArenaLobby = lazy(() => import('./pages/SlapArenaLobby').then((m) => ({ default: m.SlapArenaLobby })));
+export const loadSlapArenaLobby = () => import('./pages/SlapArenaLobby');
+
+const SlapArenaLobby = lazy(() => loadSlapArenaLobby().then((m) => ({ default: m.SlapArenaLobby })));
 const SlapArenaMatch = lazy(() => import('./pages/SlapArenaMatch').then((m) => ({ default: m.SlapArenaMatch })));
 
 function Boot({ children }: { children: ReactNode }) {

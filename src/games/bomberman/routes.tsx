@@ -4,7 +4,9 @@ import { RouteFallback } from '../../components/RouteFallback';
 import { RouteErrorBoundary } from '../../components/ErrorBoundary';
 import './bomberman.css';
 
-const BombermanLobby = lazy(() => import('./pages/BombermanLobby').then((m) => ({ default: m.BombermanLobby })));
+export const loadBombermanLobby = () => import('./pages/BombermanLobby');
+
+const BombermanLobby = lazy(() => loadBombermanLobby().then((m) => ({ default: m.BombermanLobby })));
 const BombermanLocal = lazy(() => import('./pages/BombermanLocal').then((m) => ({ default: m.BombermanLocal })));
 const BombermanMatch = lazy(() => import('./pages/BombermanMatch').then((m) => ({ default: m.BombermanMatch })));
 
