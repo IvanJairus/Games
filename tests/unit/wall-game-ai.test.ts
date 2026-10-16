@@ -3,6 +3,7 @@ import {
   applyMove,
   applyWall,
   createGame,
+  getShortestPath,
   getValidMoves,
   isValidWallPlacement,
   GameState,
@@ -220,21 +221,50 @@ describe('WallGo bot', () => {
     }
   );
 
-  it('keeps the wide-board search inside a usable turn time', () => {
-    let state = createGame({ playerCount: 6, gridSize: 13 });
+  // A wall-clock budget is not a property of the code: the same commit measured 2333ms, 2415ms and
+  // 2451ms on runs that passed and 3465ms and 4262ms on runs that failed, and one production deploy
+  // was skipped because of it. This compares the search against a calibration workload measured in
+  // the same process, so the signal (work per bot ply) survives but runner speed does not decide it.
+  // Budget basis, measured: normal code lands at 3.24x to 4.07x over five runs, and a search made
+  // deliberately twice as expensive lands at 6.89x, so 5.5x has room for runner noise and still
+  // catches a real regression.
+  it('keeps the wide-board search cheap against a calibration workload', () => {
+    const CALIBRATION_PATHS = 20000;
+    const TURN_BUDGET_RATIO = 5.5;
+
+    const board = createGame({ playerCount: 6, gridSize: 13 });
+    const corner = { x: 0, y: 0 };
+
+    // The fastest of three samples: a busy runner inflates a measurement but never beats the
+    // machine's own ceiling, so the minimum is the stable estimate of raw pathfinding speed.
+    let calibMs = Number.POSITIVE_INFINITY;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const start = performance.now();
+      for (let i = 0; i < CALIBRATION_PATHS; i++) {
+        getShortestPath(corner, board.corePosition, board.walls, board.gridSize);
+      }
+      calibMs = Math.min(calibMs, performance.now() - start);
+    }
+
+    let state = board;
     const rand = lcg(11);
-    const started = Date.now();
     let plies = 0;
+    const searchStart = performance.now();
 
     while (state.phase === 'ACTION' && plies < 60) {
       state = applyAction(state, chooseWallBotAction(state, 'sempurna', rand));
       plies += 1;
     }
 
-    // Measured 1.8s for a whole 6-seat game on the biggest board. The 520ms pacing timer in the UI
-    // is the wait a player actually notices.
+    const searchMs = performance.now() - searchStart;
+    const ratio = searchMs / calibMs;
+    console.log(
+      `[wall-bot search cost] ${plies} plies ${searchMs.toFixed(0)}ms / ${CALIBRATION_PATHS} BFS ${calibMs.toFixed(0)}ms = ${ratio.toFixed(2)}x`
+    );
+
     expect(plies).toBeGreaterThan(20);
-    expect(Date.now() - started).toBeLessThan(3000);
+    expect(calibMs).toBeGreaterThan(0);
+    expect(ratio).toBeLessThan(TURN_BUDGET_RATIO);
   });
 
   it('refuses to move in a finished game', () => {
