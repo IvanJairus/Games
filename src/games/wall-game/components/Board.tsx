@@ -44,6 +44,12 @@ export const Board: React.FC<BoardProps> = ({
   const gestureRef = useRef(0);
   const stagedByGestureRef = useRef(-1);
 
+  // Mouse already previews through the hover ghost, so one click places. Touch and pen have no
+  // hover, so they keep the stage-then-confirm rule. Unknown input (a click with no pointerdown
+  // before it, e.g. a keyboard or synthetic click) starts on the safer side.
+  const [usesTouch, setUsesTouch] = useState(false);
+  const gestureIsTouchRef = useRef(true);
+
   const cellSize = 50;
   const grooveThickness = 10;
   const padding = 20;
@@ -119,6 +125,12 @@ export const Board: React.FC<BoardProps> = ({
     const target = e.target as Element;
     if (target.closest('.move-candidate-group')) return;
 
+    // Only a real mouse gets the one-click rule. Anything else, including a pointer type the
+    // browser does not report, keeps the safer stage-then-confirm path.
+    const touch = e.pointerType !== 'mouse';
+    gestureIsTouchRef.current = touch;
+    setUsesTouch(touch);
+
     const slot = getSlotFromPointer(e.clientX, e.clientY);
     if (!slot) return;
 
@@ -133,6 +145,9 @@ export const Board: React.FC<BoardProps> = ({
       // Ignore in environments without pointer capture
     }
 
+    // A mouse pointer needs no staged preview: the hover ghost already follows it.
+    if (!touch) return;
+
     // Leaving a preview that already sits on this slot untouched is what lets the following click
     // recognise itself as the confirming tap rather than the one that staged the preview.
     if (stagedWall && stagedWall.x === slot.x && stagedWall.y === slot.y) return;
@@ -142,7 +157,7 @@ export const Board: React.FC<BoardProps> = ({
   };
 
   const handlePointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
-    if (!isDraggingRef.current) return;
+    if (!isDraggingRef.current || !gestureIsTouchRef.current) return;
     const start = dragStartClientPos.current;
     if (start) {
       const dist = Math.hypot(e.clientX - start.x, e.clientY - start.y);
@@ -183,6 +198,18 @@ export const Board: React.FC<BoardProps> = ({
   ) => {
     e.stopPropagation();
     if (disabled || phase !== 'ACTION' || activePlayer.wallsRemaining <= 0) return;
+
+    // A mouse user has already seen this exact wall in the hover ghost, so the click is the
+    // confirmation. An illegal slot leaves the ghost red and does nothing.
+    if (!gestureIsTouchRef.current) {
+      const wall: Wall = { orientation, x: wx, y: wy };
+      if (isValidWallPlacement(gameState, wall)) {
+        onPlaceWall(wall);
+        setStagedWall(null);
+        setHoveredWall(null);
+      }
+      return;
+    }
 
     if (
       stagedWall &&
@@ -801,6 +828,7 @@ export const Board: React.FC<BoardProps> = ({
             </button>
 
             <span
+              data-testid="wall-hint"
               style={{
                 fontFamily: 'var(--mono)',
                 fontSize: '10.5px',
@@ -808,9 +836,11 @@ export const Board: React.FC<BoardProps> = ({
                 letterSpacing: '.01em',
               }}
             >
-              {activePlayer.wallsRemaining > 0
-                ? 'Tap celah untuk pratinjau, tap lagi atau tahan-geser untuk mengatur'
-                : 'Dinding habis'}
+              {activePlayer.wallsRemaining === 0
+                ? 'Dinding habis'
+                : usesTouch
+                  ? 'Tap celah untuk pratinjau, tap lagi untuk pasang'
+                  : 'Arahkan kursor ke celah untuk pratinjau, klik untuk pasang'}
             </span>
           </div>
         )}
