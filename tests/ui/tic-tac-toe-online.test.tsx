@@ -8,16 +8,24 @@ import { TicTacToeMatch } from '@/games/tic-tac-toe/pages/TicTacToeMatch';
 // one snapshot at a time, the way realtime would.
 let pushSync: (data: unknown) => void = () => {};
 
-vi.mock('@/games/common/multiplayer', () => ({
-  subscribeToMatch: (_code: string, onSync: (data: unknown) => void) => {
-    pushSync = onSync;
-    return { unsubscribe: () => {} };
-  },
-  submitOnlineMove: vi.fn(async () => ({ ok: true })),
-  joinOnlineRoom: vi.fn(async () => ({ matchId: 'm1', playerIndex: 1, isHost: false })),
-  leaveOnlineMatch: vi.fn(async () => {}),
-  describeMoveFailure: vi.fn(() => 'Langkah tidak diterima.'),
-}));
+// The room transport is stood in for, while readAbandonedReason stays the real one so the page is
+// exercised against the same guard the other games use.
+vi.mock('@/games/common/multiplayer', async () => {
+  const real = await vi.importActual<typeof import('@/games/common/multiplayer')>(
+    '@/games/common/multiplayer'
+  );
+  return {
+    ...real,
+    subscribeToMatch: (_code: string, onSync: (data: unknown) => void) => {
+      pushSync = onSync;
+      return { unsubscribe: () => {} };
+    },
+    submitOnlineMove: vi.fn(async () => ({ ok: true })),
+    joinOnlineRoom: vi.fn(async () => ({ matchId: 'm1', playerIndex: 1, isHost: false })),
+    leaveOnlineMatch: vi.fn(async () => {}),
+    describeMoveFailure: vi.fn(() => 'Langkah tidak diterima.'),
+  };
+});
 
 vi.mock('@/lib/supabase', () => ({
   isSupabaseConfigured: () => true,
