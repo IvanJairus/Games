@@ -91,6 +91,56 @@ describe('WallGo board tap to place', () => {
 
     expect(screen.getByTestId('staged-wall-preview')).toBeInTheDocument();
     expect(onPlaceWall).not.toHaveBeenCalled();
+    // Once a preview is staged the dock swaps the hint for the explicit action buttons.
+    expect(screen.getByTestId('confirm-wall-btn')).toBeEnabled();
+  });
+
+  it('wording follows the input device', () => {
+    const onPlaceWall = renderEmpty();
+    const svg = screen.getByTestId('wallgame-board-svg');
+
+    expect(screen.getByTestId('wall-hint').textContent).toContain('klik untuk pasang');
+
+    fireEvent.pointerDown(svg, { clientX: -999, clientY: -999, pointerId: 9, pointerType: 'touch', isPrimary: true });
+    fireEvent.pointerUp(svg, { clientX: -999, clientY: -999, pointerId: 9, pointerType: 'touch', isPrimary: true });
+
+    expect(screen.getByTestId('wall-hint').textContent).toContain('tap lagi untuk pasang');
+    expect(onPlaceWall).not.toHaveBeenCalled();
+  });
+
+  it('places with a single mouse click, because hover already previewed the wall', () => {
+    const onPlaceWall = renderEmpty();
+    const svg = screen.getByTestId('wallgame-board-svg');
+
+    fireEvent.pointerDown(svg, { clientX: 70, clientY: 70, pointerId: 2, pointerType: 'mouse', isPrimary: true });
+    fireEvent.pointerUp(svg, { clientX: 70, clientY: 70, pointerId: 2, pointerType: 'mouse', isPrimary: true });
+    fireEvent.click(screen.getByTestId('groove-cross-0-0'));
+
+    expect(onPlaceWall).toHaveBeenCalledTimes(1);
+    expect(onPlaceWall).toHaveBeenCalledWith({ orientation: 'H', x: 0, y: 0 });
+    expect(screen.getByTestId('wall-hint').textContent).toContain('klik untuk pasang');
+  });
+
+  it('refuses a single mouse click on an illegal slot', () => {
+    const onPlaceWall = vi.fn();
+    const state: GameState = {
+      ...createGame({ playerCount: 2, gridSize: 9 }),
+      walls: [{ orientation: 'H', x: 1, y: 1, owner: 0 }],
+    };
+    render(
+      <Board
+        gameState={state}
+        wallOrientation="H"
+        onSelectMove={() => {}}
+        onPlaceWall={onPlaceWall}
+      />
+    );
+    const svg = screen.getByTestId('wallgame-board-svg');
+
+    fireEvent.pointerDown(svg, { clientX: 70, clientY: 70, pointerId: 3, pointerType: 'mouse', isPrimary: true });
+    fireEvent.click(screen.getByTestId('groove-cross-1-1'));
+
+    expect(onPlaceWall).not.toHaveBeenCalled();
   });
 
   it('places on the second tap of the same slot', () => {
