@@ -8,6 +8,7 @@
  */
 
 import {
+  BoardSize,
   CHAIN_FUSE,
   COOLDOWN_SECONDS,
   COUNTDOWN_SECONDS,
@@ -38,6 +39,7 @@ import {
   aliveSeats,
   spawnCells,
   walkable,
+  boardFor,
 } from './types';
 import { buildGrid, generateSeed } from './rng';
 import { blastCells } from './blast';
@@ -54,6 +56,8 @@ export interface SeatConfig {
 export interface SimOptions {
   seed?: string;
   seats?: number;
+  /** Arena geometry. Omitted, the seat count picks the small board. */
+  size?: BoardSize;
   floor?: FloorKind;
   players: SeatConfig[];
   rand?: () => number;
@@ -86,8 +90,9 @@ export class BombermanSim {
 
   constructor(opts: SimOptions) {
     const seats = opts.seats ?? opts.players.length;
-    const cols = seats >= 4 ? 15 : 11;
-    const rows = seats >= 4 ? 11 : 9;
+    const board = boardFor(seats, opts.size);
+    const cols = board.cols;
+    const rows = board.rows;
     const seed = opts.seed ?? generateSeed();
     this.rand = opts.rand ?? Math.random;
     this.spawns = spawnCells(cols, rows, seats);

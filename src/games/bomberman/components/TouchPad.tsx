@@ -1,9 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
 
 import type { Facing } from '../engine/types';
+import { resolvePadAxis, type PadAxis } from '../engine/padAxis';
 import { buzzTap } from '../../common/haptics';
 
-const DEADZONE = 14;
+const DEADZONE = 12;
+/**
+ * How much further the other axis has to be pushed before the pad switches to it.
+ * The board only has four directions, so a diagonal thumb has to resolve to one of
+ * them. Picking the larger axis outright made the choice flip on every pixel of jitter
+ * near 45 degrees, and the character stepped one cell up, one cell right, and looked
+ * lost. Locking the axis until the other one clearly wins by this factor keeps a
+ * diagonal push moving in a straight line.
+ */
+const AXIS_LOCK = 1.4;
 const STICK = 118;
 const KNOB = 54;
 
@@ -15,12 +25,13 @@ interface TouchPadProps {
 
 /**
  * A thumb pad that re-anchors under the finger, so nobody has to look for a widget in
- * the dark. Movement is grid-stepped, so the drag is snapped to four directions instead
- * of producing an analogue vector.
+ * the dark. Movement is grid-stepped, so a drag resolves to one of four directions and
+ * keeps that axis until the other one is pushed clearly further.
  */
 export function TouchPad({ dirRef, onBomb, disabled }: TouchPadProps) {
   const pointerId = useRef<number | null>(null);
   const origin = useRef({ x: 0, y: 0 });
+  const lockedAxis = useRef<PadAxis>(null);
   const [knob, setKnob] = useState({ x: 0, y: 0 });
   const [anchor, setAnchor] = useState<{ left: number; top: number } | null>(null);
   const zoneRef = useRef<HTMLDivElement | null>(null);
@@ -36,6 +47,7 @@ export function TouchPad({ dirRef, onBomb, disabled }: TouchPadProps) {
   useEffect(() => {
     const reset = (): void => {
       dirRef.current = null;
+      lockedAxis.current = null;
       setKnob({ x: 0, y: 0 });
       setAnchor(null);
     };
@@ -53,11 +65,13 @@ export function TouchPad({ dirRef, onBomb, disabled }: TouchPadProps) {
     const dist = Math.hypot(dx, dy);
     if (dist < DEADZONE) {
       dirRef.current = null;
+      lockedAxis.current = null;
       setKnob({ x: 0, y: 0 });
       return;
     }
-    const dir: Facing = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : dy > 0 ? 'down' : 'up';
-    dirRef.current = dir;
+    const resolved = resolvePadAxis(dx, dy, lockedAxis.current, AXIS_LOCK);
+    lockedAxis.current = resolved.axis;
+    dirRef.current = resolved.dir;
     const clamp = STICK / 2 - KNOB / 2;
     const scale = Math.min(dist, STICK / 2) / Math.max(dist, 1);
     setKnob({ x: Math.max(-clamp, Math.min(clamp, dx * scale)), y: Math.max(-clamp, Math.min(clamp, dy * scale)) });
@@ -82,6 +96,7 @@ export function TouchPad({ dirRef, onBomb, disabled }: TouchPadProps) {
     if (pointerId.current !== e.pointerId) return;
     pointerId.current = null;
     dirRef.current = null;
+    lockedAxis.current = null;
     setKnob({ x: 0, y: 0 });
   };
 

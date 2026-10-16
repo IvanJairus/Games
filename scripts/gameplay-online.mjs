@@ -64,6 +64,8 @@ console.log(`target: ${BASE}\n`);
 
 await host.page.goto(`${BASE}/bomberman`, { waitUntil: 'load' });
 await host.page.click('[data-testid="bomberman-tab-online"]');
+await host.page.click('[data-testid="bomberman-seats-4"]');
+await host.page.click('[data-testid="bomberman-size-besar"]');
 const createBtn = host.page.locator('[data-testid="bomberman-create"]');
 check('lobby offers a usable create button on this deployment', (await createBtn.isEnabled()) === true);
 
@@ -76,6 +78,10 @@ check('room created and reachable by code', /^[A-Z2-9]{6}$/.test(code), code);
 await host.page.waitForSelector('[data-testid="bomberman-waiting"]', { timeout: 20000 });
 check('host sees the waiting screen', true);
 
+// The guest picks its character in the lobby, then joins by code: the pick has to survive
+// the page change and reach the host as one broadcast claim.
+await guest.page.goto(`${BASE}/bomberman`, { waitUntil: 'load' });
+await guest.page.click('[data-testid="bomberman-char-lampu"]');
 await guest.page.goto(`${BASE}/bomberman/m/${code}`, { waitUntil: 'load' });
 await guest.page.waitForSelector('[data-testid="bomberman-waiting"]', { timeout: 20000 });
 
@@ -97,16 +103,51 @@ await Promise.all([
 ]);
 check('both tabs entered the arena', true);
 
+/* The HUD is React at 10 Hz and the claim lands on the next tick, so these read on an
+   interval rather than once. rAF polling stalls in the host tab the moment the guest tab
+   is focused, which is exactly when this runs. */
+const until = async (page, fn, ms = 20000) => {
+  try {
+    await page.waitForFunction(fn, null, { timeout: ms, polling: 1000 });
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const fourSeats = await Promise.all([
+  until(host.page, () => document.querySelectorAll('[data-testid^="bomberman-chip-"]').length === 4),
+  until(guest.page, () => document.querySelectorAll('[data-testid^="bomberman-chip-"]').length === 4),
+]);
+check('two humans plus two bots are on the board', fourSeats.every(Boolean), fourSeats.join(' / '));
+
+const botLabel = await until(host.page, () => /2 bot/.test(document.querySelector('.bm-title')?.textContent ?? ''));
+check('the room names the bots it filled in', botLabel);
+
+const claim = await Promise.all([
+  until(host.page, () => (document.querySelector('[data-testid="bomberman-chip-1"]')?.innerText ?? '').includes('Lampu Sorot')),
+  until(guest.page, () => (document.querySelector('[data-testid="bomberman-chip-1"]')?.innerText ?? '').includes('Lampu Sorot')),
+]);
+check("the guest's character pick reached the host world", claim.every(Boolean), claim.join(' / '));
+
+const large = await Promise.all([
+  until(host.page, () => document.querySelector('[data-testid="bomberman-board"]')?.getAttribute('viewBox') === '0 0 840 600'),
+  until(guest.page, () => document.querySelector('[data-testid="bomberman-board"]')?.getAttribute('viewBox') === '0 0 840 600'),
+]);
+check('both tabs play the large board the lobby asked for', large.every(Boolean), large.join(' / '));
+
 // Let the countdown finish, then have the guest plant a bomb.
 await host.page.waitForTimeout(3200);
 await guest.page.keyboard.press('Space');
 await guest.page.waitForTimeout(600);
 
-const bombOnHost = await host.page.evaluate(() => document.querySelectorAll('[data-sig^="bomb"]').length);
-check('a bomb planted by the guest is visible in the host world', bombOnHost >= 1, `${bombOnHost} bomb nodes`);
+/* Counted by owner, so a bomb a bot planted cannot be mistaken for the guest's. The arena
+   writes the seat into the node signature for exactly this kind of question. */
+const bombOnHost = await host.page.evaluate(() => document.querySelectorAll('[data-sig^="bomb:1"]').length);
+check('a bomb planted by the guest is visible in the host world', bombOnHost >= 1, `${bombOnHost} guest bombs`);
 
-const bombOnGuest = await guest.page.evaluate(() => document.querySelectorAll('[data-sig^="bomb"]').length);
-check('the guest also renders it', bombOnGuest >= 1, `${bombOnGuest} bomb nodes`);
+const bombOnGuest = await guest.page.evaluate(() => document.querySelectorAll('[data-sig^="bomb:1"]').length);
+check('the guest also renders it', bombOnGuest >= 1, `${bombOnGuest} guest bombs`);
 
 // Movement from the host must reach the guest.
 const before = await guest.page.evaluate(() => document.querySelector('[data-sig*=":idle:"], [data-sig*=":walk:"]')?.getAttribute('transform'));

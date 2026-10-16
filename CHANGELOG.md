@@ -8,6 +8,93 @@ terpisah saat kamu menerbitkan rilis.
 Entri dimulai dari 14 Oktober 2026. Perubahan sebelum tanggal itu ada pada riwayat git dan daftar
 pull request, karena tidak dicatat saat terjadi.
 
+## 2026-10-16 - Bomberman: stik yang bimbang, papan yang hampir dua kali, dan karakter yang ternyata tidak dipakai
+
+Empat permintaan dari pemain yang sama: arena diperbesar dua kali, pemilih karakter diberi
+pratinjau, stik di ponsel tidak nyaman karena dorongan miring bikin karakter diam, dan mode
+online perlu bot. Yang ketiga adalah bug, dan cara saya membuktikannya hampir menjebak saya.
+
+### Stik: yang salah bukan "hanya empat arah", tapi sumbu yang berganti tiap getaran
+
+Aturan sumbu dominan sudah ada sejak awal: dari dorongan (dx, dy) diambil sumbu dengan nilai
+absolut lebih besar. Peta memang cuma punya empat arah, jadi aturan itu benar. Yang bikin
+karakter terlihat bingung adalah daerah di sekitar 45 derajat: dx 20 / dy 17 memilih
+horizontal, satu piksel getaran menjadi dx 17 / dy 20 memilih vertikal. Dalam satu tarikan
+jari jawabannya berganti enam kali, dan yang terlihat di layar adalah satu langkah ke kanan,
+satu langkah ke bawah, berulang.
+
+Perbaikannya `resolvePadAxis` di `engine/padAxis.ts`: sumbu yang sudah dipilih bertahan
+sampai sumbu lain menang dengan jarak 1,4 kali. Keputusannya fungsi murni, jadi bisa dites
+tanpa browser sama sekali.
+
+Terukur dengan `npm run gameplay:check` pada build produksi, lima lintasan sentuh, satu kali
+jalan tiap lintasan:
+
+| AXIS_LOCK | "a diagonal drag keeps one direction" |
+|---|---|
+| 1.0, perilaku lama | 5 FAIL, semuanya membaca `right, down` |
+| 1.4 | 5 PASS, masing-masing satu arah |
+
+Baris pertama yang penting. Tes yang sama pernah saya tulis dan ia lulus padahal
+`AXIS_LOCK` masih 1.0, karena posisinya di akhir urutan: setelah empat detik bermain dan
+sebuah resize, saat ronde sedang berganti dan `tryMove` mengembalikan lebih awal sebelum
+menyentuh `facing`. Gerbang yang tidak mungkin gagal bukan bukti, jadi drag sekarang
+dilakukan tepat setelah hitung mundur.
+
+### Papan: "dua kali lipat" pada grid berarti jumlah petak, bukan panjang sisi
+
+Menambah sisi dua kali melipat empatkan lapangan dan meninggalkan ponsel dengan petak yang
+tidak terbaca. Yang dibuat sekarang sepasang papan per jumlah kursi:
+
+| kursi | kecil | besar | petak |
+|---|---|---|---|
+| 2 | 11 x 9 | 15 x 13 | 99 jadi 195, 1,97 kali |
+| 4 | 15 x 11 | 21 x 15 | 165 jadi 315, 1,91 kali |
+
+Ukurannya ikut mengalir ke online lewat `RoomConfig`, dan klien membangun arena dari
+geometri dunia yang diterima (`sizeForBoard`), bukan dari asumsi.
+
+Terukur, lebar satu petak pada papan besar empat kursi, `gameplay:check`, n=1 tiap
+viewport: desktop 1280x800 60 px, ponsel landscape 667x375 30,8 px, ponsel portrait 375x667
+16,9 px. Frame rate 60 fps di ketujuhnya, termasuk tiga lintasan papan besar. Papan kecil
+pembandingnya: 114,5 px, 58,8 px, 32,3 px.
+
+Jadi jujur saja: papan besar di ponsel portrait itu 16,9 px per petak, dan karakternya cuma
+sekitar 19 x 27 px. Ia jalan dan tidak patah, tapi itu pilihan untuk desktop dan landscape,
+dan teks di layar pilihannya bilang begitu.
+
+### Pratinjau karakter membuka bug yang lebih tua dari permintaannya
+
+Pemilih karakter sekarang menggambar sprite aslinya lewat `spriteMarkup`, fungsi yang sama
+dengan yang dipakai arena, jadi pratinjau tidak bisa berbeda dari karakter yang dimainkan.
+Komponennya satu (`CharacterPicker`) dan dipakai lobi serta layar setup.
+
+Menulis itu membuat pertanyaan berikutnya muncul sendiri: pilihan siapa yang dibaca saat
+online? Jawabannya tidak ada. `buildRoster` memakai `pickChar(seat)` dan `charId` dari lobi
+tidak pernah sampai ke tuan rumah, jadi seluruh pemilih karakter online hanya hiasan sejak
+game ini dibuat. Yang sekarang terjadi: pilihan disimpan di perangkat
+(`charPreference.ts`), tiap tab tahu kursi dan karakternya, tamu mengirim satu pesan
+`bm_char` di kanal realtime yang sudah ada, dan tuan rumah yang punya simulasi mencatatnya
+sebelum roster dibangun. Satu pesan per pertandingan, bukan per tick, jadi jatah 20 pesan
+per detik tidak tersentuh.
+
+### Online dengan bot
+
+Sudah bisa sejak ronde ini lewat "Isi kursi kosong dengan bot", dan sekarang tertulis di
+lobi: room 4 kursi dengan 2 manusia berjalan dengan 2 bot. HUD online juga menyebut jumlah
+botnya supaya terbaca saat bermain.
+
+### Angka tes
+
+335 tes hijau di 27 file, `npm run release:check` lulus lima tahap, `gameplay:check` 88/88.
+
+### Sisa yang belum dibuktikan
+
+Dua tab nyata di build tayang belum dijalankan untuk jalur klaim karakter dan papan besar;
+probe-nya (`scripts/gameplay-online.mjs`) sudah saya perluas untuk itu, dan build lokal tidak
+bisa dipakai karena tidak punya konfigurasi server permainan. Angka 16,9 px di atas juga baru
+terukur di Chrome yang di-emulasi, bukan di perangkat fisik.
+
 ## 2026-10-16 - Bomberman: bot benar-benar bunuh diri, dan metrik saya yang salah
 
 Laporan pemain: "bot sempurna selalu mati dalam bomnya sendiri, seperti tidak tahu area

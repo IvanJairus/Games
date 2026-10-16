@@ -65,12 +65,31 @@ export interface BoardConfig {
  * Two arenas, chosen in the lobby. The 15x11 board exists so four seats get
  * real elbow room; every rule in the engine reads cols/rows off the state.
  */
-export const BOARDS: Record<'duel' | 'freeFor', BoardConfig> = {
+export type BoardSize = 'kecil' | 'besar';
+
+/**
+ * Two arenas per seat count. The large pair is about twice the cell count of the small
+ * one, which is what "twice as big" means for a top-down grid: doubling the side would
+ * quadruple the field and leave a phone with unreadable cells.
+ */
+export const BOARDS = {
   duel: { seats: 2, cols: 11, rows: 9 },
+  duelLarge: { seats: 2, cols: 15, rows: 13 },
   freeFor: { seats: 4, cols: 15, rows: 11 },
+  freeForLarge: { seats: 4, cols: 21, rows: 15 },
+} satisfies Record<string, BoardConfig>;
+
+export const boardFor = (seats: number, size: BoardSize = 'kecil'): BoardConfig => {
+  if (seats >= 4) return size === 'besar' ? BOARDS.freeForLarge : BOARDS.freeFor;
+  return size === 'besar' ? BOARDS.duelLarge : BOARDS.duel;
 };
 
-export const boardFor = (seats: number): BoardConfig => (seats >= 4 ? BOARDS.freeFor : BOARDS.duel);
+/**
+ * Reads the size back out of a board geometry. A client builds its arena from the first
+ * world frame it receives, which carries cols and rows but not the lobby setting.
+ */
+export const sizeForBoard = (seats: number, cols: number): BoardSize =>
+  boardFor(seats, 'besar').cols === cols ? 'besar' : 'kecil';
 
 export interface Bomb extends Coord {
   id: number;
