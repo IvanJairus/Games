@@ -5,6 +5,7 @@ import {
   checkWinner,
   getOldestPiece,
   getHoldCell,
+  holdEvent,
   getPlayerPieces,
   resetRound,
   WINNING_LINES,
@@ -237,5 +238,30 @@ describe('Hold rule: tapping your own expiring square', () => {
   it('refills both budgets for the next round', () => {
     const g = applyMove(recorded(), 6);
     expect(resetRound(g).holdsLeft).toEqual({ X: MAX_HOLDS_PER_ROUND, O: MAX_HOLDS_PER_ROUND });
+  });
+});
+
+describe('holdEvent: reading a hold back off two snapshots', () => {
+  const RECORDED = [7, 1, 0, 4, 6, 3, 5, 8, 1, 7];
+  const recorded = () => RECORDED.reduce((g, cell) => applyMove(g, cell), createTicTacToeGame());
+
+  it('names the seat and the square that was held', () => {
+    const before = recorded();
+    expect(holdEvent(before, applyMove(before, 6))).toEqual({ player: 'X', cellIndex: 6 });
+  });
+
+  it('stays silent for an ordinary placement', () => {
+    const before = recorded();
+    expect(holdEvent(before, applyMove(before, 0))).toBeNull();
+  });
+
+  it('is not fooled by the budget a new round refills', () => {
+    const spent = applyMove(recorded(), 6);
+    expect(holdEvent(spent, resetRound(spent))).toBeNull();
+  });
+
+  it('still reads a hold from a room state that had no budget field', () => {
+    const legacy = { ...recorded(), holdsLeft: undefined } as unknown as TicTacToeState;
+    expect(holdEvent(legacy, applyMove(legacy, 6))).toEqual({ player: 'X', cellIndex: 6 });
   });
 });

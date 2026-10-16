@@ -16,6 +16,7 @@ import {
   getPlayerPieces,
   getOldestPiece,
   getHoldCell,
+  holdEvent,
   MAX_HOLDS_PER_ROUND,
   TicTacToeState,
 } from '../engine';
@@ -33,6 +34,7 @@ import { playDefeat, playPlace, playVictory } from '../../common/audio';
 import { buzzTap } from '../../common/haptics';
 import { SoundToggle } from '../../common/SoundToggle';
 import { RoomPeersNotice } from '../../../components/RoomPeersNotice';
+import { NoticeToast } from '../../common/NoticeToast';
 import {
   isSupabaseConfigured,
   getStoredPlayerName,
@@ -104,6 +106,40 @@ export const TicTacToeMatch: React.FC = () => {
 
   // Kursi dikenali dari identitas di penyimpanan bersama, jadi dua jendela pada satu browser memakai kursi yang sama.
   useEffect(() => watchRoomPeers(roomCode, setPeerTabs), [roomCode]);
+
+  // A hold moves no piece, so the room looks frozen apart from the turn changing hands. Without a
+  // word about it, spending one of two holds is invisible, and players tap the square again thinking
+  // the tap was refused.
+  const holdNoticeSeq = useRef(0);
+  const lastGameState = useRef<TicTacToeState | null>(null);
+  const [holdNotice, setHoldNotice] = useState<{ id: number; text: string } | null>(null);
+
+  useEffect(() => {
+    const game = syncData?.match?.game_state as TicTacToeState | undefined;
+    if (!game) return;
+    const before = lastGameState.current;
+    lastGameState.current = game;
+    if (!before) return;
+
+    const event = holdEvent(before, game);
+    if (!event) return;
+
+    const mySeat = syncData?.myPlayerIndex === 0 ? 'X' : syncData?.myPlayerIndex === 1 ? 'O' : null;
+    const left = game.holdsLeft?.[event.player] ?? MAX_HOLDS_PER_ROUND;
+    setHoldNotice({
+      id: (holdNoticeSeq.current += 1),
+      text:
+        event.player === mySeat
+          ? `Anda menahan bidak di petak #${event.cellIndex + 1}. Sisa tahan Anda ${left}/${MAX_HOLDS_PER_ROUND}.`
+          : `Lawan menahan bidaknya di petak #${event.cellIndex + 1}. Sisa tahan mereka ${left}/${MAX_HOLDS_PER_ROUND}.`,
+    });
+  }, [syncData]);
+
+  useEffect(() => {
+    if (!holdNotice) return;
+    const timer = window.setTimeout(() => setHoldNotice(null), 4200);
+    return () => clearTimeout(timer);
+  }, [holdNotice]);
 
   const lastSeen = useRef<{ status: string; moves: number } | null>(null);
 
@@ -338,6 +374,8 @@ export const TicTacToeMatch: React.FC = () => {
 
   const activePlayerPieces = game ? getPlayerPieces(game.pieces, game.currentTurn) : [];
   const activeOldestPiece = game ? getOldestPiece(game.pieces, game.currentTurn) : undefined;
+  const myHolds = game && mySymbol ? (game.holdsLeft?.[mySymbol] ?? MAX_HOLDS_PER_ROUND) : MAX_HOLDS_PER_ROUND;
+  const holdReady = !!game && isMyTurn && getHoldCell(game) !== null;
 
   const p1 = players.find((p) => p.player_index === 0);
   const p2 = players.find((p) => p.player_index === 1);
@@ -440,6 +478,8 @@ export const TicTacToeMatch: React.FC = () => {
       )}
 
       <RoomPeersNotice peerCount={peerTabs} />
+
+      <NoticeToast testId="ttt-hold-notice" text={holdNotice?.text ?? null} tone="info" />
 
       {connection === 'fallback' && (
         <p
@@ -630,13 +670,50 @@ export const TicTacToeMatch: React.FC = () => {
           </span>
         </div>
 
+        <span
+          data-testid="ttt-hold-chip"
+          title="Jatah menahan bidak tertua pada ronde ini"
+          style={{
+            font: '11px/1 var(--mono)',
+            fontWeight: 700,
+            whiteSpace: 'nowrap',
+            padding: '5px 8px',
+            borderRadius: 'var(--r2)',
+            border: `1px solid ${
+              holdReady ? 'var(--gold)' : myHolds === 0 ? 'var(--line)' : 'var(--gold-border)'
+            }`,
+            background: holdReady ? 'var(--gold)' : 'transparent',
+            color: holdReady ? '#ffffff' : myHolds === 0 ? 'var(--ink-faint)' : 'var(--gold)',
+          }}
+        >
+          Tahan {myHolds}/{MAX_HOLDS_PER_ROUND}
+        </span>
+      </div>
+
+      {/*
+        Reserved slot for the vanishing-piece sentence. It used to sit inside the turn row, so the
+        row grew and dragged the board down the moment a seat reached three pieces.
+      */}
+      <div
+        data-testid="ttt-online-hint"
+        style={{ minHeight: '44px', marginTop: '-10px', marginBottom: '20px', textAlign: 'center' }}
+      >
         {activePlayerPieces.length >= 3 && activeOldestPiece && (
-          <span style={{ font: '11px/1 var(--mono)', color: 'var(--terracotta)', fontWeight: 600 }}>
+          <span
+            style={{
+              font: '11px/1.5 var(--mono)',
+              color: 'var(--terracotta)',
+              fontWeight: 600,
+              display: 'inline-block',
+              background: 'var(--terracotta-tint)',
+              border: '1px solid var(--gold-border)',
+              borderRadius: 'var(--r2)',
+              padding: '5px 10px',
+            }}
+          >
             {getHoldCell(game) === null
-              ? `Langkah berikutnya akan menghapus bidak di petak #${activeOldestPiece.cellIndex + 1}. Jatah tahan habis.`
-              : `Tap petak #${activeOldestPiece.cellIndex + 1} untuk menahan bidak tertua Anda. Sisa tahan ${
-                  game.holdsLeft?.[game.currentTurn] ?? MAX_HOLDS_PER_ROUND
-                }/${MAX_HOLDS_PER_ROUND}.`}
+              ? `Langkah berikutnya akan menghapus bidak di petak #${activeOldestPiece.cellIndex + 1}. Jatah tahan Anda habis.`
+              : `Tap petak #${activeOldestPiece.cellIndex + 1} untuk menahan bidak tertua Anda.`}
           </span>
         )}
       </div>

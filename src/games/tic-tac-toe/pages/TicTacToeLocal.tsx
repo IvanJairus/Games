@@ -18,6 +18,7 @@ import { playBlocked, playPlace, playSelect, playVictory, unlockAudio } from '..
 import { buzzReject, buzzTap } from '../../common/haptics';
 import { SoundToggle } from '../../common/SoundToggle';
 import { ResultDialog } from '../../common/ResultDialog';
+import { NoticeToast } from '../../common/NoticeToast';
 
 const BOT_SYMBOL: PlayerSymbol = 'O';
 
@@ -383,34 +384,11 @@ export const TicTacToeLocal: React.FC = () => {
         )}
       </div>
 
-      {notice && (
-        <div
-          data-testid="tictactoe-notice"
-          data-tone={notice.tone}
-          role="status"
-          style={{
-            position: 'fixed',
-            left: '50%',
-            bottom: 'calc(18px + env(safe-area-inset-bottom))',
-            transform: 'translateX(-50%)',
-            width: 'min(460px, calc(100% - 32px))',
-            maxWidth: 'calc(100% - 32px)',
-            zIndex: 30,
-            padding: '10px 14px',
-            borderRadius: 'var(--r2)',
-            border: `1px solid ${notice.tone === 'warn' ? 'var(--red)' : 'var(--gold-border)'}`,
-            background: notice.tone === 'warn' ? '#fff' : 'var(--gold-tint)',
-            color: notice.tone === 'warn' ? 'var(--red-deep)' : 'var(--gold)',
-            font: '11px/1.45 var(--mono)',
-            boxShadow:
-              notice.tone === 'warn'
-                ? '0 8px 24px rgba(143, 29, 20, 0.18)'
-                : '0 8px 24px rgba(180, 83, 9, 0.14)',
-          }}
-        >
-          {notice.text}
-        </div>
-      )}
+<NoticeToast
+        testId="tictactoe-notice"
+        text={notice?.text ?? null}
+        tone={notice?.tone ?? 'info'}
+      />
 
       {/* 3x3 Board with No-Draw FIFO visual indicators */}
       <TicTacToeBoard
