@@ -23,6 +23,7 @@ import {
   spawnPlayersInCircle,
   updatePlayerMovement,
 } from '../../src/games/slap-arena/engine/physics';
+import { advanceReckon, MAX_RECKON } from '../../src/games/slap-arena/engine/remoteMotion';
 import { computeBotAi } from '../../src/games/slap-arena/engine/botAi';
 import { SlapSim } from '../../src/games/slap-arena/engine/sim';
 import type { PlayerState } from '../../src/games/slap-arena/engine/types';
@@ -328,6 +329,42 @@ describe('Slap Arena charge', () => {
     } as never);
     expect(client.players.host.y).toBe(0);
     expect(client.players.host.chargeT).toBe(-1);
+  });
+});
+
+describe('Slap Arena remote motion', () => {
+  const R = 8.7;
+  const start = { x: 0, z: 0, vx: 0, vz: 0, age: 0 };
+
+  it('flies a remote brawler on the velocity the host reported', () => {
+    const fed = advanceReckon(start, { x: 1, z: 0, vx: 10, vz: 0 }, 1 / 60, R);
+    expect(fed.state.age).toBe(0);
+    expect(fed.x).toBeCloseTo(1, 5);
+    // Same report again: the body keeps travelling instead of waiting for the next one.
+    const next = advanceReckon(fed.state, { x: 1, z: 0, vx: 10, vz: 0 }, 1 / 60, R);
+    expect(next.x).toBeCloseTo(1 + 10 / 60, 4);
+    expect(next.state.age).toBeCloseTo(1 / 60, 5);
+  });
+
+  it('stops guessing once the reckoning horizon passes', () => {
+    let s = { ...start, x: 0, z: 0, vx: 20, vz: 0, age: MAX_RECKON };
+    const a = advanceReckon(s, { x: 0, z: 0, vx: 20, vz: 0 }, 1 / 60, 20);
+    s = a.state;
+    const b = advanceReckon(s, { x: 0, z: 0, vx: 20, vz: 0 }, 1 / 60, 20);
+    expect(b.state.age).toBeCloseTo(MAX_RECKON, 5);
+    expect(b.x).toBeCloseTo(a.x, 6);
+  });
+
+  it('never draws a reckoned body outside the island', () => {
+    const far = advanceReckon({ ...start, x: 8, z: 0, vx: 20, vz: 0 }, { x: 8, z: 0, vx: 20, vz: 0 }, MAX_RECKON, R);
+    expect(Math.hypot(far.x, far.z)).toBeLessThanOrEqual(R + 1e-6);
+    expect(far.x).toBeGreaterThan(8);
+  });
+
+  it('a stationary remote does not drift', () => {
+    const r = advanceReckon({ ...start, x: 2, z: 3 }, { x: 2, z: 3, vx: 0, vz: 0 }, 1 / 60, R);
+    expect(r.x).toBeCloseTo(2, 6);
+    expect(r.z).toBeCloseTo(3, 6);
   });
 });
 

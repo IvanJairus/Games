@@ -8,6 +8,59 @@ terpisah saat kamu menerbitkan rilis.
 Entri dimulai dari 14 Oktober 2026. Perubahan sebelum tanggal itu ada pada riwayat git dan daftar
 pull request, karena tidak dicatat saat terjadi.
 
+## 2026-10-16 - Slap Arena online: aktor remote diterbangkan, bukan ditunggu
+
+Menyusul pertanyaan: kenapa pembuat room mulus tapi anggota lain patah-patah.
+
+### Koreksi atas klaim saya sendiri
+
+Dugaan awal saya adalah jatah 20 pesan per detik terbelah dua karena tuan rumah mengirim
+snapshot plus batch efek, sehingga snapshot turun ke ~10 Hz. **Angka membantahnya.** Diukur
+pada dua tab di satu room: tuan rumah mengirim 439 snapshot dan **1** batch efek selama ~22
+detik, `drop = 0`. Batch efek nyaris tidak terpakai di room dua pemain. Jadi menggabungkan
+efek ke dalam snapshot bukan perbaikan yang dibutuhkan, dan tidak saya kerjakan.
+
+### Diperbaiki
+
+- **Telemetri pengiriman tidak lagi menghitung sukses sebagai gagal.** `ArenaNet` hanya
+  menerima `'sent'`/`'pending'`, padahal realtime menjawab `'ok'` untuk broadcast dan
+  langsung `'ok'` saat kanal tanpa ack. Akibatnya setiap pesan sehat menaikkan penghitung
+  drop dan room yang baik memunculkan peringatan "koneksi mungkin terputus". State gagal yang
+  sebenarnya adalah `'error'` dan `'timed out'`.
+- **`stats.drop` sekarang benar-benar bertambah.** `noteDrop` menaikkan field privat
+  `dropped`, jadi angka yang dibaca lewat `__slapNet` selalu 0 bahkan saat peringatan berbunyi.
+- **Fixture relay di uji net memancarkan kontrak yang salah** (`'sent'`), sehingga klasifikasi
+  yang keliru itu lolos uji. Sudah diganti ke `'ok'`.
+
+### Diubah
+
+- **Aktor remote kini di-dead reckon.** Posisi gambar = posisi laporan tuan rumah + kecepatan
+  yang dilaporkan bersamanya x umur laporan, dikunci halus dengan konstanta waktu ~40 ms, dan
+  umur dibatasi 0,15 detik supaya tubuh yang sudah berhenti di tuan rumah tidak diterbangkan
+  terus. Klamp radius tetap ada, karena ekstrapolasi bisa menggambar brawler berdiri di laut.
+  Matematisnya di `engine/remoteMotion.ts` supaya clamps-nya bisa diuji.
+
+### Terukur, A/B dengan instrumen yang sama
+
+Instrumennya adalah laju perubahan posisi **yang digambar** (dibaca dari transform tag nama per
+frame), bukan posisi state. "Jumlah perubahan per detik" tidak bisa membedakan keduanya: lerp
+lama juga mengubah posisi tiap frame, jadi yang diukur adalah kerataan langkah, bukan jumlahnya.
+
+| Kondisi | stepCV tamu | lonjakan maksimum / rata-rata |
+| --- | --- | --- |
+| Lama (lerp ke laporan terakhir) | 0,60 | 2,93 |
+| Dead reckoning | 0,45 | 1,60 |
+| Rujukan: tuan rumah melihat tamu | 0,42 | 1,40 |
+
+Jaringan identik di ketiga kondisi: 60,5 fps render, ~20 snapshot/s, `drop = 0`. Jadi selisihnya
+murni cara menggambar. Kesenjangan 2,93 vs 1,40 (tuan rumah vs anggota) menyempit jadi 1,60 vs 1,40.
+
+### Batas
+
+Dua tab di satu mesin, jadi round-trip time-nya nyaris nol dan jitter-nya tidak realistis. Di dua
+perangkat sungguhan perbaikan ini tetap bekerja pada bagian smoothing-nya, tapi RTT dan jitter
+tidak disentuhnya sama sekali. Room yang diukur berisi dua pemain, tanpa bot pengisi.
+
 ## 2026-10-16 - CI: npm ci jadi, gerbang SQL gugur di runner dan saya keluarkan lagi
 
 Dua gerbang lokal tidak ada di CI: `grep gameplay:check db:verify .github/` menghasilkan nol padahal

@@ -4,6 +4,7 @@ import type { SlapSim } from '../engine/sim';
 import type { PlayerState } from '../engine/types';
 import { ARENA_RADIUS, CHARGE_MAX_TIME, DASH_DURATION, SLAP_ANIM_TIME, chargeFromHold } from '../engine/physics';
 import { fxGates, levelAtMount, type FxLevel, type FxMode } from '../engine/fxMode';
+import { advanceReckon, type ReckonState } from '../engine/remoteMotion';
 import { BrawlerRig, type Pose } from './three/brawler';
 import { ParticleField, createBackdrop, createGroundMarker, createIsland, createSky, type Island } from './three/world';
 
@@ -44,9 +45,8 @@ const SLAP_SWING = 0.3;
 const DASH_ANIM = 0.22;
 /** How long a held swing lingers, and how much of a frame it eats. */
 const FREEZE_RATE = 0.32;
-/** A remote brawler is drawn this far along its own velocity, in metres. */
-const MAX_LEAD = 0.6;
-const LEAD_SECONDS = 0.08;
+/** Lock-on rate toward the reckoned position. 1e-9 is a time constant of ~40 ms. */
+const RECKON_SNAP = 1e-9;
 
 interface Entry {
   rig: BrawlerRig;
@@ -68,6 +68,8 @@ interface Entry {
   /** Drives a client-side KO sink; `fallY` is not part of the snapshot. */
   fallT: number;
   prevY: number;
+  /** The last position the host actually reported, and how long ago that was. */
+  reckon: ReckonState;
   labelX: number;
   labelY: number;
 }
@@ -240,6 +242,7 @@ const Arena3D = forwardRef<Arena3DHandle, Arena3DProps>(function Arena3D(
         freezeT: 0,
         fallT: 0,
         prevY: 0,
+        reckon: { x: p0.x, z: p0.z, vx: p0.vx, vz: p0.vz, age: 0 },
         labelX: -999,
         labelY: -999,
       };
@@ -462,29 +465,15 @@ const Arena3D = forwardRef<Arena3DHandle, Arena3DProps>(function Arena3D(
         let px = p.x;
         let pz = p.z;
         if (!own) {
-          // A client only hears about remote brawlers 20 times a second, so draw them
-          // where they should be between snapshots instead of teleporting on arrival.
-          const ik = 1 - Math.pow(0.0001, dt);
-          e.renderX += (px - e.renderX) * ik;
-          e.renderZ += (pz - e.renderZ) * ik;
-          // Smoothing alone still reads as a row of hops under a heavy knockback, so
-          // carry the reported velocity forward a little. Bounded, because the host may
-          // have stopped that body against another one in the meantime.
-          let ox = p.vx * LEAD_SECONDS;
-          let oz = p.vz * LEAD_SECONDS;
-          const om = Math.hypot(ox, oz);
-          if (om > MAX_LEAD) {
-            ox *= MAX_LEAD / om;
-            oz *= MAX_LEAD / om;
-          }
-          px = e.renderX + ox;
-          pz = e.renderZ + oz;
-          const r = Math.hypot(px, pz);
-          const maxR = ARENA_RADIUS + 1.5;
-          if (r > maxR) {
-            px *= maxR / r;
-            pz *= maxR / r;
-          }
+          // The host speaks 20 times a second and the screen draws 60, so between words
+          // the remote brawler is flown on the velocity the host reported with it.
+          const target = advanceReckon(e.reckon, p, dt, ARENA_RADIUS + 1.5);
+          e.reckon = target.state;
+          const k = 1 - Math.pow(RECKON_SNAP, dt);
+          e.renderX += (target.x - e.renderX) * k;
+          e.renderZ += (target.z - e.renderZ) * k;
+          px = e.renderX;
+          pz = e.renderZ;
         } else {
           e.renderX = px;
           e.renderZ = pz;
