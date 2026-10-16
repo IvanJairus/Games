@@ -85,7 +85,10 @@ export const applyCommitment = (state: BattleshipState, seat: 0 | 1, commitment:
       ...state,
       commitment: commitmentPair,
       phase: bothReady ? 'BATTLE' : state.phase,
-      currentTurn: bothReady ? 0 : state.currentTurn,
+      // The row's current_turn already moves to the other seat on this write. The state has to
+      // agree, otherwise the second seat is never invited to commit and the first seat can submit
+      // again and be told its turn moved.
+      currentTurn: bothReady ? 0 : otherSeat(seat),
     },
   };
 };
