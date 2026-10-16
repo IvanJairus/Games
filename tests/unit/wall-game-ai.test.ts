@@ -225,12 +225,18 @@ describe('WallGo bot', () => {
   // 2451ms on runs that passed and 3465ms and 4262ms on runs that failed, and one production deploy
   // was skipped because of it. This compares the search against a calibration workload measured in
   // the same process, so the signal (work per bot ply) survives but runner speed does not decide it.
-  // Budget basis, measured: normal code lands at 3.24x to 4.07x over five runs, and a search made
-  // deliberately twice as expensive lands at 6.89x, so 5.5x has room for runner noise and still
-  // catches a real regression.
-  it('keeps the wide-board search cheap against a calibration workload', () => {
-    const CALIBRATION_PATHS = 20000;
-    const TURN_BUDGET_RATIO = 5.5;
+  // The calibration stays small on purpose. The runner measured about 1.7x slower than a laptop on
+  // both sides of the ratio, so a 20000-path calibration with three samples turned this one test
+  // into a 4.6 second job and it died on Vitest's 5 second default instead. 5000 paths x3 samples
+  // costs about 105ms per sample, and the test carries its own timeout so the margin is written down
+  // here rather than inherited from a default that can change.
+  // Budget basis, measured over five runs: normal code lands at 10.60x to 14.14x, and a search made
+  // deliberately twice as expensive lands at 27.89x, 28.66x and 29.89x. 22x therefore has 1.5x room
+  // over the worst normal run and still fails a real regression. When the machine is busy both sides
+  // slow down together and the ratio drops, which is the point of measuring it this way.
+  it('keeps the wide-board search cheap against a calibration workload', { timeout: 30000 }, () => {
+    const CALIBRATION_PATHS = 5000;
+    const TURN_BUDGET_RATIO = 22;
 
     const board = createGame({ playerCount: 6, gridSize: 13 });
     const corner = { x: 0, y: 0 };
