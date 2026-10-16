@@ -27,6 +27,7 @@ import {
   leaveOnlineMatch,
   startOnlineMatch,
   subscribeToMatch,
+  readAbandonedReason,
   type MatchSyncData,
 } from '../../common/multiplayer';
 
@@ -251,8 +252,7 @@ export const SlapArenaMatch: React.FC = () => {
       sim.authoritative = host;
 
       if (sync.match.status === 'abandoned') {
-        const reason = sync.match.game_state?.abandonedReason;
-        setDisconnected(typeof reason === 'string' ? reason : 'Lawan meninggalkan arena.');
+        setDisconnected(readAbandonedReason(sync.match.game_state) ?? 'Lawan meninggalkan arena.');
         return;
       }
 

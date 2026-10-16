@@ -27,6 +27,7 @@ import {
   joinOnlineRoom,
   leaveOnlineMatch,
   describeMoveFailure,
+  readAbandonedReason,
   MatchSyncData,
 } from '../../common/multiplayer';
 import { watchRoomPeers } from '../../common/roomPresence';
@@ -87,8 +88,9 @@ export const TicTacToeMatch: React.FC = () => {
       roomCode,
       (data) => {
         setSyncData(data);
-        if (data.match.status === 'abandoned' && data.match.game_state?.abandonedReason) {
-          setOpponentLeftNotice(data.match.game_state.abandonedReason);
+        const reason = readAbandonedReason(data.match.game_state);
+        if (data.match.status === 'abandoned' && reason) {
+          setOpponentLeftNotice(reason);
         }
       },
       () => {},
@@ -143,10 +145,11 @@ export const TicTacToeMatch: React.FC = () => {
 
   const lastSeen = useRef<{ status: string; moves: number } | null>(null);
 
+  const syncGame = syncData?.match?.game_state as TicTacToeState | undefined;
+
   useEffect(() => {
-    const game = syncData?.match?.game_state as TicTacToeState | undefined;
-    const status = game?.status ?? 'IN_PROGRESS';
-    const moves = game?.moveCount ?? 0;
+    const status = syncGame?.status ?? 'IN_PROGRESS';
+    const moves = syncGame?.moveCount ?? 0;
     const previous = lastSeen.current;
     // moveCount is the only monotonic signal here: the no-draw rule recycles the
     // oldest piece, so pieces.length plateaus at six.
@@ -156,17 +159,17 @@ export const TicTacToeMatch: React.FC = () => {
     }
     if (previous && status === 'WIN' && previous.status !== 'WIN') {
       const mySymbol = syncData?.myPlayerIndex === 0 ? 'X' : syncData?.myPlayerIndex === 1 ? 'O' : null;
-      if (mySymbol && game?.winner !== mySymbol) playDefeat();
+      if (mySymbol && syncGame?.winner !== mySymbol) playDefeat();
       else playVictory();
     }
     lastSeen.current = { status, moves };
 
-    if (game?.status === 'WIN') {
+    if (syncGame?.status === 'WIN') {
       victoryDialogRef.current?.showModal();
     } else {
       victoryDialogRef.current?.close();
     }
-  }, [syncData?.match?.game_state?.status, syncData?.match?.game_state?.moveCount, syncData?.myPlayerIndex]);
+  }, [syncGame?.status, syncGame?.moveCount, syncData?.myPlayerIndex]);
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(window.location.href);

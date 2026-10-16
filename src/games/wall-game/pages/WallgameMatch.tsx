@@ -28,6 +28,7 @@ import {
   joinOnlineRoom,
   leaveOnlineMatch,
   describeMoveFailure,
+  readAbandonedReason,
   MatchSyncData,
 } from '../../common/multiplayer';
 import { watchRoomPeers } from '../../common/roomPresence';
@@ -96,8 +97,9 @@ export const WallgameMatch: React.FC = () => {
         if (data.myPlayerIndex >= 0) {
           setJoinError(null);
         }
-        if (data.match.status === 'abandoned' && data.match.game_state?.abandonedReason) {
-          setOpponentLeftNotice(data.match.game_state.abandonedReason);
+        const reason = readAbandonedReason(data.match.game_state);
+        if (data.match.status === 'abandoned' && reason) {
+          setOpponentLeftNotice(reason);
         }
       },
       undefined,
