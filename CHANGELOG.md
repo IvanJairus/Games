@@ -139,6 +139,37 @@ karena 132.360 gzip three.js diambil dari cache `immutable` milik `vercel.json`.
 lulus. `guard:check` bersih. `gameplay:check` 115/115 lulus pada `vite preview` artefak build hasil
 split, di viewport desktop, potret HP, dan lanskap HP.
 
+## 2026-10-17 - Dependabot dipasang, dan angka audit hari ini dicatat tanpa gerbang
+
+762 entri di `package-lock.json` sekarang dijaga otomatis: satu PR mingguan hari Senin untuk
+golongan minor dan patch npm, dan satu untuk action GitHub. Yang diperbarui lewat sana diuji oleh
+CI yang sudah ada, jadi tidak perlu alat baru untuk mengetahui apakah sebuah pembaruan merusak
+sesuatu.
+
+### Kenapa tidak sekaligus menambahkan `npm audit` sebagai gerbang
+
+Itu godaannya nyata, dan jawabannya angka. Kondisi hari ini, diukur pada `81cbe9e`:
+
+| perintah | hasil |
+|---|---|
+| `npm audit --omit=dev` | found 0 vulnerabilities |
+| `npm audit` | 38 kerentanan: 1 low, 10 moderate, 24 high, 3 critical |
+
+Semua yang 38 itu ada di dependensi dev: `tar`, `undici`, `vitest`, `@vitest/mocker`, `tinypool`,
+`esbuild`, `braces`, `path-to-regexp`, `js-yaml`, `minimatch`, `ajv`, `smol-toml`,
+`@fastify/busboy`. Memasang gerbang audit di hari pertama membuat `main` merah sebelum ada yang
+memperbaiki apa pun, dan itu bukan tujuan perubahan ini. Keputusannya diletakkan di tempat yang
+benar: angka dulu, gerbang belakangan, oleh yang melihat angkanya.
+
+Versi yang terpasang saat pengukuran: `three` 0.186.1, `vite` 6.4.4, `vitest` 3.2.7,
+`typescript` 5.9.3, `@supabase/supabase-js` 2.117.3.
+
+### Catatan operasional yang perlu diketahui sebelum PR pertama datang
+
+Dependabot membuka PR dengan token yang **tidak** punya akses secrets repository. Artinya pada PR
+itu job deploy di-skip dan hanya job audit yang berjalan. Itu perilaku yang kita inginkan: pembaruan
+dependensi diuji, tidak pernah menayangkan apa pun.
+
 ## 2026-10-16 - WallGo: kalibrasi anggaran test saya sendiri yang membuat main merah
 
 Entri sebelumnya mengganti assertion jam dinding dengan rasio terhadap beban kalibrasi. Gagasnya benar,
