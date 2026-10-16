@@ -8,55 +8,64 @@ terpisah saat kamu menerbitkan rilis.
 Entri dimulai dari 14 Oktober 2026. Perubahan sebelum tanggal itu ada pada riwayat git dan daftar
 pull request, karena tidak dicatat saat terjadi.
 
-## 2026-10-16 - CI: gerbang SQL ikut berjalan di runner, dan instalasi jadi reproducible
+## 2026-10-16 - CI: npm ci jadi, gerbang SQL gugur di runner dan saya keluarkan lagi
 
-Dua gerbang lokal tidak ada di CI. `grep gameplay:check db:verify .github/` menghasilkan nol,
-padahal keduanya terdaftar di `package.json`. Yang kini ikut dijalankan adalah `db:verify`;
-`gameplay:check` tidak, karena ia butuh artefak build dan browser (lihat batas).
+Dua gerbang lokal tidak ada di CI: `grep gameplay:check db:verify .github/` menghasilkan nol padahal
+keduanya terdaftar di `package.json`. Rencananya dua-duanya dipasang. Hasil akhirnya cuma satu yang
+jadi, dan sisanya adalah catatan kegagalan yang berguna.
 
 ### Diubah
 
-- Job `Security & Quality Audit` mendapat langkah `Verify SQL Migrations and Protocol Assertions`
-  setelah `guard:check`.
-- `npm install` menjadi `npm ci` di kedua job. `actions/setup-node` di workflow ini sudah memakai
-  `cache: 'npm'`, yang memang membaca `package-lock.json`, jadi mode instalasinya sekarang cocok
-  dengan cara dependensinya di-cache.
+- `npm install` menjadi `npm ci` di job `Security & Quality Audit` dan `Deploy to Vercel`.
+  `actions/setup-node` di workflow ini sudah memakai `cache: 'npm'`, yang memang membaca
+  `package-lock.json`, jadi mode instalasinya kini cocok dengan cara dependensinya di-cache.
+- `npm run db:verify` dicoba, gagal di runner, dan ditarik lagi. Langkahnya tidak jadi masuk, tapi
+  komentarnya ditinggalkan di workflow supaya tidak dicoba ulang dengan premis yang sama.
 
-### Premis yang saya koreksi sebelum pasang
+### db:verify gagal karena apa
 
-Rencana awal menulis `db:verify` "hanya membaca file SQL, tanpa jaringan". Itu salah, dan saya
-baca sumbernya sebelum mengklaim. `scripts/verify-sql.mjs` mengimpor `execFileSync` (baris 4) dan
-menjalankan `docker exec -i ij-games-pg psql ...` (baris 18); ia mengangkat sendiri
-`postgres:16-alpine` di port 55433, artinya menarik image lewat jaringan. Yang tetap benar: ia
-tidak pernah menyentuh database hosted proyek, dan tidak butuh kredensial. Karena runner-nya
-`ubuntu-latest`, Docker engine tersedia, jadi langkah ini masuk akal di CI, dengan konsekuensi
-waktu tarik image yang sebelumnya tidak ada di job itu.
+Bukan karena Docker tidak ada di runner, dan bukan karena flake waktu. Log CI: `mengangkat
+postgres:16-alpine di port 55433` pada 15:08:01, `menyiapkan peran anon dan publication` pada
+15:08:06, lalu `psql: error: connection to server on socket
+"/var/run/postgresql/.s.PGSQL.5432" failed: No such file or directory` pada 15:08:06.39.
+
+Loop tunggu sebenarnya ada (40 percobaan, jeda 1 detik). Yang salah adalah objek yang diujinya.
+Image postgres resmi menjalankan server sementara selama `initdb` lalu menghentikan dan menjalankan
+server asli. Probe `select 1` bisa lolos terhadap server sementara itu, dan statement berikutnya
+jatuh tepat di celah restart. Di mesin yang containernya sudah ada (`docker inspect` sukses, jalur
+"memakai container yang sudah ada") bug ini tidak terlihat sama sekali, dan di mesin tanpa Docker
+skripnya keluar dengan kode 2 sebelum sempat membuktikannya. Jadi gerbang ini lolos di laptop, mati
+di runner.
+
+Perbaikan yang diperlukan ada di `scripts/verify-sql.mjs` (bukan di workflow), dan itu di luar
+batasan PR ini.
 
 ### Terukur
 
-- `npm ci --dry-run`: exit 0, "up to date in 406ms". `package-lock.json` 372.975 byte,
-  `lockfileVersion` 3, 761 entri `resolved`.
-- Peringatan `EBADENGINE` muncul untuk `@renovatebot/pep440@4.2.1` yang minta node
-  `^20.9.0 || ^22.11.0 || ^24` sementara shell ini memakai v25.5.0. Peringkatnya status
-  `warn`, dry-run tetap exit 0, dan CI memasang node 22 yang ada di dalam rentang itu.
+- CI pada PR ini menjalankan file workflow dari head PR, bukan dari `main`. Buktinya langkah
+  `Verify SQL Migrations and Protocol Assertions` muncul dan dieksekusi di run PR. Jadi asumsi
+  "perubahan workflow baru teruji setelah merged" tidak berlaku di sini, dan justru dari situlah
+  kegagalan di atas ketahuan sebelum masuk `main`.
+- Run `38920462297`, percobaan pertama: `Run Release Readiness Audit` gagal karena
+  `tests/unit/wall-game-ai.test.ts:237`, `expected 3326 to be less than 3000`. Langkah baru menjadi
+  `skipped`.
+- Percobaan ulang satu kali sesuai kebijakan flake: audit dan guard lolos, `Install Dependencies`
+  dengan `npm ci` lolos, dan langkah `db:verify` **genuine failure** seperti diceritakan di atas.
+- `npm ci --dry-run` lokal: exit 0 dalam 406 ms. `package-lock.json` 372.975 byte,
+  `lockfileVersion` 3, 761 entri `resolved`. Peringatan `EBADENGINE` untuk
+  `@renovatebot/pep440@4.2.1` (minta node `^20.9.0 || ^22.11.0 || ^24`, shell ini v25.5.0) hanya
+  status `warn`, dan CI memasang node 22 yang ada di dalam rentang itu.
 - Gerbang lokal pada tree ini: `tsc -b` bersih, `test:unit` 235 lolos pada 14 file, `test:ui` 104
   lolos pada 12 file, `release:check` semua tahap lulus, `guard:check` bersih.
-- `db:verify` di mesin ini keluar dengan kode 2 dan pesan "Docker daemon tidak berjalan", sesuai
-  kontraknya di baris 30-33 skrip.
 
 ### Batas
 
-- CI pada pull request ini tidak membuktikan langkah barunya. GitHub Actions menjalankan file
-  workflow dari commit yang sudah merged, jadi hijau di PR ini hanya membuktikan langkah-lama masih
-  lolos. Langkah `db:verify` baru benar-benar teruji pada run pertama di `main`.
-- `db:verify` belum saya buktikan lolos sampai selesai di mesin mana pun pada perubahan ini: Docker
-  daemon di sini mati dan saya tidak menyalakannya tanpa izin karena ada beberapa sesi agen lain
-  sedang menjalankan suite yang sensitif waktu. Yang terverifikasi baru kontrak kegagalannya.
-- `npm ci` sungguhan tidak dijalankan di worktree ini karena `node_modules`-nya symlink ke
-  instalasi bersama; `npm ci` akan menghapus dan memasang ulang pohon yang dipakai agen lain.
-- `gameplay:check` masih belum ada di CI. Ia butuh artefak build dan browser, jadi memasangnya
-  adalah pekerjaan terpisah, bukan satu baris.
-
+- `db:verify` masih belum masuk CI. Yang berubah baru pengetahuan tentang mengapa ia belum siap.
+- `gameplay:check` juga masih di luar CI; ia butuh artefak build dan browser nyata, jadi itu
+  pekerjaan terpisah.
+- `npm ci` sungguhan tidak saya jalankan di worktree ini karena `node_modules`-nya symlink ke
+  instalasi bersama yang dipakai beberapa sesi agen. Buktinya datang dari runner CI, dari langkah
+  `Install Dependencies` yang lolos.
 
 ## 2026-10-16 - Tic Tac Toe online: jatah tahan yang tak terlihat habis
 

@@ -57,11 +57,9 @@ jobs:
       - name: Security & Domain Guard Check
         run: npm run guard:check
 
-      # verify-sql.mjs shells out to `docker exec` against a throwaway postgres:16-alpine it
-      # starts itself, so this step needs the runner's Docker engine and pulls that image. It
-      # exits 2 when no daemon is reachable, and it never touches the hosted database.
-      - name: Verify SQL Migrations and Protocol Assertions
-        run: npm run db:verify
+      # npm run db:verify stays out of CI for now. Tried here and it failed on the runner: the
+      # script's readiness probe accepts postgres's temporary init server, then the next
+      # statement races the real server start. See the 2026-10-16 CI entry in CHANGELOG.md.
 
   deploy-to-vercel:
     name: Deploy to Vercel
