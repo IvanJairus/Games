@@ -88,6 +88,52 @@ hijau.
 - Test lama yang menjaga aturan sentuh (tap pertama hanya pratinjau, tap kedua pasang) tetap lulus,
   jadi perilaku HP yang baru diperbaiki tidak berubah.
 
+## 2026-10-16 - Bomberman: socket yang mati membuat lawan membeku tanpa sebab yang terlihat
+
+Gejala yang bisa dilihat pemain: di room online lawan berhenti bergerak, dan layarnya tidak
+menyebut apa pun. Tidak ada notice, tidak ada peringatan, hanya diam.
+
+### Yang sebenarnya terjadi
+
+Jalur jawaban gagal sudah punya UI. `noteDrop()` dipanggil untuk setiap pesan yang kembali
+dengan `timedOut` atau `closed`, dan halaman sudah memunculkan notice saat hitungannya mencapai
+20. Yang tidak punya jalur ke pemain adalah `reportError()`, yaitu cabang untuk `channel.send()`
+yang **melempar** alih-alih menjawab. Fungsinya hanya `console.warn`, jadi fakta yang pemain
+butuhkan berhenti di konsol developer.
+
+Cabang kedua, dan ini yang membuat bug pertama sulit ditebak: satu flag `warned` dipakai bersama
+oleh kedua jalur. Setelah 20 jawaban timeout menaikkannya, `reportError` langsung bungkak
+permanen. Sebaliknya, satu lemparan pertama sudah cukup untuk membungkam peringatan console
+jalur timeout. Jadi socket yang mati total justru paling mungkin tidak terlapor, karena cara
+paling umum untuk mati total adalah melempar.
+
+### Yang diubah
+
+Dua hal, sekecil mungkin. `reportError()` sekarang menghitung ke counter yang sama dan memanggil
+`onDrop` yang sama, jadi notice ambang 20 yang sudah ada ikut menutupi kegagalan yang melempar.
+Flag peringatan dipisah jadi `warnedDrop` dan `warnedError` supaya satu jalur tidak bisa
+membungkam jalur lain. Ambang 20 tidak berubah, teks notice tidak berubah, dan halaman yang
+memasang notice tidak perlu disentuh sama sekali.
+
+### Dibuktikan dua arah
+
+Dua tes unit ditulis lebih dulu dan dijalankan terhadap kode lama, keduanya merah dengan alasan
+yang benar:
+
+| tes | tanpa fix | dengan fix |
+|---|---|---|
+| `counts a send that throws as a dropped message` | FAIL, `expected [] to deeply equal [ 1 ]` | PASS |
+| `keeps counting after a slow link already reached the notice threshold` | FAIL, `expected [Array(20)] to have a length of 21` | PASS |
+
+Baris kedua yang membuktikan flag bersama itu nyata: 20 timeout pertama dilaporkan, lalu satu
+lemparan setelahnya tidak menambah apa pun pada kode lama.
+
+Satu catatan jujur soal tes pertamanya sendiri: versi pertama saya salah, karena channel
+palsunya masih menjawab `timedOut` dan belum melempar, jadi ia gagal setelah fix, bukan sebelum.
+Itu kesalahan tes, bukan kode, dan ketahuan karena arah buktinya terbalik.
+
+14 tes hijau di `tests/unit/bomberman-net.test.ts`.
+
 ## 2026-10-16 - Bomberman online: tamu bisa menaruh bom tapi tidak bisa jalan
 
 Laporan pemain yang menjalankan room sungguhan: pembuat room bisa jalan dengan WASD, pemain
