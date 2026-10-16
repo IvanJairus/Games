@@ -154,6 +154,56 @@ batasan PR ini.
   instalasi bersama yang dipakai beberapa sesi agen. Buktinya datang dari runner CI, dari langkah
   `Install Dependencies` yang lolos.
 
+## 2026-10-17 - db:verify masuk CI, dan probe kesiapan yang menipu dirinya sendiri
+
+`npm run db:verify` lolos di laptop tapi mati di GitHub runner dengan `connection to server on
+socket "/var/run/postgresql/.s.PGSQL.5432" failed: No such file or directory`. Terlihat pada run
+38920462297, job 117040600172, step 11, sementara step 7 sampai 10 success. Jejak waktunya:
+container diangkat 15:08:01, psql gagal 15:08:06.39.
+
+### Kenapa laptop tidak pernah melihatnya
+
+Akar masalahnya ditemukan sesi Wall Game dan saya konfirmasi sendiri ke kodenya. Loop tunggu yang
+lama menguji kesiapan dengan `psql 'select 1'` lewat `docker exec`, yaitu lewat socket Unix **di
+dalam** container. Image postgres resmi menaikkan server SEMENTARA untuk initdb, menjawab query
+di socket itu, lalu menghentikannya dan menjalankan server asli. Jadi loop bisa selesai di dalam
+celah restart dan statement berikutnya jatuh. Di laptop, container biasanya sudah ada, dan jalur
+`docker inspect` melompati seluruh proses start, jadi bugnya tidak pernah kelihatan.
+
+### Probe baru
+
+Dua syarat, keduanya harus terpenuhi sebelum statement pertama:
+
+1. `docker logs` memuat **dua** baris `database system is ready to accept connections`, yaitu
+   server sementara dan server asli.
+2. Port TCP 55433 bisa dibuka **dari host**. Server sementara initdb tidak pernah membind port
+   yang dipublikasikan, jadi ini pembeda yang tidak bisa dibohongi.
+
+Kontrak lama dipertahankan: tanpa Docker, skrip tetap keluar dengan exit 2 dan pesan yang jelas.
+
+### Bug pertama ada di perbaikan saya sendiri
+
+Versi pertama probe tetap gagal, tapi karena sebab lain: `docker logs` menulis log server ke
+stderr, dan `execFileSync` hanya mengembalikan stdout, jadi hitungan barisnya selalu 0 dan skrip
+menunggu 60 detik lalu menyerah. Terlihat di laptop justru karena laptop saya jalankan jalur
+container baru. Perbaikannya pakai `spawnSync` dan menggabungkan stdout dengan stderr.
+
+### Terukur lokal, kedua jalur
+
+| jalur | hasil |
+|---|---|
+| container sudah ada (jalur laptop lama) | siap 0,0 s, 1 percobaan, 16 blok assertion lulus, langkah 1,3 s |
+| container diangkat dari nol (jalur runner) | siap 1,1 s, 2 percobaan, 16 blok assertion lulus, langkah 2,5 s |
+
+Dua angka itu membuktikan probe bekerja, bukan membuktikan balapannya hilang: di laptop startup
+terlalu cepat untuk menabrak celah. Buktinya ada di runner, dan itu saya ukur dua kali.
+
+### db:verify masuk job Security & Quality Audit
+
+Diletakkan terakhir di job, setelah `guard:check`. Alasannya: langkah ini tidak butuh `npm ci`
+dan tidak butuh artefak build, jadi ia tidak mengubah hasil langkah mana pun, dan kalau ia merah
+ia tidak menutupi yang di atasnya.
+
 ## 2026-10-16 - Bomberman: panah diperbesar, dan lanskap tidak ikut 2x
 
 Permintaan pemain: panah movement di tampilan ponsel bisa diperbesar 2 sampai 3 kali lipat.
