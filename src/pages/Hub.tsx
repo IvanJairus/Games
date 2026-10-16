@@ -1,7 +1,13 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { GAMES_REGISTRY } from '../games/registry';
+import { GAMES_REGISTRY, GameMetadata } from '../games/registry';
 import { CompletedCounts, fetchCompletedCounts } from '../games/common/matchStats';
+
+// A lobby chunk that fails to arrive must not surface as a failed click: the route's own
+// lazy import retries it on navigation.
+const preloadLobby = (game: GameMetadata) => {
+  game.preload().catch(() => {});
+};
 
 export const Hub: React.FC = () => {
   const [counts, setCounts] = React.useState<CompletedCounts>({});
@@ -115,6 +121,9 @@ export const Hub: React.FC = () => {
             key={game.id}
             to={game.route}
             data-testid={`game-card-${game.id}`}
+            onPointerEnter={() => preloadLobby(game)}
+            onFocus={() => preloadLobby(game)}
+            onTouchStart={() => preloadLobby(game)}
             style={{
               position: 'relative',
               display: 'flex',

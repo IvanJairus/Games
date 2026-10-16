@@ -8,6 +8,39 @@ terpisah saat kamu menerbitkan rilis.
 Entri dimulai dari 14 Oktober 2026. Perubahan sebelum tanggal itu ada pada riwayat git dan daftar
 pull request, karena tidak dicatat saat terjadi.
 
+## 2026-10-17 - Hub: chunk lobby mulai diunduh saat kartunya disentuh
+
+Tiap game sudah di-lazy, tapi chunk baru diunduh setelah pengguna menekan kartu. Perubahan ini
+memulai unduhan itu lebih dini, saat pointer masuk ke kartu, kartu menerima fokus, atau sentuhan
+pertama mendarat. Tidak ada perubahan tampilan sama sekali.
+
+### Ditambahkan
+
+- Fungsi impor lobby menjadi export bernama di tiap `routes.tsx` (`loadWallgameLobby`,
+  `loadTicTacToeLobby`, `loadBattleshipLobby`, `loadSlapArenaLobby`, `loadBombermanLobby`) dan
+  dipakai kembali oleh `lazy()`, jadi halaman yang diunduh saat hover adalah halaman yang sama
+  dengan yang dipakai rute. Hanya halaman lobby yang disentuh, Local dan Match tidak berubah.
+- Field wajib `preload` pada `GameMetadata` di `src/games/registry.tsx`, diisi lima entri. Karena
+  opsinya wajib, menambah game baru tanpa `preload` gagal di typecheck, bukan diam-diam tanpa
+  prefetch.
+- Tiga handler di `Link` kartu pada `src/pages/Hub.tsx`: `onPointerEnter`, `onFocus`,
+  `onTouchStart`. Rejection ditelan diam-diam karena rute punya permintaannya sendiri, jadi
+  prefetch yang gagal tidak pernah berubah menjadi error merah di layar.
+- `tests/ui/hub-preload.test.tsx`: lima test, termasuk satu yang menolak preload-nya dan tetap
+  menuntut Hub utuh.
+
+### Terukur
+
+- Browser asli (Google Chrome for Testing, build `vite preview`): sebelum hover, request ke chunk
+  `WallgameLobby` = 0. Setelah hover kartu WallGo tanpa satu klik pun, `WallgameLobby-7DD4p_Ps.js`
+  datang pada +64 ms bersama tiga dependensinya, dan URL halaman tidak berubah.
+- Kontrol arah sebaliknya: hover kartu Tic Tac Toe memuat `TicTacToeLobby` (1 request) dan tetap
+  0 request ke `WallgameLobby`, jadi ini prefetch per kartu, bukan memuat semua lobby.
+- Test bisa gagal: `onPointerEnter` dihapus sementara, 2 test merah dengan pesan
+  "expected ... to be called 1 times, but got 0 times"; handler dikembalikan, 5 test hijau.
+- Gerbang: `tsc -b` bersih, 243 unit, 109 UI (13 file), `release:check` lima tahap PASSED,
+  `guard:check` bersih, `gameplay:check` 115/115.
+
 ## 2026-10-16 - WallGo: kalibrasi anggaran test saya sendiri yang membuat main merah
 
 Entri sebelumnya mengganti assertion jam dinding dengan rasio terhadap beban kalibrasi. Gagasnya benar,
