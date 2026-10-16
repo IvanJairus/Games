@@ -27,7 +27,9 @@ function makeRelay() {
           if (other === name) continue;
           for (const cb of map.get(args.event) ?? []) cb({ payload: structuredClone(args.payload) });
         }
-        return Promise.resolve('sent');
+        // Realtime resolves a broadcast to 'ok'; a fixture that says otherwise would let
+        // the sender's success classification pass while the real socket fails it.
+        return Promise.resolve('ok');
       },
     };
   };
@@ -347,6 +349,49 @@ describe('Slap Arena host-authoritative link', () => {
     expect(() => relay.dispatch('guest', EV_INPUT, null)).not.toThrow();
     expect(guest.sim.state.phase).toBe('WAITING');
     expect(guest.received).toHaveLength(0);
+  });
+
+  it('counts a healthy broadcast as delivered, not dropped', async () => {
+    // Realtime answers a broadcast with 'ok'. The sender used to accept only 'sent' and
+    // 'pending', so every working message was tallied as a failure and the room warned
+    // "koneksi mungkin terputus" while nothing was wrong.
+    vi.useFakeTimers();
+    const relay = makeRelay();
+    const host = makePeer(relay, 'host', 'host', 'Host', '#4dabf7');
+    const guest = makePeer(relay, 'guest', 'client', 'Guest', '#ff5d5d');
+    run(1000, [host, guest]);
+    // The answer arrives in a promise callback, so the fake timers must flush microtasks
+    // before the classification can be read.
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(host.net.stats.sent).toBeGreaterThan(10);
+    expect(host.net.stats.drop).toBe(0);
+    expect(guest.net.stats.drop).toBe(0);
+    expect(host.net.stats.lastState).toBe('ok');
+  });
+
+  it('counts a socket that refuses to carry messages as dropped', async () => {
+    vi.useFakeTimers();
+    const sim = new SlapSim({ localId: 'host', authoritative: true });
+    const net = new ArenaNet({
+      channel: { on: () => net, send: () => Promise.resolve('timed out') } as never,
+      isHost: () => true,
+      localId: 'host',
+      playerName: 'Host',
+      playerColor: '#4dabf7',
+      getInput: () => ({ x: 0, z: 0, slap: false, dash: false }),
+      getSnapshot: () => sim.snapshot(),
+      drainFx: () => [],
+      onInput: () => {},
+      onSnapshot: () => {},
+      onFx: () => {},
+    });
+    net.start();
+    await vi.advanceTimersByTimeAsync(1000);
+    net.stop();
+
+    expect(net.stats.sent).toBe(20);
+    expect(net.stats.drop).toBe(20);
   });
 
   it('keeps event names single-sourced', () => {

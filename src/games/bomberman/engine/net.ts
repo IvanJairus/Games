@@ -106,7 +106,8 @@ export class BombermanNet {
   private lastT = -Infinity;
   private charSent = false;
   private dropped = 0;
-  private warned = false;
+  private warnedDrop = false;
+  private warnedError = false;
   readonly stats = { sent: 0, drop: 0, byEvent: {} as Record<string, number>, lastState: 'init' };
 
   constructor(private opts: NetOptions) {}
@@ -193,15 +194,21 @@ export class BombermanNet {
     // to one REST POST per message, which is slower but not silent.
     this.dropped += 1;
     this.opts.onDrop?.(this.dropped);
-    if (this.dropped >= 20 && !this.warned) {
-      this.warned = true;
+    if (this.dropped >= 20 && !this.warnedDrop) {
+      this.warnedDrop = true;
       console.warn(`[bomberman] realtime ${state}: ${this.dropped} pesan gagal, koneksi mungkin terputus`);
     }
   }
 
   private reportError(err: unknown): void {
-    if (this.warned) return;
-    this.warned = true;
+    /* A throw is the same fact the player needs as a 'timedOut' answer: the message never
+       left this tab. It joins the same counter so the notice at 20 covers a socket that
+       dies outright, and it keeps its own warning flag, because sharing one between the two
+       paths let whichever fired first silence the other. */
+    this.dropped += 1;
+    this.opts.onDrop?.(this.dropped);
+    if (this.warnedError) return;
+    this.warnedError = true;
     console.warn('[bomberman] broadcast gagal', err);
   }
 

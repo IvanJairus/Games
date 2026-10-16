@@ -39,6 +39,121 @@ Runner GitHub terukur sekitar 1,7x lebih lambat dari laptop pada kedua sisi rasi
 saat mesinnya sibuk. Pada satu run lokal yang terganggu, kedua sisi naik bersama dan rasionya turun ke
 10,60x.
 
+## 2026-10-16 - Slap Arena online: aktor remote diterbangkan, bukan ditunggu
+
+Menyusul pertanyaan: kenapa pembuat room mulus tapi anggota lain patah-patah.
+
+### Koreksi atas klaim saya sendiri
+
+Dugaan awal saya adalah jatah 20 pesan per detik terbelah dua karena tuan rumah mengirim
+snapshot plus batch efek, sehingga snapshot turun ke ~10 Hz. **Angka membantahnya.** Diukur
+pada dua tab di satu room: tuan rumah mengirim 439 snapshot dan **1** batch efek selama ~22
+detik, `drop = 0`. Batch efek nyaris tidak terpakai di room dua pemain. Jadi menggabungkan
+efek ke dalam snapshot bukan perbaikan yang dibutuhkan, dan tidak saya kerjakan.
+
+### Diperbaiki
+
+- **Telemetri pengiriman tidak lagi menghitung sukses sebagai gagal.** `ArenaNet` hanya
+  menerima `'sent'`/`'pending'`, padahal realtime menjawab `'ok'` untuk broadcast dan
+  langsung `'ok'` saat kanal tanpa ack. Akibatnya setiap pesan sehat menaikkan penghitung
+  drop dan room yang baik memunculkan peringatan "koneksi mungkin terputus". State gagal yang
+  sebenarnya adalah `'error'` dan `'timed out'`.
+- **`stats.drop` sekarang benar-benar bertambah.** `noteDrop` menaikkan field privat
+  `dropped`, jadi angka yang dibaca lewat `__slapNet` selalu 0 bahkan saat peringatan berbunyi.
+- **Fixture relay di uji net memancarkan kontrak yang salah** (`'sent'`), sehingga klasifikasi
+  yang keliru itu lolos uji. Sudah diganti ke `'ok'`.
+
+### Diubah
+
+- **Aktor remote kini di-dead reckon.** Posisi gambar = posisi laporan tuan rumah + kecepatan
+  yang dilaporkan bersamanya x umur laporan, dikunci halus dengan konstanta waktu ~40 ms, dan
+  umur dibatasi 0,15 detik supaya tubuh yang sudah berhenti di tuan rumah tidak diterbangkan
+  terus. Klamp radius tetap ada, karena ekstrapolasi bisa menggambar brawler berdiri di laut.
+  Matematisnya di `engine/remoteMotion.ts` supaya clamps-nya bisa diuji.
+
+### Terukur, A/B dengan instrumen yang sama
+
+Instrumennya adalah laju perubahan posisi **yang digambar** (dibaca dari transform tag nama per
+frame), bukan posisi state. "Jumlah perubahan per detik" tidak bisa membedakan keduanya: lerp
+lama juga mengubah posisi tiap frame, jadi yang diukur adalah kerataan langkah, bukan jumlahnya.
+
+| Kondisi | stepCV tamu | lonjakan maksimum / rata-rata |
+| --- | --- | --- |
+| Lama (lerp ke laporan terakhir) | 0,60 | 2,93 |
+| Dead reckoning | 0,45 | 1,60 |
+| Rujukan: tuan rumah melihat tamu | 0,42 | 1,40 |
+
+Jaringan identik di ketiga kondisi: 60,5 fps render, ~20 snapshot/s, `drop = 0`. Jadi selisihnya
+murni cara menggambar. Kesenjangan 2,93 vs 1,40 (tuan rumah vs anggota) menyempit jadi 1,60 vs 1,40.
+
+### Batas
+
+Dua tab di satu mesin, jadi round-trip time-nya nyaris nol dan jitter-nya tidak realistis. Di dua
+perangkat sungguhan perbaikan ini tetap bekerja pada bagian smoothing-nya, tapi RTT dan jitter
+tidak disentuhnya sama sekali. Room yang diukur berisi dua pemain, tanpa bot pengisi.
+
+## 2026-10-16 - CI: npm ci jadi, gerbang SQL gugur di runner dan saya keluarkan lagi
+
+Dua gerbang lokal tidak ada di CI: `grep gameplay:check db:verify .github/` menghasilkan nol padahal
+keduanya terdaftar di `package.json`. Rencananya dua-duanya dipasang. Hasil akhirnya cuma satu yang
+jadi, dan sisanya adalah catatan kegagalan yang berguna.
+
+### Diubah
+
+- `npm install` menjadi `npm ci` di job `Security & Quality Audit` dan `Deploy to Vercel`.
+  `actions/setup-node` di workflow ini sudah memakai `cache: 'npm'`, yang memang membaca
+  `package-lock.json`, jadi mode instalasinya kini cocok dengan cara dependensinya di-cache.
+- `npm run db:verify` dicoba, gagal di runner, dan ditarik lagi. Langkahnya tidak jadi masuk, tapi
+  komentarnya ditinggalkan di workflow supaya tidak dicoba ulang dengan premis yang sama.
+
+### db:verify gagal karena apa
+
+Bukan karena Docker tidak ada di runner, dan bukan karena flake waktu. Log CI: `mengangkat
+postgres:16-alpine di port 55433` pada 15:08:01, `menyiapkan peran anon dan publication` pada
+15:08:06, lalu `psql: error: connection to server on socket
+"/var/run/postgresql/.s.PGSQL.5432" failed: No such file or directory` pada 15:08:06.39.
+
+Loop tunggu sebenarnya ada (40 percobaan, jeda 1 detik). Yang salah adalah objek yang diujinya.
+Image postgres resmi menjalankan server sementara selama `initdb` lalu menghentikan dan menjalankan
+server asli. Probe `select 1` bisa lolos terhadap server sementara itu, dan statement berikutnya
+jatuh tepat di celah restart. Di mesin yang containernya sudah ada (`docker inspect` sukses, jalur
+"memakai container yang sudah ada") bug ini tidak terlihat sama sekali, dan di mesin tanpa Docker
+skripnya keluar dengan kode 2 sebelum sempat membuktikannya. Jadi gerbang ini lolos di laptop, mati
+di runner.
+
+Perbaikan yang diperlukan ada di `scripts/verify-sql.mjs` (bukan di workflow), dan itu di luar
+batasan PR ini.
+
+### Terukur
+
+- CI pada PR ini menjalankan file workflow dari head PR, bukan dari `main`. Buktinya langkah
+  `Verify SQL Migrations and Protocol Assertions` muncul dan dieksekusi di run PR. Jadi asumsi
+  "perubahan workflow baru teruji setelah merged" tidak berlaku di sini, dan justru dari situlah
+  kegagalan di atas ketahuan sebelum masuk `main`.
+- Run `38920462297`, percobaan pertama: `Run Release Readiness Audit` gagal karena
+  `tests/unit/wall-game-ai.test.ts:237`, `expected 3326 to be less than 3000`. Langkah baru menjadi
+  `skipped`.
+- Percobaan ulang satu kali sesuai kebijakan flake: audit dan guard lolos, `Install Dependencies`
+  dengan `npm ci` lolos, dan langkah `db:verify` **genuine failure** seperti diceritakan di atas.
+- `npm ci --dry-run` lokal: exit 0 dalam 406 ms. `package-lock.json` 372.975 byte,
+  `lockfileVersion` 3, 761 entri `resolved`. Peringatan `EBADENGINE` untuk
+  `@renovatebot/pep440@4.2.1` (minta node `^20.9.0 || ^22.11.0 || ^24`, shell ini v25.5.0) hanya
+  status `warn`, dan CI memasang node 22 yang ada di dalam rentang itu.
+- Gerbang lokal pada tree ini: `tsc -b` bersih, `test:unit` 235 lolos pada 14 file, `test:ui` 104
+  lolos pada 12 file, `release:check` semua tahap lulus, `guard:check` bersih.
+
+### Batas
+
+- Assertion waktu yang sempat merah di percobaan pertama PR ini sudah tidak berlaku lagi: `main` kini
+  memuat PR #42 yang mengukur anggaran giliran bot relatif terhadap beban kalibrasi, bukan jam dinding.
+  Pada tree gabungan ini test itu lolos di 3572 ms, angka yang dulu akan menjatuhkan audit.
+- `db:verify` masih belum masuk CI. Yang berubah baru pengetahuan tentang mengapa ia belum siap.
+- `gameplay:check` juga masih di luar CI; ia butuh artefak build dan browser nyata, jadi itu
+  pekerjaan terpisah.
+- `npm ci` sungguhan tidak saya jalankan di worktree ini karena `node_modules`-nya symlink ke
+  instalasi bersama yang dipakai beberapa sesi agen. Buktinya datang dari runner CI, dari langkah
+  `Install Dependencies` yang lolos.
+
 ## 2026-10-16 - WallGo: anggaran giliran bot diukur relatif, bukan jam dinding
 
 ### Diperbaiki
@@ -143,6 +258,52 @@ hijau.
   `vite build` sukses.
 - Test lama yang menjaga aturan sentuh (tap pertama hanya pratinjau, tap kedua pasang) tetap lulus,
   jadi perilaku HP yang baru diperbaiki tidak berubah.
+
+## 2026-10-16 - Bomberman: socket yang mati membuat lawan membeku tanpa sebab yang terlihat
+
+Gejala yang bisa dilihat pemain: di room online lawan berhenti bergerak, dan layarnya tidak
+menyebut apa pun. Tidak ada notice, tidak ada peringatan, hanya diam.
+
+### Yang sebenarnya terjadi
+
+Jalur jawaban gagal sudah punya UI. `noteDrop()` dipanggil untuk setiap pesan yang kembali
+dengan `timedOut` atau `closed`, dan halaman sudah memunculkan notice saat hitungannya mencapai
+20. Yang tidak punya jalur ke pemain adalah `reportError()`, yaitu cabang untuk `channel.send()`
+yang **melempar** alih-alih menjawab. Fungsinya hanya `console.warn`, jadi fakta yang pemain
+butuhkan berhenti di konsol developer.
+
+Cabang kedua, dan ini yang membuat bug pertama sulit ditebak: satu flag `warned` dipakai bersama
+oleh kedua jalur. Setelah 20 jawaban timeout menaikkannya, `reportError` langsung bungkak
+permanen. Sebaliknya, satu lemparan pertama sudah cukup untuk membungkam peringatan console
+jalur timeout. Jadi socket yang mati total justru paling mungkin tidak terlapor, karena cara
+paling umum untuk mati total adalah melempar.
+
+### Yang diubah
+
+Dua hal, sekecil mungkin. `reportError()` sekarang menghitung ke counter yang sama dan memanggil
+`onDrop` yang sama, jadi notice ambang 20 yang sudah ada ikut menutupi kegagalan yang melempar.
+Flag peringatan dipisah jadi `warnedDrop` dan `warnedError` supaya satu jalur tidak bisa
+membungkam jalur lain. Ambang 20 tidak berubah, teks notice tidak berubah, dan halaman yang
+memasang notice tidak perlu disentuh sama sekali.
+
+### Dibuktikan dua arah
+
+Dua tes unit ditulis lebih dulu dan dijalankan terhadap kode lama, keduanya merah dengan alasan
+yang benar:
+
+| tes | tanpa fix | dengan fix |
+|---|---|---|
+| `counts a send that throws as a dropped message` | FAIL, `expected [] to deeply equal [ 1 ]` | PASS |
+| `keeps counting after a slow link already reached the notice threshold` | FAIL, `expected [Array(20)] to have a length of 21` | PASS |
+
+Baris kedua yang membuktikan flag bersama itu nyata: 20 timeout pertama dilaporkan, lalu satu
+lemparan setelahnya tidak menambah apa pun pada kode lama.
+
+Satu catatan jujur soal tes pertamanya sendiri: versi pertama saya salah, karena channel
+palsunya masih menjawab `timedOut` dan belum melempar, jadi ia gagal setelah fix, bukan sebelum.
+Itu kesalahan tes, bukan kode, dan ketahuan karena arah buktinya terbalik.
+
+14 tes hijau di `tests/unit/bomberman-net.test.ts`.
 
 ## 2026-10-16 - Bomberman online: tamu bisa menaruh bom tapi tidak bisa jalan
 
