@@ -327,11 +327,12 @@
   padding: 0 calc(14px + var(--bm-safe-r)) calc(16px + var(--bm-safe-b)) calc(4px + var(--bm-safe-l));
 }
 
-/* A cross of four buttons. The cell is 46 px so every arrow clears the 44 px touch floor,
-   and the whole cross stays inside the margin the fitted board leaves on a landscape
-   phone, which is what the letterbox fix bought. */
+/* A cross of four buttons. The cell is 92 px, double the 46 px this shipped at, which is
+   the largest size that still leaves the arena uncovered on a tall phone: the board is
+   width-bound in portrait, so the pad grows into the empty band under it. Measured at
+   390x844 the overlap is 0 px2 on both the 11x9 and the 21x15 board. */
 .bm-dpad {
-  --bm-dir: 46px;
+  --bm-dir: 92px;
   position: relative;
   z-index: 6;
   display: grid;
@@ -557,11 +558,22 @@
   .bm-back { padding: 0 12px; }
 }
 
+/* A short portrait screen has no free band under the board for a 92 px cross: measured at
+   360x640 the arena is covered by 21419 px2, which is about 22 cells of the 11x9 board.
+   64 px is the largest value that measured 0 px2 there. */
+@media (orientation: portrait) and (max-height: 700px) {
+  .bm-dpad { --bm-dir: 64px; }
+}
+
 @media (max-height: 480px) and (orientation: landscape) {
   .bm-boardwrap { max-height: 100%; }
-  /* Still 44 px per arrow, just a tighter cross: in landscape the pad lives in the margin
-     the fitted board leaves, and that margin is the narrowest thing on the screen. */
-  .bm-dpad { --bm-dir: 44px; }
+  /* In landscape the board is bound by height and sits in the middle of a wide stage, so
+     the cross has to fit the margin beside it. Swept upward from 44 px on the smallest
+     landscape viewport this repo measures: 48 px is the last value with 0 px2 of overlap on
+     both boards (52 px covers 993 px2 of the 21x15 arena), so that is the ceiling here and
+     the arrows grow by 4 px, not by 2x. Shrinking the board to buy more arrow was not
+     approved and is not what this does. */
+  .bm-dpad { --bm-dir: 48px; }
   .bm-action--bom { width: 72px; height: 72px; font-size: 12px; }
   .bm-top { padding-top: calc(4px + var(--bm-safe-t)); padding-bottom: 2px; }
   .bm-status { min-height: 30px; font-size: 12px; }

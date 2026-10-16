@@ -213,6 +213,17 @@ async function run() {
         }),
       );
       check(`${vp.name}: arrows clear the touch floor`, cells.every((c) => parseInt(c, 10) >= 44), cells.join(' '));
+      /* The three numbers come from sweeping --bm-dir upward and measuring where the cross
+         starts covering the arena: 92 px is the largest clean value on a tall portrait
+         screen, 64 px on a short one (360x640 covers 21419 px2 at 92), and 48 px in
+         landscape (52 px covers 993 px2 of the 21x15 board). Pinned here so a later change
+         that quietly trades arena for buttons shows up as a failure. */
+      const expectArrow = vp.height > vp.width ? (vp.height > 700 ? 92 : 64) : 48;
+      check(
+        `${vp.name}: arrows are the size the sweep allowed`,
+        cells.every((c) => parseInt(c, 10) === expectArrow),
+        `${cells.join(' ')}, expected ${expectArrow}px`,
+      );
     }
 
     const fps = await page.evaluate(
