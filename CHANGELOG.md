@@ -60,6 +60,9 @@ batasan PR ini.
 
 ### Batas
 
+- Assertion waktu yang sempat merah di percobaan pertama PR ini sudah tidak berlaku lagi: `main` kini
+  memuat PR #42 yang mengukur anggaran giliran bot relatif terhadap beban kalibrasi, bukan jam dinding.
+  Pada tree gabungan ini test itu lolos di 3572 ms, angka yang dulu akan menjatuhkan audit.
 - `db:verify` masih belum masuk CI. Yang berubah baru pengetahuan tentang mengapa ia belum siap.
 - `gameplay:check` juga masih di luar CI; ia butuh artefak build dan browser nyata, jadi itu
   pekerjaan terpisah.
