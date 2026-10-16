@@ -27,7 +27,11 @@ const SIGN: Record<Facing, [number, number]> = {
   down: [0, 1],
 };
 
+type Mode = 'turning' | 'straight';
+
 interface Trace {
+  mode: Mode;
+  startDir: Facing;
   nFrames: number;
   movingFrames: number;
   snapshotsApplied: number;
@@ -42,19 +46,21 @@ interface Trace {
   overshoot4: number;
   overshootOnSnapshotFrames: number;
   overshootOffSnapshotFrames: number;
+  maxDisplacementRatio: number;
+  displacementOvershoot1_2: number;
   worstSnapBackInFrameSteps: number;
   snapBackCount: number;
 }
 
 /**
- * Streams one host walking continuously into one client that only smooths. The host turns at the
- * next step boundary when its way is blocked, because a straight walk on a seeded board dies
- * against the first soft block after about two cells and would measure almost nothing.
+ * Streams one host walking into one client that only smooths. In turning mode the host picks the
+ * next direction at the step boundary when its way is blocked, because a straight walk on a seeded
+ * board dies against the first soft block after about two cells and measures almost nothing.
  */
-function stream(preferred: Facing, totalMs: number): Trace {
+function stream(startDir: Facing, totalMs: number, mode: Mode): Trace {
   const host = makeSim(2);
   const client = makeSim(2);
-  let dir = preferred;
+  let dir = startDir;
 
   const ax: number[] = [];
   const ay: number[] = [];
@@ -67,7 +73,7 @@ function stream(preferred: Facing, totalMs: number): Trace {
   for (let ms = 0; ms < totalMs; ms += FRAME_MS) {
     const p = host.state.players[0];
     // Turning only between steps keeps one move in flight, the way a held key does.
-    if (!p.step) {
+    if (mode === 'turning' && !p.step) {
       if (!host.tryMove(p.seat, dir).ok) dir = DIRS[(DIRS.indexOf(dir) + 1) % DIRS.length];
     }
     host.setInput(0, { dir, bomb: false, seq: 0 });
@@ -106,6 +112,8 @@ function stream(preferred: Facing, totalMs: number): Trace {
   let over4 = 0;
   let overOnSnap = 0;
   let overOffSnap = 0;
+  let maxDisplacement = 0;
+  let displacementOver12 = 0;
   for (let i = 1; i < ax.length; i += 1) {
     let [sx, sy] = stepDir[i];
     if (!sx && !sy) [sx, sy] = stepDir[i - 1];
@@ -124,10 +132,17 @@ function stream(preferred: Facing, totalMs: number): Trace {
       if (wasSnap[i]) overOnSnap += 1;
       else overOffSnap += 1;
     }
+    /* The same question asked without any direction bookkeeping, so the conclusion does not rest
+       on the projection above. */
+    const displacement = Math.hypot(ax[i] - ax[i - 1], ay[i] - ay[i - 1]) / frameStep;
+    maxDisplacement = Math.max(maxDisplacement, displacement);
+    if (displacement > 1.2) displacementOver12 += 1;
   }
 
   const r = (v: number): number => Number(v.toFixed(6));
   return {
+    mode,
+    startDir,
     nFrames: ax.length,
     movingFrames: moving,
     snapshotsApplied: snapshots,
@@ -142,6 +157,8 @@ function stream(preferred: Facing, totalMs: number): Trace {
     overshoot4: over4,
     overshootOnSnapshotFrames: overOnSnap,
     overshootOffSnapshotFrames: overOffSnap,
+    maxDisplacementRatio: r(maxDisplacement),
+    displacementOvershoot1_2: displacementOver12,
     worstSnapBackInFrameSteps: r(worstSnap / frameStep),
     snapBackCount: worstSnap > 0 ? 1 : 0,
   };
@@ -159,23 +176,35 @@ describe('remote actor animation on a Bomberman client', () => {
   it('measures the client animated position against 15 Hz snapshots', () => {
     const runs = [2000, 8000].map((totalMs) => ({
       totalMs,
-      rows: DIRS.map((dir) => ({ startDir: dir, ...stream(dir, totalMs) })),
+      rows: [
+        ...DIRS.map((dir) => stream(dir, totalMs, 'turning')),
+        // The straight walk is the scenario named by the card and the control for the turning rows.
+        stream('right', totalMs, 'straight'),
+      ],
     }));
 
     const all = runs.flatMap((run) => run.rows);
-    const sum = (key: keyof Trace): number => all.reduce((acc, row) => acc + (row[key] as number), 0);
+    const turning = all.filter((row) => row.mode === 'turning');
+    const straight = all.filter((row) => row.mode === 'straight');
+    const sum = (key: keyof Trace, rows: Trace[]): number =>
+      rows.reduce((acc, row) => acc + (row[key] as number), 0);
     const totals = {
-      rows: all.length,
-      frames: sum('nFrames'),
-      movingFrames: sum('movingFrames'),
-      snapshots: sum('snapshotsApplied'),
-      retreatFrames: sum('retreatFrames'),
-      overshoot1_2: sum('overshoot1_2'),
-      overshoot2: sum('overshoot2'),
-      overshoot4: sum('overshoot4'),
-      overshootOnSnapshotFrames: sum('overshootOnSnapshotFrames'),
-      overshootOffSnapshotFrames: sum('overshootOffSnapshotFrames'),
-      worstForwardRatio: Math.max(...all.map((row) => row.largestForwardJumpRatio)),
+      turningRows: turning.length,
+      frames: sum('nFrames', turning),
+      movingFrames: sum('movingFrames', turning),
+      snapshots: sum('snapshotsApplied', turning),
+      retreatFrames: sum('retreatFrames', turning),
+      overshoot1_2: sum('overshoot1_2', turning),
+      overshoot2: sum('overshoot2', turning),
+      overshoot4: sum('overshoot4', turning),
+      overshootOnSnapshotFrames: sum('overshootOnSnapshotFrames', turning),
+      overshootOffSnapshotFrames: sum('overshootOffSnapshotFrames', turning),
+      displacementOvershoot1_2: sum('displacementOvershoot1_2', turning),
+      worstForwardRatio: Math.max(...turning.map((row) => row.largestForwardJumpRatio)),
+      worstDisplacementRatio: Math.max(...turning.map((row) => row.maxDisplacementRatio)),
+      straightRows: straight.length,
+      straightOvershoot1_2: sum('overshoot1_2', straight),
+      straightDisplacementOvershoot1_2: sum('displacementOvershoot1_2', straight),
     };
 
     /* console.log on purpose: this is the measurement asked for by the card, kept in the suite
@@ -183,15 +212,20 @@ describe('remote actor animation on a Bomberman client', () => {
     console.log(JSON.stringify({ frameMs: FRAME_MS, tickMs: TICK_MS, totals, runs }, null, 2));
 
     // Describes what the current implementation does in every row printed above.
-    for (const run of runs) {
-      for (const row of run.rows) {
-        expect(row.retreatFrames).toBe(0);
-        expect(row.snapBackCount).toBe(0);
-        /* The forward snap is the defect this measurement found, and it only ever lands on a frame
-           that applied a snapshot. Both lines are here to be flipped on purpose by the fix card. */
-        expect(row.overshoot1_2).toBeGreaterThan(0);
-        expect(row.overshootOffSnapshotFrames).toBe(0);
-      }
+    for (const row of all) {
+      expect(row.retreatFrames).toBe(0);
+      expect(row.snapBackCount).toBe(0);
+    }
+    for (const row of turning) {
+      /* The forward snap is the defect this measurement found, and it only ever lands on a frame
+         that applied a snapshot. Both lines are here to be flipped on purpose by the fix card. */
+      expect(row.overshoot1_2).toBeGreaterThan(0);
+      expect(row.overshootOffSnapshotFrames).toBe(0);
+    }
+    for (const row of straight) {
+      // A walk that never changes its step direction shows no snap at all; the turning rows do.
+      expect(row.overshoot1_2).toBe(0);
+      expect(row.displacementOvershoot1_2).toBe(0);
     }
   });
 });

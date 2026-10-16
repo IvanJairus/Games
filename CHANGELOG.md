@@ -25,28 +25,35 @@ perbaikan, angkanya diambil dulu. Kartu ini sengaja tidak mengubah perilaku apa 
   dunia di-broadcast tiap `TICK_MS` 66 ms, kliennya hanya `applySnapshot` lalu `smooth`, persis dua
   cabang loop rAF di halaman. Host berbelok di batas langkah berikutnya kalau jalannya terhalang,
   karena jalan lurus di board ber-seed mati di balik blok pertama setelah sekitar dua sel.
+- Lompatan dibaca dengan dua instrumen sekaligus supaya tidak bergantung pada satu cara hitung:
+  proyeksi bertanda sepanjang arah langkah, dan besar perpindahan 2D antar frame tanpa arah.
 
 ### Terukur
 
-n = 8 baris (empat arah jalan x dua durasi), 2.500 frame direkam, 1.816 di antaranya bergerak,
-500 snapshot diterapkan. `speed` 6,6 sel/dtk, jadi satu langkah frame normal = 0,1056 sel dan satu
-sel penuh = 9,47 langkah frame (151,5 ms). Semua angka dicetak `console.log` di dalam test supaya
-perubahan nanti bisa dibandingkan dengan angka yang sama.
+n = 10 baris: delapan baris berbelok (empat arah x dua durasi) dan dua baris kontrol jalan lurus.
+Baris berbelok: 2.500 frame direkam, 1.816 bergerak, 500 snapshot. Baris lurus: 625 frame, 125
+snapshot, tapi hanya 19 frame bergerak pada tiap durasi. `speed` 6,6 sel/dtk, jadi satu langkah frame
+normal = 0,1056 sel dan satu sel penuh = 9,47 langkah frame (151,5 ms). Semua angka dicetak
+`console.log` di dalam test supaya perubahan nanti dibandingkan dengan angka yang sama.
 
-| Yang diukur | Hasil |
-| --- | --- |
-| Frame di mana posisi animasi bergerak mundur | 0 dari 2.500 |
-| Mundur terbesar tepat saat snapshot mendarat | 0 langkah frame |
-| Frame bergerak yang lompatnya di atas 1,2 langkah frame | 183 dari 1.816 (10,1%) |
-| Lompatan itu terjadi di frame yang menerapkan snapshot | 183 dari 183, nol di luar itu |
-| Lompatan di atas 2 langkah frame | 156 |
-| Lompatan di atas 4 langkah frame | 93 |
-| Lompatan maju terbesar | 5,000 langkah frame = 0,528 sel |
-| Snapshot yang memicu lompatan di atas 1,2 langkah | 183 dari 500 (36,6%) |
+| Yang diukur | Baris berbelok | Baris lurus |
+| --- | --- | --- |
+| Frame di mana posisi animasi bergerak mundur | 0 dari 2.500 | 0 dari 625 |
+| Mundur terbesar tepat saat snapshot mendarat | 0 langkah frame | 0 langkah frame |
+| Frame bergerak yang lompatnya di atas 1,2 langkah frame | 183 dari 1.816 (10,1%) | 0 |
+| Lompatan itu terjadi di frame yang menerapkan snapshot | 183 dari 183, nol di luar itu | tidak ada |
+| Lompatan di atas 2 langkah frame | 156 | 0 |
+| Lompatan di atas 4 langkah frame | 93 | 0 |
+| Lompatan maju terbesar | 5,000 langkah frame = 0,528 sel | 1,000 langkah frame |
+| Snapshot yang memicu lompatan di atas 1,2 langkah | 183 dari 500 (36,6%) | 0 dari 125 |
 
-Kesimpulan satu kalimat: gerak pemain lain **tidak** pernah mundur, tapi melompat maju sampai lima
-kali langkah satu frame pada 36,6% snapshot, jadi ada kartu perbaikan sungguhan dan bentuknya lompat
-maju, bukan mundurnya posisi.
+Dua instrumen itu memberi angka yang sama persis: 183 lompatan dan rasio terbesar 5,000 pada pembacaan
+proyeksi maupun pembacaan perpindahan 2D.
+
+Kesimpulan satu kalimat: gerak pemain lain **tidak** pernah mundur, tapi melompat maju sampai lima kali
+langkah satu frame pada 36,6% snapshot, jadi ada kartu perbaikan sungguhan dan bentuknya lompat maju,
+bukan mundurnya posisi. Lompatnya muncul di frame tempat host memulai langkah yang belum sempat digambar
+klien, dan tidak muncul sama sekali pada baris yang langkahnya tidak pernah berganti arah.
 
 ### Batas
 
@@ -56,8 +63,11 @@ maju, bukan mundurnya posisi.
 - Satu seed, satu kecepatan dasar 6,6, tanpa bom, api, powerup, atau tabrakan antar pemain.
 - Tidak mengukur RTT, frame drop, atau perangkat nyata. Test ini tidak membuktikan mata manusia
   melihat lompatan 0,528 sel sebagai patah; itu keputusan kartu perbaikan.
-- Assertion yang ditulis hanya menggambarkan angka di atas, termasuk dua baris yang memang sengaja
-  harus dibalik oleh kartu perbaikan nanti.
+- Assertion yang ditulis hanya menggambarkan angka di atas. Empat di antaranya (dua untuk baris
+  berbelok, dua untuk baris lurus) sengaja harus dibalik oleh kartu perbaikan nanti.
+- Baris kontrol lurus cuma punya 19 frame bergerak per durasi, karena pemblokiran board. Jadi ia
+  membuktikan "tidak ada lompatan saat pemain tersandar diam atau melangkah pendek", bukan "jalan
+  lurus yang panjang selalu halus".
 
 ### Gerbang lokal
 
@@ -70,6 +80,45 @@ stack dari runner Vitest sendiri (`runWithTimeout`), bukan dari assertion repo i
 berikutnya hijau: `test:unit` 249/249 langsung dan `release:check` 5/5 dengan unit 33,74 detik.
 Angka test saya sendiri 40 ms, jadi yang gagal itu bukan test ini; penyebabnya belum diketahui dan
 mesin sedang dipakai banyak proses sekaligus. CI yang jadi penentu.
+
+## 2026-10-17 - Database: room basi dibersihkan, riwayat tidak disentuh
+
+Tidak ada satu pun mekanisme pembersihan sebelumnya: tanpa TTL, tanpa penjadwal, tanpa fungsi delete.
+Baris menumpuk selamanya di free tier. Sekarang ada `public.cleanup_stale_rooms()`, dan ia sengaja
+tidak bisa dipanggil pengunjung.
+
+### Ditambah
+
+- Migrasi `006_cleanup_stale_rooms.sql`: fungsi `security definer` dengan `search_path` terkunci.
+  Menghapus room `waiting` yang `updated_at`-nya lebih tua dari 24 jam dan tidak punya baris di
+  `match_results`, lalu menghapus `match_moves` dari laga `completed` atau `abandoned` yang tidak
+  berubah selama 30 hari. Mengembalikan jumlah yang dihapus, dihitung sebelum tiap penghapusan.
+- `revoke execute ... from public, anon, authenticated`: kemampuan hanya untuk pemilik tabel dan
+  penjadwal.
+- Penjadwalan pg_cron tiap hari 03:17, di dalam blok terlindung supaya Postgres tanpa pg_cron tetap
+  lolos. Rollback `006` melepas jadwal lalu menjatuhkan fungsinya.
+- Enam assertion baru (blok 15a sampai 15h dan 16) di `supabase/tests/protocol.sql`.
+
+### Diubah
+
+- `scripts/verify-sql.mjs` ternyata hanya menerapkan 001 dan 002, jadi 003, 004 dan 005 tidak pernah
+  ikut teruji. Sekarang keempatnya plus 006 diterapkan, dan jalur rollback menguji 006 juga.
+- Peran `authenticated` ikut dibuat di container, karena 005 memberi grant ke peran itu dan tanpa
+  peran tersebut migrasi gagal di CI.
+
+### Terukur
+
+| Uji | Hasil |
+| --- | --- |
+| Blok assertion `do $$` sebelum / sesudah | 16 / 18 |
+| `npm run db:verify` pada tree akhir | hijau, 18 blok lulus, rollback 002 dan 006 terbukti |
+| Bukti merah: ambang 24 jam diubah sementara jadi `interval '0 seconds'` | `ASSERT 15b FAIL: room waiting 1 jam ikut terhapus, sisa 0 baris` |
+| pg_cron di image CI `postgres:16-alpine` | `count = 0`, jadi cabang `cron.schedule` tidak pernah jalan di CI |
+
+Bahaya yang dijaga: `match_results.match_id` memakai `on delete cascade`, jadi menghapus `matches`
+yang punya riwayat ikut menghapus riwayat dan angka laga selesai di Hub. Karena itu penghapusan room
+mensyaratkan tidak ada baris riwayat, dan assertion 15f membandingkan jumlah riwayat sebelum dan
+sesudah pemanggilan.
 
 ## 2026-10-17 - Hub: web manifest untuk mode standalone dari Layar Utama
 

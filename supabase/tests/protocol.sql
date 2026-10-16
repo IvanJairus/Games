@@ -267,3 +267,75 @@ end $$;
 
 
 reset role;
+
+-- 15. Pembersihan room basi. Fungsi ini dicabut dari anon dan authenticated, jadi blok ini
+--     berjalan sebagai pemilik tabel, sama seperti penjadwal yang akan memanggilnya.
+do $$
+declare
+  room_stale uuid := 'bbbbbbbb-0000-0000-0000-000000000001';
+  room_fresh uuid := 'bbbbbbbb-0000-0000-0000-000000000002';
+  match_done uuid := 'bbbbbbbb-0000-0000-0000-000000000003';
+  results_before int;
+  results_after int;
+  got_rooms int;
+  got_moves int;
+  n int;
+begin
+  delete from public.match_moves where match_id in (room_stale, room_fresh, match_done);
+  delete from public.match_results where match_id in (room_stale, room_fresh, match_done);
+  delete from public.matches where id in (room_stale, room_fresh, match_done);
+
+  insert into public.matches (id, room_code, game_type, status, max_players, current_turn, game_state, updated_at)
+  values (room_stale, 'STALE1', 'wall-game', 'waiting', 2, 0, '{}'::jsonb, now() - interval '25 hours'),
+         (room_fresh, 'FRESH1', 'wall-game', 'waiting', 2, 0, '{}'::jsonb, now() - interval '1 hour'),
+         (match_done, 'DONE40', 'battleship', 'completed', 2, 0, '{}'::jsonb, now() - interval '40 days');
+
+  insert into public.match_results (match_id, game_type, winner_index) values (match_done, 'battleship', 1);
+  insert into public.match_moves (match_id, player_index, action, payload)
+  values (match_done, 0, 'SHOT', '{}'::jsonb), (match_done, 1, 'SHOT', '{}'::jsonb);
+
+  select count(*) into results_before from public.match_results;
+
+  select deleted_rooms, deleted_moves into got_rooms, got_moves from public.cleanup_stale_rooms();
+
+  select count(*) into n from public.matches where id = room_stale;
+  if n <> 0 then raise exception 'ASSERT 15a FAIL: room waiting 25 jam masih ada, sisa % baris', n; end if;
+
+  select count(*) into n from public.matches where id = room_fresh;
+  if n <> 1 then raise exception 'ASSERT 15b FAIL: room waiting 1 jam ikut terhapus, sisa % baris', n; end if;
+
+  select count(*) into n from public.matches where id = match_done;
+  if n <> 1 then raise exception 'ASSERT 15c FAIL: laga final 40 hari ikut terhapus, sisa % baris', n; end if;
+
+  select count(*) into n from public.match_results where match_id = match_done;
+  if n <> 1 then raise exception 'ASSERT 15d FAIL: riwayat laga final hilang, sisa % baris', n; end if;
+
+  select count(*) into n from public.match_moves where match_id = match_done;
+  if n <> 0 then raise exception 'ASSERT 15e FAIL: log laga final tidak dibersihkan, sisa % baris', n; end if;
+
+  select count(*) into results_after from public.match_results;
+  if results_after < results_before then
+    raise exception 'ASSERT 15f FAIL: jumlah riwayat turun dari % menjadi %', results_before, results_after;
+  end if;
+
+  if got_rooms <> 1 then raise exception 'ASSERT 15g FAIL: deleted_rooms melapor %, seharusnya 1', got_rooms; end if;
+  if got_moves <> 2 then raise exception 'ASSERT 15h FAIL: deleted_moves melapor %, seharusnya 2', got_moves; end if;
+
+  delete from public.matches where id in (room_stale, room_fresh, match_done);
+end $$;
+
+-- 16. Pengunjung tidak boleh bisa memanggil pembersihnya sendiri.
+do $$
+declare allowed boolean;
+begin
+  select pg_catalog.has_function_privilege('anon', 'public.cleanup_stale_rooms()', 'execute') into allowed;
+  if allowed then
+    raise exception 'ASSERT 16 FAIL: anon masih memegang execute atas cleanup_stale_rooms';
+  end if;
+  select pg_catalog.has_function_privilege('authenticated', 'public.cleanup_stale_rooms()', 'execute') into allowed;
+  if allowed then
+    raise exception 'ASSERT 16 FAIL: authenticated masih memegang execute atas cleanup_stale_rooms';
+  end if;
+end $$;
+
+reset role;
