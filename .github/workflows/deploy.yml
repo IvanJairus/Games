@@ -40,7 +40,7 @@ jobs:
           cache: 'npm'
 
       - name: Install Dependencies
-        run: npm install
+        run: npm ci
 
       - name: TypeScript Typecheck
         run: npx tsc -b
@@ -56,6 +56,12 @@ jobs:
 
       - name: Security & Domain Guard Check
         run: npm run guard:check
+
+      # verify-sql.mjs shells out to `docker exec` against a throwaway postgres:16-alpine it
+      # starts itself, so this step needs the runner's Docker engine and pulls that image. It
+      # exits 2 when no daemon is reachable, and it never touches the hosted database.
+      - name: Verify SQL Migrations and Protocol Assertions
+        run: npm run db:verify
 
   deploy-to-vercel:
     name: Deploy to Vercel
@@ -77,7 +83,7 @@ jobs:
           cache: 'npm'
 
       - name: Install Dependencies
-        run: npm install
+        run: npm ci
 
       - name: Pull Vercel Environment Information
         run: npx vercel pull --yes --environment=production --token=$VERCEL_TOKEN

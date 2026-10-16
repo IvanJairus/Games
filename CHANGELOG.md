@@ -8,6 +8,56 @@ terpisah saat kamu menerbitkan rilis.
 Entri dimulai dari 14 Oktober 2026. Perubahan sebelum tanggal itu ada pada riwayat git dan daftar
 pull request, karena tidak dicatat saat terjadi.
 
+## 2026-10-16 - CI: gerbang SQL ikut berjalan di runner, dan instalasi jadi reproducible
+
+Dua gerbang lokal tidak ada di CI. `grep gameplay:check db:verify .github/` menghasilkan nol,
+padahal keduanya terdaftar di `package.json`. Yang kini ikut dijalankan adalah `db:verify`;
+`gameplay:check` tidak, karena ia butuh artefak build dan browser (lihat batas).
+
+### Diubah
+
+- Job `Security & Quality Audit` mendapat langkah `Verify SQL Migrations and Protocol Assertions`
+  setelah `guard:check`.
+- `npm install` menjadi `npm ci` di kedua job. `actions/setup-node` di workflow ini sudah memakai
+  `cache: 'npm'`, yang memang membaca `package-lock.json`, jadi mode instalasinya sekarang cocok
+  dengan cara dependensinya di-cache.
+
+### Premis yang saya koreksi sebelum pasang
+
+Rencana awal menulis `db:verify` "hanya membaca file SQL, tanpa jaringan". Itu salah, dan saya
+baca sumbernya sebelum mengklaim. `scripts/verify-sql.mjs` mengimpor `execFileSync` (baris 4) dan
+menjalankan `docker exec -i ij-games-pg psql ...` (baris 18); ia mengangkat sendiri
+`postgres:16-alpine` di port 55433, artinya menarik image lewat jaringan. Yang tetap benar: ia
+tidak pernah menyentuh database hosted proyek, dan tidak butuh kredensial. Karena runner-nya
+`ubuntu-latest`, Docker engine tersedia, jadi langkah ini masuk akal di CI, dengan konsekuensi
+waktu tarik image yang sebelumnya tidak ada di job itu.
+
+### Terukur
+
+- `npm ci --dry-run`: exit 0, "up to date in 406ms". `package-lock.json` 372.975 byte,
+  `lockfileVersion` 3, 761 entri `resolved`.
+- Peringatan `EBADENGINE` muncul untuk `@renovatebot/pep440@4.2.1` yang minta node
+  `^20.9.0 || ^22.11.0 || ^24` sementara shell ini memakai v25.5.0. Peringkatnya status
+  `warn`, dry-run tetap exit 0, dan CI memasang node 22 yang ada di dalam rentang itu.
+- Gerbang lokal pada tree ini: `tsc -b` bersih, `test:unit` 235 lolos pada 14 file, `test:ui` 104
+  lolos pada 12 file, `release:check` semua tahap lulus, `guard:check` bersih.
+- `db:verify` di mesin ini keluar dengan kode 2 dan pesan "Docker daemon tidak berjalan", sesuai
+  kontraknya di baris 30-33 skrip.
+
+### Batas
+
+- CI pada pull request ini tidak membuktikan langkah barunya. GitHub Actions menjalankan file
+  workflow dari commit yang sudah merged, jadi hijau di PR ini hanya membuktikan langkah-lama masih
+  lolos. Langkah `db:verify` baru benar-benar teruji pada run pertama di `main`.
+- `db:verify` belum saya buktikan lolos sampai selesai di mesin mana pun pada perubahan ini: Docker
+  daemon di sini mati dan saya tidak menyalakannya tanpa izin karena ada beberapa sesi agen lain
+  sedang menjalankan suite yang sensitif waktu. Yang terverifikasi baru kontrak kegagalannya.
+- `npm ci` sungguhan tidak dijalankan di worktree ini karena `node_modules`-nya symlink ke
+  instalasi bersama; `npm ci` akan menghapus dan memasang ulang pohon yang dipakai agen lain.
+- `gameplay:check` masih belum ada di CI. Ia butuh artefak build dan browser, jadi memasangnya
+  adalah pekerjaan terpisah, bukan satu baris.
+
+
 ## 2026-10-16 - Tic Tac Toe online: jatah tahan yang tak terlihat habis
 
 Dilaporkan dari room sungguhan (FULQAM, screenshot 16 Oktober 17.17). Pemain O menekan petak bidak
