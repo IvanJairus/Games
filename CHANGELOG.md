@@ -8,6 +8,43 @@ terpisah saat kamu menerbitkan rilis.
 Entri dimulai dari 14 Oktober 2026. Perubahan sebelum tanggal itu ada pada riwayat git dan daftar
 pull request, karena tidak dicatat saat terjadi.
 
+## 2026-10-16 - Bentuk state lintas game akhirnya dijaga compiler
+
+`src/games/common/multiplayer.ts` menyimpan `game_state: any`. Selama bentuknya `any`, salah baca field
+di halaman room baru ketahuan saat laga online berjalan, bukan saat `tsc -b`.
+
+### Diubah
+
+- `game_state` pada `MatchRow`, `initialState` pada `createOnlineRoom`, `nextState` pada
+  `submitOnlineMove`, dan `initialState` pada `startOnlineMatch` menjadi `unknown`.
+- Dua helper baru diexport: `isRecord` dan `readAbandonedReason`. Yang kedua membaca satu field yang
+  benar-benar dipakai lintas game, jadi ia tinggal satu-satunya tempat bentuk itu diperiksa.
+- `leaveOnlineMatch` tidak lagi menyebarkan `match.game_state || {}` apa adanya; ia menyebarkan hasil
+  `isRecord`, jadi state yang ternyata array atau string tidak ikut tertulis ulang ke baris room.
+- Tiga halaman membaca `abandonedReason` lewat helper: Tic Tac Toe, WallGo, Slap Arena. Di Tic Tac Toe
+  satu `useEffect` juga berhenti membaca field dari `syncData?.match?.game_state` dan pindah ke
+  variabel bertipe yang sama dipakai body-nya.
+
+### Terukur
+
+- `grep -rn "as any\|: any\b" src --include=*.ts --include=*.tsx | wc -l`: **16 sebelum, 12 sesudah**.
+  Sisa `any` di jalur `game_state` multiplayer: 0. Yang tertinggal adalah payload broadcast di
+  `subscribeToMatch`, bukan state permainan.
+- `npx tsc -b` bersih, 0 error.
+- `npm run test:unit` 248 lolos pada 14 file, termasuk 5 tes baru untuk `readAbandonedReason`
+  (null, array, objek tanpa field, nilai bukan string, dan satu kasus string).
+- `npm run test:ui` 104 lolos pada 12 file, `npm run release:check` semua tahap lulus,
+  `npm run guard:check` bersih.
+- `npm run gameplay:check` terhadap `vite preview` dari build cabang ini: 115/115 lolos, dengan hash
+  entry yang disajikan dicocokkan lebih dulu ke `dist` sendiri (`index-DmwardfL.js`).
+
+### Batas
+
+- `game_state` bertipe `unknown` berarti setiap halaman wajib meng-cast sekali ke tipe gamenya. Itu
+  disengaja: cast-nya sekarang eksplisit dan berada di satu tempat, bukan tersebar sebagai `any`.
+- Belum ada tipe gabungan yang mendeskripsikan state tiap game dari satu sumber. Langkah itu lebih
+  besar dan bukan bagian dari perubahan ini.
+
 ## 2026-10-17 - Hub: chunk lobby mulai diunduh saat kartunya disentuh
 
 Tiap game sudah di-lazy, tapi chunk baru diunduh setelah pengguna menekan kartu. Perubahan ini
