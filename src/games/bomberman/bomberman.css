@@ -202,16 +202,22 @@
   justify-content: center;
   min-height: 0;
   padding: 6px calc(10px + var(--bm-safe-r)) 4px calc(10px + var(--bm-safe-l));
+  /* The board is fitted against this box's height, so the stage is the query container. */
+  container-type: size;
 }
 
-/* The board is the only thing that scales; a wrapper keeps the shake off the chrome. */
+/* The board is the only thing that scales; a wrapper keeps the shake off the chrome.
+   The width is the smaller of "all of it" and "what the height allows at this grid's
+   ratio", because the box has to be the grid: an element wider than the drawing leaves
+   floor texture painted where there are no cells, and that is what a landscape phone
+   looked like before this line existed. The plain 100% above is the fallback for a
+   browser without container query units. */
 .bm-boardwrap {
   position: relative;
   width: 100%;
+  width: min(100%, calc(100cqh * var(--bm-ratio-num, 1.2)));
   max-width: 100%;
   max-height: 100%;
-  /* The ratio comes from the board config, so the arena grows into the free height
-     instead of stopping at a viewport guess and leaving dead bands above and below. */
   aspect-ratio: var(--bm-ratio, 11 / 9);
 }
 
@@ -318,42 +324,59 @@
   align-items: flex-end;
   justify-content: space-between;
   pointer-events: none;
-  padding: 0 calc(14px + var(--bm-safe-r)) calc(16px + var(--bm-safe-b)) calc(14px + var(--bm-safe-l));
+  padding: 0 calc(14px + var(--bm-safe-r)) calc(16px + var(--bm-safe-b)) calc(4px + var(--bm-safe-l));
 }
 
-.bm-stick-zone {
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 52%;
+/* A cross of four buttons. The cell is 46 px so every arrow clears the 44 px touch floor,
+   and the whole cross stays inside the margin the fitted board leaves on a landscape
+   phone, which is what the letterbox fix bought. */
+.bm-dpad {
+  --bm-dir: 46px;
+  position: relative;
+  z-index: 6;
+  display: grid;
+  gap: 2px;
+  grid-template-areas:
+    '. up .'
+    'left mid right'
+    '. down .';
   pointer-events: auto;
   touch-action: none;
+  opacity: .82;
 }
 
-.bm-stick {
-  position: absolute;
-  left: calc(16px + var(--bm-safe-l));
-  bottom: calc(20px + var(--bm-safe-b));
-  width: 118px;
-  height: 118px;
+.bm-dir {
+  width: var(--bm-dir);
+  height: var(--bm-dir);
+  padding: 0;
   border: 3px solid var(--bm-keyline);
-  border-radius: 50%;
-  background: rgba(255, 246, 229, .22);
-  opacity: .35;
+  border-radius: 12px;
+  background: rgba(255, 246, 229, .55);
+  color: var(--bm-keyline);
+  box-shadow: 0 3px 0 rgba(42, 27, 51, .35);
+  touch-action: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.bm-knob {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 54px;
-  height: 54px;
-  margin: -27px 0 0 -27px;
-  border: 3px solid var(--bm-keyline);
-  border-radius: 50%;
-  background: var(--bm-cream);
+.bm-dir svg {
+  width: 24px;
+  height: 24px;
+  display: block;
 }
+
+.bm-dir:active {
+  background: var(--bm-sun);
+  transform: translateY(3px);
+  box-shadow: none;
+}
+
+.bm-dir--up { grid-area: up; }
+.bm-dir--left { grid-area: left; }
+.bm-dir--right { grid-area: right; }
+.bm-dir--down { grid-area: down; }
 
 .bm-actions {
   position: relative;
@@ -536,7 +559,9 @@
 
 @media (max-height: 480px) and (orientation: landscape) {
   .bm-boardwrap { max-height: 100%; }
-  .bm-stick { width: 104px; height: 104px; }
+  /* Still 44 px per arrow, just a tighter cross: in landscape the pad lives in the margin
+     the fitted board leaves, and that margin is the narrowest thing on the screen. */
+  .bm-dpad { --bm-dir: 44px; }
   .bm-action--bom { width: 72px; height: 72px; font-size: 12px; }
   .bm-top { padding-top: calc(4px + var(--bm-safe-t)); padding-bottom: 2px; }
   .bm-status { min-height: 30px; font-size: 12px; }

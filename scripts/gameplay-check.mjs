@@ -60,6 +60,11 @@ const MEASURE = () => {
   const rect = board?.getBoundingClientRect();
   const parts = (board?.getAttribute('viewBox') ?? '0 0 440 360').split(' ').map(Number);
   const cols = parts[2] / 40;
+  /* The element box and the drawing inside it are different things: an svg with
+     preserveAspectRatio="meet" shrinks its content into the box, so dividing the box width
+     by the column count reports a cell that was never painted. This is the scale the
+     browser actually used. */
+  const scale = rect && parts[2] ? Math.min(rect.width / parts[2], rect.height / parts[3]) : 0;
   const bom = document.querySelector('[data-testid="bomberman-bom"]')?.getBoundingClientRect();
   const status = document.querySelector('[data-testid="bomberman-status"]')?.getBoundingClientRect();
   return {
@@ -69,7 +74,9 @@ const MEASURE = () => {
     boardHeight: rect ? Math.round(rect.height) : 0,
     boardTop: rect ? Math.round(rect.top) : 0,
     cols,
-    cellPx: rect && cols ? +(rect.width / cols).toFixed(1) : 0,
+    cellPx: +(scale * 40).toFixed(1),
+    drawnWidth: Math.round(parts[2] * scale),
+    drawnHeight: Math.round(parts[3] * scale),
     bomW: bom ? Math.round(bom.width) : 0,
     bomH: bom ? Math.round(bom.height) : 0,
     statusH: status ? Math.round(status.height) : 0,
@@ -145,36 +152,67 @@ async function run() {
       `scroll ${before.scrollWidth} / client ${before.clientWidth}`,
     );
     check(`${vp.name}: board has real pixels`, before.boardWidth > 100, `${before.boardWidth}x${before.boardHeight}`);
+    check(
+      `${vp.name}: the board box is the grid, no letterbox`,
+      Math.abs(before.drawnWidth - before.boardWidth) <= 2 && Math.abs(before.drawnHeight - before.boardHeight) <= 2,
+      `box ${before.boardWidth}x${before.boardHeight}, drawn ${before.drawnWidth}x${before.drawnHeight}`,
+    );
     check(`${vp.name}: sprites are painted`, before.sprites >= 20, `${before.sprites} svg nodes, cell ${before.cellPx}px`);
 
-    /* A thumb pushed at 45 degrees has to become one of the four board directions, and it
-       has to stay that direction while the finger jitters. The facing is written into the
-       player node signature by the rule itself, so a flip shows up as two directions inside
-       one drag. Done here, straight after the countdown, while the seat is alive and the
-       arena is open: a later drag could land in a round break, where input is ignored and
-       the facing would freeze into a false pass. */
+    /* Four buttons for four directions, pressed and held one at a time, straight after the
+       countdown: later in the run a round break can start ignoring input, and a facing that
+       never changes would pass for the wrong reason. The facing is written into the player
+       node signature by the movement rule itself, so this reads the game, not the widget.
+       The walk is tested on right-then-left from the spawn corner, where the clearance ring
+       guarantees two open cells; the other two arrows face the border by design, and an
+       arrow blocked by a pillar is the map, not a broken control. */
     if (vp.touch) {
-      const zone = await page.locator('[data-testid="bomberman-stick"]').boundingBox();
-      if (zone) {
-        const cx = Math.round(zone.x + zone.width * 0.3);
-        const cy = Math.round(zone.y + zone.height * 0.5);
-        const facing = () =>
-          page.evaluate(() => {
-            const sig = document.querySelector('[data-sig^="player"]')?.getAttribute('data-sig') ?? '';
-            return /^player:[^:]+:[^:]+:([^:]+)/.exec(sig)?.[1] ?? '';
-          });
-        await page.mouse.move(cx, cy);
+      const press = async (d) => {
+        const bb = await page.locator(`[data-testid="bomberman-dir-${d}"]`).boundingBox();
+        const start = await page.evaluate(() => document.querySelector('[data-sig^="player"]')?.getAttribute('transform') ?? '');
+        await page.mouse.move(bb.x + bb.width / 2, bb.y + bb.height / 2);
         await page.mouse.down();
-        const seen = new Set();
-        for (const [jx, jy] of [[20, 17], [17, 20], [20, 17], [17, 20], [21, 18], [18, 21]]) {
-          await page.mouse.move(cx + jx, cy + jy);
-          await page.waitForTimeout(140);
-          const f = await facing();
-          if (f) seen.add(f);
-        }
+        await page.waitForTimeout(420);
+        const r = await page.evaluate(() => {
+          const node = document.querySelector('[data-sig^="player"]');
+          const sig = node?.getAttribute('data-sig') ?? '';
+          return {
+            facing: /^player:[^:]+:[^:]+:([^:]+)/.exec(sig)?.[1] ?? '',
+            transform: node?.getAttribute('transform') ?? '',
+          };
+        });
         await page.mouse.up();
-        check(`${vp.name}: a diagonal drag keeps one direction`, seen.size <= 1, [...seen].join(', ') || 'no direction');
-      }
+        return { facing: r.facing, moved: r.transform !== start };
+      };
+
+      const out = [];
+      out.push(await press('right'));
+      out.push(await press('left'));
+      const facings = { right: out[0].facing, left: out[1].facing };
+      for (const d of ['up', 'down']) facings[d] = (await press(d)).facing;
+      check(
+        `${vp.name}: every arrow turns the runner the way it points`,
+        ['up', 'down', 'left', 'right'].every((d) => facings[d] === d),
+        JSON.stringify(facings),
+      );
+      check(`${vp.name}: holding an arrow walks`, out.every((o) => o.moved), `right ${out[0].moved}, left ${out[1].moved}`);
+
+      const padBox = await page.locator('[data-testid="bomberman-dpad"]').boundingBox();
+      const boardBox = await page.locator('[data-testid="bomberman-board"]').boundingBox();
+      const ox = Math.max(0, Math.min(padBox.x + padBox.width, boardBox.x + boardBox.width) - Math.max(padBox.x, boardBox.x));
+      const oy = Math.max(0, Math.min(padBox.y + padBox.height, boardBox.y + boardBox.height) - Math.max(padBox.y, boardBox.y));
+      check(
+        `${vp.name}: the arrows sit beside the arena, not on it`,
+        ox * oy === 0,
+        `${Math.round(ox * oy)} px2 of ${padBox.width}x${padBox.height} pad over the board`,
+      );
+      const cells = await page.locator('[data-testid^="bomberman-dir-"]').evaluateAll((nodes) =>
+        nodes.map((n) => {
+          const r = n.getBoundingClientRect();
+          return `${Math.round(r.width)}x${Math.round(r.height)}`;
+        }),
+      );
+      check(`${vp.name}: arrows clear the touch floor`, cells.every((c) => parseInt(c, 10) >= 44), cells.join(' '));
     }
 
     const fps = await page.evaluate(
@@ -250,9 +288,16 @@ async function run() {
     check(`${vp.name}: survives a mid-match resize`, after.boardWidth > 80, `board ${after.boardWidth}px`);
 
     if (vp.touch) {
-      check(`${vp.name}: touch pad is offered`, after.bomW >= 60, `BOM button ${after.bomW}x${after.bomH}`);
-      const box = await page.locator('[data-testid="bomberman-stick"]').boundingBox();
-      check(`${vp.name}: drag zone covers the left half`, !!box && box.width > vp.width * 0.4, box ? `${Math.round(box.width)}px wide` : 'missing');
+      check(`${vp.name}: BOM button is offered`, after.bomW >= 60, `BOM button ${after.bomW}x${after.bomH}`);
+      const pad = await page.locator('[data-testid="bomberman-dpad"]').boundingBox();
+      const size = page.viewportSize();
+      const fits =
+        !!pad && pad.x >= 0 && pad.y >= 0 && pad.x + pad.width <= size.width + 1 && pad.y + pad.height <= size.height + 1;
+      check(
+        `${vp.name}: the arrows stay on screen after a resize`,
+        fits,
+        pad ? `${Math.round(pad.x)},${Math.round(pad.y)} ${Math.round(pad.width)}x${Math.round(pad.height)} in ${size.width}x${size.height}` : 'missing',
+      );
     }
 
     await page.screenshot({ path: `${OUT}/${vp.name}.png` });

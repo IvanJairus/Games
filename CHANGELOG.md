@@ -8,6 +8,113 @@ terpisah saat kamu menerbitkan rilis.
 Entri dimulai dari 14 Oktober 2026. Perubahan sebelum tanggal itu ada pada riwayat git dan daftar
 pull request, karena tidak dicatat saat terjadi.
 
+## 2026-10-16 - Bomberman: empat panah, dan ukuran petak yang saya salah baca
+
+Tiga permintaan dari pemain yang sama setelah rilis sebelumnya: kontrol diganti empat panah
+saja, arena dibuat lebih lebar, dan dinding diacak posisinya. Yang kedua membuka bahwa angka
+yang saya kirim kemarin salah baca, dan salahnya bukan salah hitung kecil.
+
+### Koreksi: lebar kotak elemen bukan lebar gambar
+
+Angka saya kemarin (58,8 px dan 30,8 px di ponsel landscape) berasal dari `rect.width / cols`.
+SVG papan memakai `preserveAspectRatio="meet"`, jadi isinya diperkecil di dalam kotak itu.
+Yang benar adalah skala meet, dan itu saya ukur ulang dengan membandingkan kotak elemen,
+kotak gambar, dan `getBoundingClientRect()` node karakter.
+
+| viewport | yang saya laporkan | yang sebenarnya tergambar |
+|---|---|---|
+| desktop 1280x800, papan 11x9 | 114,5 px | 72,4 px |
+| landscape 667x375, papan 11x9 | 58,8 px | 27,9 px |
+| landscape 667x375, papan 21x15 | 30,8 px | 16,7 px |
+| portrait 375x667, papan 21x15 | 16,9 px | 16,9 px (ini memang benar) |
+
+Penyebabnya nyata, bukan cuma rumus: `.bm-boardwrap` memakai `width: 100%` + `aspect-ratio`
++ `max-height: 100%`. Saat `max-height` menahan tinggi, lebar tidak ikut mengecil, jadi
+kotaknya kehilangan rasio dan gambar duduk di tengahnya. Di landscape papan 11x9 menggambar
+307 px di dalam kotak 647 px, dan karena tekstur lantai dipaint pada elemen, sisanya jadi
+pasir kosong di kiri-kanan arena.
+
+Perbaikannya membuat kotak papan benar-benar sebesar grid: lebarnya `min(100%, tinggi ×
+rasio)` lewat container query unit, dengan `width: 100%` biasa sebagai fallback untuk browser
+yang belum punya. Terukur pada 16 kombinasi viewport dan papan: kotak elemen sama dengan
+kotak gambar di semuanya, dan `gameplay:check` sekarang punya assertion untuk itu, jadi
+angka petak tidak bisa lagi berasal dari kotak yang salah.
+
+Perbaikan ini menghilangkan pasir kosong dan membuat kontrol bisa duduk di sisi arena. Ia
+TIDAK memperbesar petak: di landscape yang membatasi adalah tinggi, dan tinggi tetap sama.
+
+### Empat panah menggantikan stik
+
+Peta cuma punya empat arah, jadi menerjemahkan dorongan jempol ke salah satunya adalah
+pertanyaan yang tidak perlu ada. `DirectionPad` sekarang memberi empat tombol 46 px
+(44 px di layar pendek), dan `TouchPad` beserta `engine/padAxis.ts` saya hapus: aturan
+kunci sumbu yang kemarin saya tulis tidak dipakai lagi, dan menyimpannya berarti punya kode
+yang tidak dijalankan siapa pun.
+
+Yang menggantikannya adalah tes yang lebih kuat dari tes sumbu kemarin, karena ia membaca
+permainan, bukan widget: `gameplay:check` menekan dan menahan tiap panah lalu membaca
+`facing` dari signature node pemain. Empat panah di lima viewport sentuh semuanya menghasilkan
+arah yang benar, dan jalan diuji pada kanan-lalu-kiri dari sudut spawn, tempat cincin
+clearance menjamin dua petak terbuka. Menekan panah ke arah dinding memang tidak membuat
+siapa pun bergerak, jadi itu bukan tempat mencari bukti.
+
+Tombolnya juga keluar dari `aria-hidden` yang dulu menutupi stik dekoratif: sekarang kontrol
+ini punya nama untuk pembaca layar.
+
+Terukur: `gameplay:check` 110/110 di tujuh viewport (dari 88, karena 22 assertion baru),
+337 tes hijau di 27 file.
+
+### Dinding keras diacak, dan kenapa tidak bisa sekadar digeser
+
+Bata lunak sudah acak sejak awal. Yang tetap kisi adalah dinding keras. Begitu posisinya
+diacak, aturan yang harus dijaga jadi jelas: dua tiang yang bersentuhan, termasuk diagonal,
+bisa bergabung jadi pagar, dan pagar yang menyentuh tepi menutup kantong. Pemain di dalam
+kantong itu tidak bisa keluar dan tidak bisa dibom, jadi rondenya dicuri oleh peta.
+
+Ternyata tiang tidak bisa "digeser" satu per satu: kisi even/even sudah mengisi setiap petak
+yang berjarak dua dari tiang lain, jadi tidak ada tempat mendarat. Yang jalan adalah memilih
+satu sudut per blok 2x2 dalam urutan acak, dan mengulang seluruh penempatan beberapa kali
+lalu mengambil yang terbaik.
+
+Biayanya nyata dan saya ukur di 300 seed per papan (empat papan):
+
+| papan | tiang kisi | tiang hasil sebar | off-kisi |
+|---|---|---|---|
+| 11x9 | 12 | 10 (83%) | 22,1% |
+| 15x13 | 30 | 23 (77%) | 35,9% |
+| 15x11 | 24 | 20 (83%) | 33,4% |
+| 21x15 | 54 | 42 (78%) | 42,8% |
+
+Lapangan jadi sedikit lebih terbuka. Itu harga dari "acak dan tetap bisa dimainkan": jumlah
+tiang 100% hanya tercapai oleh kisi itu sendiri dan empat geserannya, yang berarti peta yang
+sama setiap kali. Invariant-nya jadi tes: tidak ada dua tiang bersentuhan (0 dari 300 seed per
+papan), tidak ada tiang menyentuh tepi (0), dan BFS dari satu spawn selalu menjangkau
+seluruh petak terbuka (0 papan tersegel).
+
+### Auto rotate tidak dikerjakan
+
+Pemain bertanya apakah game browser bisa memaksa layar landscape. Menurut MDN,
+`ScreenOrientation.lock()` bukan Baseline, biasanya hanya hidup di perangkat mobile dan
+hanya saat dokumen sudah fullscreen, dan menolak dengan `SecurityError` di luar itu. Di
+iPhone elemen tidak bisa masuk fullscreen, jadi lock tidak pernah bisa berhasil di sana.
+Yang tersisa untuk diperbaiki bukan orientasi, tapi tinggi: HUD dan status memakan 124 px
+yang di landscape adalah batasan sebenarnya. Itu keputusan terpisah, bukan sesuatu yang saya
+kerjakan diam-diam.
+
+### Angka gerbang
+
+337 tes hijau di 27 file. `gameplay:check` 110/110 pada build produksi lokal.
+`release:check` lima tahap. `tests/ui/battleship-finish.test.tsx` sekali gagal karena
+timeout 5 detik saat seluruh suite jalan paralel (1238 ms kalau file itu dijalankan sendiri);
+itu flake lama, bukan dari perubahan ini.
+
+### Sisa
+
+- Petak landscape masih 27,9 px untuk papan 11x9 dan 16,7 px untuk 21x15. Yang bisa
+  menaikkan adalah papan berbentuk landscape atau HUD jadi overlay, dan keduanya belum
+  dipilih.
+- Probe dua tab di build tayang akan dijalankan setelah merge, seperti sebelumnya.
+
 ## 2026-10-16 - Bomberman: stik yang bimbang, papan yang hampir dua kali, dan karakter yang ternyata tidak dipakai
 
 Empat permintaan dari pemain yang sama: arena diperbesar dua kali, pemilih karakter diberi

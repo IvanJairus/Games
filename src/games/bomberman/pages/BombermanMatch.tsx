@@ -25,7 +25,7 @@ import { type BombermanState, type BoardSize, type Facing, type FloorKind, type 
 import { createFpsController, fxGates, levelAtMount, readFxMode, writeFxMode, type FxLevel } from '../engine/fxMode';
 import { Arena, type ArenaHandle } from '../components/Arena';
 import { Hud, StatusLine } from '../components/Hud';
-import { TouchPad } from '../components/TouchPad';
+import { DirectionPad } from '../components/DirectionPad';
 import { KEYS } from './keyMap';
 
 interface SeatInfo {
@@ -530,7 +530,7 @@ export function BombermanMatch() {
             </div>
           )}
         </Arena>
-        {usesTouch && <TouchPad dirRef={touchRef} onBomb={pressBomb} disabled={!!result} />}
+        {usesTouch && <DirectionPad dirRef={touchRef} onBomb={pressBomb} disabled={!!result} />}
       </div>
       <StatusLine text={notice || status} />
       {result && (

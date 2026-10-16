@@ -11,7 +11,7 @@ import { Arena, ArenaHandle } from '../components/Arena';
 import { CharacterPicker } from '../components/CharacterPicker';
 import { BoardPicker } from '../components/BoardPicker';
 import { Hud, StatusLine } from '../components/Hud';
-import { TouchPad } from '../components/TouchPad';
+import { DirectionPad } from '../components/DirectionPad';
 import { KEYS } from './keyMap';
 import { ResultDialog } from '../../common/ResultDialog';
 import { useMuted } from '../../common/SoundToggle';
@@ -316,7 +316,7 @@ export function BombermanLocal() {
             </div>
           )}
         </Arena>
-        {usesTouch && <TouchPad dirRef={touchRef} onBomb={() => sim.place(0)} disabled={finished} />}
+        {usesTouch && <DirectionPad dirRef={touchRef} onBomb={() => sim.place(0)} disabled={finished} />}
       </div>
 
       <StatusLine text={status} />
