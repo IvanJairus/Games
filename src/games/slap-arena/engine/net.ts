@@ -91,7 +91,6 @@ export interface ArenaNetOptions {
 export class ArenaNet {
   private timer: ReturnType<typeof setInterval> | null = null;
   private lastSnapshotT = -Infinity;
-  private dropped = 0;
   private warned = false;
   /** Read through window.__slapNet in dev; the only way to tell "not sent" from "not received". */
   readonly stats = { sent: 0, drop: 0, byEvent: {} as Record<string, number>, lastState: 'init' };
@@ -164,18 +163,20 @@ export class ArenaNet {
     if (sent && typeof (sent as Promise<string>).then === 'function') {
       (sent as Promise<string>).then((state) => {
         this.stats.lastState = state;
-        if (state !== 'sent' && state !== 'pending') this.noteDrop(state);
+        // Realtime answers a broadcast with 'ok', and resolves 'ok' without waiting when
+        // the channel has no broadcast ack. 'error' and 'timed out' are the only failures.
+        if (state !== 'ok') this.noteDrop(state);
       });
     }
   }
 
   private noteDrop(state: string): void {
-    // supabase-js answers 'timedOut'/'closed' instead of throwing and quietly falls back
+    // supabase-js answers 'timed out'/'error' instead of throwing and quietly falls back
     // to one REST POST per message when the socket cannot push.
-    this.dropped++;
-    if (this.dropped >= 20 && !this.warned) {
+    this.stats.drop++;
+    if (this.stats.drop >= 20 && !this.warned) {
       this.warned = true;
-      console.warn(`[slap-arena] realtime ${state}: ${this.dropped} pesan gagal, koneksi mungkin terputus`);
+      console.warn(`[slap-arena] realtime ${state}: ${this.stats.drop} pesan gagal, koneksi mungkin terputus`);
     }
   }
 
