@@ -88,12 +88,16 @@ botnya supaya terbaca saat bermain.
 
 335 tes hijau di 27 file, `npm run release:check` lulus lima tahap, `gameplay:check` 88/88.
 
-### Sisa yang belum dibuktikan
+### Dibuktikan di build tayang
 
-Dua tab nyata di build tayang belum dijalankan untuk jalur klaim karakter dan papan besar;
-probe-nya (`scripts/gameplay-online.mjs`) sudah saya perluas untuk itu, dan build lokal tidak
-bisa dipakai karena tidak punya konfigurasi server permainan. Angka 16,9 px di atas juga baru
-terukur di Chrome yang di-emulasi, bukan di perangkat fisik.
+Setelah merge, `npm run gameplay:online https://www.ivanjairus.xyz/games` di dua tab nyata:
+15/15, satu kali jalan. Yang tadi belum tercover sekarang terukur di produksi: room 4 kursi
+dengan 2 manusia dan 2 bot, pilihan karakter tamu sampai ke dunia tuan rumah lewat klaim
+`bm_char`, dan kedua tab memakai papan 21x15 yang sama (`viewBox 0 0 840 600`). Bom yang
+ditanam tamu terlihat di tuan rumah, dihitung per pemilik.
+
+Yang masih tersisa: angka 16,9 px di atas terukur di Chrome yang di-emulasi, bukan di
+perangkat fisik, dan jalur klaim ini baru sekali jalan.
 
 ## 2026-10-16 - Bomberman: bot benar-benar bunuh diri, dan metrik saya yang salah
 
