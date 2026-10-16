@@ -1,5 +1,4 @@
 import { GameType } from './multiplayer';
-import { getSupabase } from '../../lib/supabase';
 
 export type CompletedCounts = Partial<Record<GameType, number>>;
 
@@ -10,6 +9,7 @@ export type CompletedCounts = Partial<Record<GameType, number>>;
  * caller's own row level security, so a visitor only sees counts of rows they may read.
  */
 export async function fetchCompletedCounts(types: GameType[]): Promise<CompletedCounts> {
+  const { getSupabase } = await import('../../lib/supabase');
   const supabase = getSupabase();
   if (!supabase) return {};
 

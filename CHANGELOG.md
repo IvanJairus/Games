@@ -8,6 +8,44 @@ terpisah saat kamu menerbitkan rilis.
 Entri dimulai dari 14 Oktober 2026. Perubahan sebelum tanggal itu ada pada riwayat git dan daftar
 pull request, karena tidak dicatat saat terjadi.
 
+## 2026-10-17 - Hub: supabase-js keluar dari chunk entry
+
+`src/pages/Hub.tsx` memanggil `fetchCompletedCounts` dari `src/games/common/matchStats.ts`, dan file
+itu mengimpor `getSupabase` secara statis. Rantai itu menyeret `@supabase/supabase-js` ke chunk entry,
+sehingga halaman Hub menanggung kodenya sebelum pengguna masuk ke game online mana pun.
+
+### Diubah
+
+- `fetchCompletedCounts` sekarang memuat `getSupabase` dengan `await import('../../lib/supabase')` di
+  dalam fungsinya. Fungsinya sudah `async`, jadi tidak ada panggilan yang berubah bentuk.
+- Impor statis `getSupabase` di baris 2 file itu dihapus. Impor tipe `GameType` tetap seperti adanya.
+
+### Terukur
+
+Build dengan env dummy supaya cabang `isSupabaseConfigured` ikut ter-render.
+
+| Ukuran | Sebelum | Sesudah |
+| --- | --- | --- |
+| nama chunk entry | `index-CTd2tcIV.js` | `index-Cdsm63Lw.js` |
+| entry raw | 585916 B | 357717 B |
+| entry gzip | 172304 B | 112260 B |
+| `grep -c realtime/v1` di entry | 1 | 0 |
+
+Penghematan entry 60044 B gzip. supabase-js berpindah ke chunk sendiri `supabase-DjERKJj-.js`
+(raw 227501 B, gzip 59245 B).
+
+Yang belum berubah, dan ini penting untuk pembaca berikutnya. Hub memanggil RPC saat mount, jadi
+chunk supabase itu tetap diunduh di halaman Hub. Diukur di Chrome pada halaman Hub tanpa klik:
+sebelum 1 request JS total 172304 B gzip, sesudah 4 request JS total 171970 B gzip. Selisih bersih
+334 B, dengan tiga request tambahan. Jadi perubahan ini mengecilkan entry, bukan mengurangi byte
+yang benar-benar diunduh Hub.
+
+### Gerbang
+
+`tsc -b` bersih, 249 unit lolos, 109 UI lolos di 13 file, `release:check` lima tahap PASSED,
+`guard:check` lolos 3 cek, `gameplay:check` 115/115. RPC `match_completion_counts` tetap dipanggil
+satu kali di browser pada kedua build, dan `tests/unit/match-stats.test.ts` tetap hijau.
+
 ## 2026-10-17 - Bomberman online: gerak pemain lain diukur, hasilnya lompat maju bukan mundur
 
 Dugaan lama adalah klien Bomberman menampilkan pemain lain dengan tersendat, karena `applySnapshot`
