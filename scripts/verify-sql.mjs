@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // Runs the Supabase migrations and the protocol assertions against a throwaway Postgres in Docker.
 // It never touches the project's hosted database.
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { createConnection } from 'node:net';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -10,9 +11,12 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const CONTAINER = 'ij-games-pg';
 const PORT = '55433';
 const IMAGE = 'postgres:16-alpine';
+const READY_LINE = 'database system is ready to accept connections';
 
 const sh = (cmd, args, opts = {}) =>
   execFileSync(cmd, args, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], ...opts });
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const psql = (sql, extra = []) =>
   sh('docker', ['exec', '-i', CONTAINER, 'psql', '-U', 'postgres', '-d', 'postgres', ...extra], { input: sql });
@@ -49,20 +53,53 @@ const fail = (message, detail) => {
   process.exit(1);
 };
 
-try {
-  for (let attempt = 0; attempt < 40; attempt++) {
-    try {
-      psql('select 1;', ['-q']);
-      break;
-    } catch (err) {
-      if (attempt === 39) fail('Postgres tidak siap dalam 40 percobaan', String(err));
-      await sleep(1000);
-    }
+const readyLines = () => {
+  /* The postgres server logs to its stderr, and `docker logs` forwards that to the CLI's
+     stderr, so execFileSync would hand back an empty stdout and count zero ready lines
+     forever. Both streams are joined here. */
+  try {
+    const r = spawnSync('docker', ['logs', CONTAINER], { encoding: 'utf8' });
+    const both = `${r.stdout ?? ''}${r.stderr ?? ''}`;
+    return (both.match(new RegExp(READY_LINE, 'g')) || []).length;
+  } catch {
+    return 0;
   }
-} catch {}
+};
 
-function sleep(ms) {
-  return new Promise((r) => setTimeout(r, ms));
+const tcpOpen = () =>
+  new Promise((resolve) => {
+    const sock = createConnection({ host: '127.0.0.1', port: Number(PORT) });
+    const done = (ok) => {
+      sock.destroy();
+      resolve(ok);
+    };
+    sock.setTimeout(1500);
+    sock.once('connect', () => done(true));
+    sock.once('timeout', () => done(false));
+    sock.once('error', () => done(false));
+  });
+
+/* postgres:16-alpine raises a temporary server to run initdb, stops it, then starts the real
+   server. The probe used to ask "can I run a query?" through docker exec against the Unix
+   socket inside the container, and the temporary server answers that too, so the loop could
+   finish inside the restart gap and the very next statement fell over. Two ready lines in the
+   log plus a TCP connection from the host is the real signal: the temporary server never
+   binds the published port. */
+const startedAt = Date.now();
+let ready = false;
+for (let attempt = 1; attempt <= 60; attempt++) {
+  if (readyLines() >= 2 && (await tcpOpen())) {
+    ready = true;
+    log(`postgres siap dalam ${((Date.now() - startedAt) / 1000).toFixed(1)} s (${attempt} percobaan)`);
+    break;
+  }
+  await sleep(1000);
+}
+if (!ready) {
+  fail(
+    'Postgres tidak siap dalam 60 detik',
+    'butuh dua baris "database system is ready to accept connections" di log container dan port TCP 55433 bisa dibuka dari host',
+  );
 }
 
 log('menyiapkan peran anon dan publication seperti lingkungan Supabase');

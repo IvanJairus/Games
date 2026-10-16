@@ -57,9 +57,11 @@ jobs:
       - name: Security & Domain Guard Check
         run: npm run guard:check
 
-      # npm run db:verify stays out of CI for now. Tried here and it failed on the runner: the
-      # script's readiness probe accepts postgres's temporary init server, then the next
-      # statement races the real server start. See the 2026-10-16 CI entry in CHANGELOG.md.
+      # Needs no npm package and no built artifact: it raises its own throwaway Postgres in
+      # Docker and applies the migrations. Last in the job on purpose, so a red run here says
+      # something about the SQL and never hides the steps above it.
+      - name: Verify SQL Migrations and Protocol Assertions
+        run: npm run db:verify
 
   deploy-to-vercel:
     name: Deploy to Vercel
