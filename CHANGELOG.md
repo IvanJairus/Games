@@ -195,8 +195,12 @@ container baru. Perbaikannya pakai `spawnSync` dan menggabungkan stdout dengan s
 | container sudah ada (jalur laptop lama) | siap 0,0 s, 1 percobaan, 16 blok assertion lulus, langkah 1,3 s |
 | container diangkat dari nol (jalur runner) | siap 1,1 s, 2 percobaan, 16 blok assertion lulus, langkah 2,5 s |
 
-Dua angka itu membuktikan probe bekerja, bukan membuktikan balapannya hilang: di laptop startup
+Dua angka itu membuktikan probe bekerja, **bukan** membuktikan balapannya hilang: di laptop startup
 terlalu cepat untuk menabrak celah. Buktinya ada di runner, dan itu saya ukur dua kali.
+
+Terukur di runner, commit pertama `31034e7`, run 38940384714: langkah
+"Verify SQL Migrations and Protocol Assertions" success, 17:33:38Z sampai 17:33:46Z, **8 detik**.
+Pengulangan pada push kedua dilaporkan di PR #48 beserta angkanya.
 
 ### db:verify masuk job Security & Quality Audit
 
