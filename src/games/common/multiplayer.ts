@@ -13,7 +13,7 @@ export interface MatchRow {
   status: MatchStatus;
   max_players: number;
   current_turn: number;
-  game_state: any;
+  game_state: unknown;
   winner_index: number | null;
   created_at: string;
   updated_at: string;
@@ -29,6 +29,12 @@ export interface PlayerRow {
   connected: boolean;
   created_at: string;
 }
+
+export const isRecord = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v);
+
+export const readAbandonedReason = (state: unknown): string | null =>
+  isRecord(state) && typeof state.abandonedReason === 'string' ? state.abandonedReason : null;
 
 export interface MatchSyncData {
   match: MatchRow;
@@ -104,7 +110,7 @@ export async function createOnlineRoom(params: {
   gameType: GameType;
   maxPlayers: number;
   hostName: string;
-  initialState: any;
+  initialState: unknown;
 }): Promise<{ roomCode: string; matchId: string }> {
   const supabase = getSupabase();
   if (!supabase) throw new Error('Supabase belum terkonfigurasi');
@@ -238,7 +244,7 @@ export async function submitOnlineMove(params: {
   matchId: string;
   playerIndex: number;
   action: string;
-  nextState: any;
+  nextState: unknown;
   nextTurn: number;
   winnerIndex?: number | null;
   newStatus?: 'playing' | 'completed';
@@ -338,7 +344,7 @@ export const describeMoveFailure = (result: MoveResult): string => {
 
 export async function startOnlineMatch(
   matchId: string,
-  initialState?: any,
+  initialState?: unknown,
   allowedFrom: MatchStatus[] = ['waiting']
 ): Promise<MoveResult> {
   const supabase = getSupabase();
@@ -436,7 +442,7 @@ export async function leaveOnlineMatch(params: {
         status: 'abandoned',
         winner_index: remainingWinner,
         game_state: {
-          ...(match.game_state || {}),
+          ...(isRecord(match.game_state) ? match.game_state : {}),
           abandonedBy: params.playerName,
           abandonedReason: `${params.playerName} telah keluar dari pertandingan`,
         },
@@ -449,7 +455,7 @@ export async function leaveOnlineMatch(params: {
       .update({
         status: 'abandoned',
         game_state: {
-          ...(match.game_state || {}),
+          ...(isRecord(match.game_state) ? match.game_state : {}),
           abandonedBy: params.playerName,
           abandonedReason: `${params.playerName} telah meninggalkan room dan kembali ke lobby`,
         },
