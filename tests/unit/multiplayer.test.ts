@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { generateRoomCode } from '../../src/games/common/multiplayer';
+import { generateRoomCode, readAbandonedReason } from '../../src/games/common/multiplayer';
 import {
   isSupabaseConfigured,
   getPlayerSessionId,
@@ -398,5 +398,30 @@ describe('Sync layer concurrency guards', () => {
     const second = await finishOnlineMatch({ matchId: 'm1', winnerIndex: 0 });
     expect(second.ok).toBe(false);
     expect(already.row.winner_index).toBe(1);
+  });
+});
+
+describe('readAbandonedReason', () => {
+  it('returns null for a missing state', () => {
+    expect(readAbandonedReason(null)).toBeNull();
+  });
+
+  it('returns null for an array, which is not a state record', () => {
+    expect(readAbandonedReason([])).toBeNull();
+  });
+
+  it('returns null for a state without the field', () => {
+    expect(readAbandonedReason({ board: [], turn: 'X' })).toBeNull();
+  });
+
+  it('returns null when the field is not a string', () => {
+    expect(readAbandonedReason({ abandonedReason: 42 })).toBeNull();
+    expect(readAbandonedReason({ abandonedReason: null })).toBeNull();
+  });
+
+  it('returns the text the leaving player wrote', () => {
+    expect(readAbandonedReason({ abandonedReason: 'Pemain 703 telah keluar' })).toBe(
+      'Pemain 703 telah keluar'
+    );
   });
 });
