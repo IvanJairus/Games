@@ -28,9 +28,10 @@ Koleksi mini game taktis dan strategi web modern di portal `ivanjairus.xyz/games
 4. **Bomberman: Arena Bata Lunak**
    - Arena grid real-time: tanam bom, ledakan berbentuk salib, reaksi berantai, dan bata lunak yang menyerap api sehingga petaknya sendiri tidak ikut terbakar.
    - Enam karakter chibi kepala besar dengan pratinjau sprite di pemilihnya (pilih manual atau acak) dan tiga lantai yang diacak tiap pertandingan; seluruh sprite digambar sebagai SVG di kode, hanya tekstur lantai yang berupa gambar.
-   - Empat papan: 11x9 atau 15x13 untuk dua kursi, 15x11 atau 21x15 untuk empat kursi. Papan besar hampir dua kali jumlah petaknya.
+   - Empat papan: 11x9 atau 15x13 untuk dua kursi, 15x11 atau 21x15 untuk empat kursi. Papan besar hampir dua kali jumlah petaknya, dan kotak papan selalu sama dengan grid-nya, tidak ada lantai tergambar di luar arena.
+   - Dinding keras tersebar per seed, dijaga agar tidak pernah bersentuhan (bahkan diagonal) supaya tidak ada kantong yang tertutup; bata lunak tetap acak dan posisi spawn selalu punya dua jalur keluar.
    - Mode Solo lawan bot (3 tingkat), Online 2-4 pemain, dan kursi kosong yang diisi bot, jadi room 4 kursi bisa jalan dengan 2 manusia.
-   - Stik layar mengunci satu sumbu sampai sumbu lain jelas lebih jauh, sehingga dorongan miring tetap berjalan lurus di peta yang cuma punya empat arah.
+   - Kontrol sentuh berupa empat tombol panah, bukan stik: peta hanya punya empat arah, jadi tidak ada lagi dorongan miring yang harus diterjemahkan.
    - Satu nyawa per ronde, bukan per pertandingan: juara ditentukan lebih dulu dari 3 ronde, supaya arena sempat terbuka.
 
 5. **Battleship: Kapal Tersembunyi**

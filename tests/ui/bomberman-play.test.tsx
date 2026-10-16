@@ -120,6 +120,22 @@ describe('solo arena', () => {
     expect(screen.getByTestId('bomberman-status')).toBeInTheDocument();
   });
 
+  it('offers four named arrows once a real touch is seen', async () => {
+    renderAt('/bomberman/local');
+    fireEvent.click(screen.getByTestId('bomberman-start'));
+    await waitFor(() => expect(screen.getByTestId('bomberman-board')).toBeInTheDocument());
+    // A mouse or a desktop keyboard never sees the arrows: the pad is a touch control.
+    expect(screen.queryByTestId('bomberman-dpad')).toBeNull();
+
+    fireEvent.pointerDown(window, { pointerId: 1, pointerType: 'touch', isPrimary: true, clientX: 20, clientY: 20 });
+    await waitFor(() => expect(screen.getByTestId('bomberman-dpad')).toBeInTheDocument());
+    for (const dir of ['up', 'down', 'left', 'right']) {
+      expect(screen.getByTestId(`bomberman-dir-${dir}`)).toHaveAttribute('data-dir', dir);
+    }
+    expect(screen.getByLabelText('Kiri')).toBeInTheDocument();
+    expect(screen.getByTestId('bomberman-bom')).toBeInTheDocument();
+  });
+
   it('plays the large board when the setup asks for it', async () => {
     renderAt('/bomberman/local?size=besar');
     expect(screen.getByTestId('bomberman-size-besar')).toHaveAttribute('aria-pressed', 'true');

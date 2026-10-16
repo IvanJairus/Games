@@ -263,7 +263,10 @@ export const Arena = forwardRef<ArenaHandle, ArenaProps>(function Arena(
       className="bm-boardwrap"
       ref={shakeHost}
       data-testid="bomberman-boardwrap"
-      style={{ ['--bm-ratio' as string]: `${cols} / ${rows}` }}
+      style={{
+        ['--bm-ratio' as string]: `${cols} / ${rows}`,
+        ['--bm-ratio-num' as string]: String(cols / rows),
+      }}
     >
       <svg
         ref={svgRef}

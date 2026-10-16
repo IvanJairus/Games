@@ -8,6 +8,7 @@ import {
   START_RANGE,
   CellKind,
   Coord,
+  DIRS,
   Facing,
   FUSE_SECONDS,
   ROUND_SECONDS,
@@ -16,10 +17,10 @@ import {
   boardFor,
   sizeForBoard,
   spawnCells,
+  spawnClearance,
 } from '@/games/bomberman/engine/types';
 import { buildGrid, generateSeed, validateGrid, SOFT_DENSITY } from '@/games/bomberman/engine/rng';
 import { blastCells, bombPlan, dangerCells, escapeTarget, firstStepToward } from '@/games/bomberman/engine/blast';
-import { resolvePadAxis, type PadAxis } from '@/games/bomberman/engine/padAxis';
 import { BombermanSim, SeatConfig, newSim } from '@/games/bomberman/engine/sim';
 
 const arena = (cols: number, rows: number, fill: (x: number, y: number) => CellKind = () => 'empty'): CellKind[][] =>
@@ -123,10 +124,32 @@ describe('map generation', () => {
   });
 
   it('keeps the field dense enough to be worth bombing', () => {
-    const grid = buildGrid('density-check', 15, 11, 4).flat();
-    const open = grid.filter((c) => c !== 'hard');
-    const soft = open.filter((c) => c === 'soft').length;
-    expect(soft / open.length).toBeGreaterThan(SOFT_DENSITY * 0.8);
+    /* Counted over the cells a bomb can actually open. The pillars and the forced-open
+       spawn clearance are empty by rule, and including them in the denominator made this
+       test a coin flip on the seed rather than a check on the density. */
+    const cols = 15;
+    const rows = 11;
+    const seats = 4;
+    const clear = new Set<string>();
+    for (const s of spawnCells(cols, rows, seats)) {
+      for (const c of spawnClearance(s)) clear.add(`${c.x},${c.y}`);
+    }
+    let ratio = 0;
+    const runs = 20;
+    for (let i = 0; i < runs; i++) {
+      const grid = buildGrid(generateSeed(), cols, rows, seats);
+      let open = 0;
+      let soft = 0;
+      grid.forEach((row, y) =>
+        row.forEach((cell, x) => {
+          if (cell === 'hard' || clear.has(`${x},${y}`)) return;
+          open += 1;
+          if (cell === 'soft') soft += 1;
+        }),
+      );
+      ratio += soft / open;
+    }
+    expect(ratio / runs).toBeGreaterThan(SOFT_DENSITY * 0.9);
   });
 
   it('reads the arena size back out of a board geometry', () => {
@@ -138,6 +161,87 @@ describe('map generation', () => {
         expect(sizeForBoard(board.seats, board.cols)).toBe(size);
       }
     }
+  });
+
+  const interiorHard = (grid: CellKind[][], cols: number, rows: number): Set<string> => {
+    const out = new Set<string>();
+    for (let y = 1; y < rows - 1; y++) {
+      for (let x = 1; x < cols - 1; x++) if (grid[y][x] === 'hard') out.add(`${x},${y}`);
+    }
+    return out;
+  };
+
+  it('scatters the pillars without ever letting two of them touch', () => {
+    /* A pillar that touches another, even diagonally, can join it into a barrier, and a
+       barrier that reaches the border seals a pocket. That is the one map shape the random
+       layout may never produce. */
+    for (const board of ALL_BOARDS) {
+      for (let i = 0; i < 30; i++) {
+        const grid = buildGrid(generateSeed(), board.cols, board.rows, board.seats);
+        const rocks = interiorHard(grid, board.cols, board.rows);
+        expect(rocks.size).toBeGreaterThan(0);
+        for (const k of rocks) {
+          const [x, y] = k.split(',').map(Number);
+          expect(x).toBeGreaterThanOrEqual(2);
+          expect(y).toBeGreaterThanOrEqual(2);
+          expect(x).toBeLessThanOrEqual(board.cols - 3);
+          expect(y).toBeLessThanOrEqual(board.rows - 3);
+          for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+              if (!dx && !dy) continue;
+              expect(rocks.has(`${x + dx},${y + dy}`)).toBe(false);
+            }
+          }
+        }
+      }
+    }
+  });
+
+  it('leaves one connected field for every seed and board', () => {
+    for (const board of ALL_BOARDS) {
+      for (let i = 0; i < 30; i++) {
+        const grid = buildGrid(generateSeed(), board.cols, board.rows, board.seats);
+        const start = spawnCells(board.cols, board.rows, board.seats)[0];
+        const seen = new Set([`${start.x},${start.y}`]);
+        const queue = [start];
+        while (queue.length) {
+          const c = queue.shift() as Coord;
+          for (const d of Object.values(DIRS)) {
+            const nx = c.x + d.x;
+            const ny = c.y + d.y;
+            if (nx < 0 || ny < 0 || nx >= board.cols || ny >= board.rows) continue;
+            if (grid[ny][nx] === 'hard' || seen.has(`${nx},${ny}`)) continue;
+            seen.add(`${nx},${ny}`);
+            queue.push({ x: nx, y: ny });
+          }
+        }
+        let open = 0;
+        for (const row of grid) for (const cell of row) if (cell !== 'hard') open += 1;
+        expect(seen.size).toBe(open);
+      }
+    }
+  });
+
+  it('keeps most of the lattice pillar count while scattering', () => {
+    /* Scattering costs pillars: a one-cell moat cannot be filled at the lattice's density
+       and stay random. Measured over 300 seeds per board it keeps 77-83%, so this holds the
+       floor rather than pretending the cost is zero. */
+    const blocksOn = (span: number): number => Math.floor((span - 5) / 2) + 1;
+    for (const board of ALL_BOARDS) {
+      const lattice = blocksOn(board.cols) * blocksOn(board.rows);
+      let ratio = 0;
+      for (let i = 0; i < 20; i++) {
+        ratio += interiorHard(buildGrid(generateSeed(), board.cols, board.rows, board.seats), board.cols, board.rows).size / lattice;
+      }
+      expect(ratio / 20).toBeGreaterThanOrEqual(0.75);
+    }
+  });
+
+  it('draws a different pillar layout per seed and the same one twice', () => {
+    const layout = (seed: string): string =>
+      [...interiorHard(buildGrid(seed, 15, 11, 4), 15, 11)].sort().join(' ');
+    expect(layout('seed-a')).toBe(layout('seed-a'));
+    expect(layout('seed-a')).not.toBe(layout('seed-b'));
   });
 });
 
@@ -216,38 +320,6 @@ describe('survival maths', () => {
     const state = bareState(grid);
     const step = firstStepToward(state, { x: 1, y: 1 }, { x: 5, y: 1 });
     expect(step).toBe('down');
-  });
-});
-
-describe('thumb pad axis', () => {
-  const LOCK = 1.4;
-
-  it('resolves a diagonal to the dominant axis', () => {
-    expect(resolvePadAxis(-40, -8, null, LOCK).dir).toBe('left');
-    expect(resolvePadAxis(-8, -40, null, LOCK).dir).toBe('up');
-  });
-
-  it('keeps the chosen axis when the thumb jitters across 45 degrees', () => {
-    // The complaint this exists for: at 45 degrees a raw dominant-axis pick alternates
-    // left/up every sample, so the character steps one cell each way and looks lost.
-    const drag = [
-      [30, 26], [26, 30], [30, 26], [26, 30], [29, 27], [27, 29],
-    ];
-    let axis: PadAxis = null;
-    const dirs: (Facing | null)[] = [];
-    for (const [dx, dy] of drag) {
-      const r = resolvePadAxis(dx, dy, axis, LOCK);
-      axis = r.axis;
-      dirs.push(r.dir);
-    }
-    expect(new Set(dirs).size).toBe(1);
-    expect(dirs[0]).toBe('right');
-  });
-
-  it('switches axis only when the other one clearly wins', () => {
-    expect(resolvePadAxis(30, 20, 'h', LOCK).dir).toBe('right');
-    expect(resolvePadAxis(30, 34, 'h', LOCK).dir).toBe('right');
-    expect(resolvePadAxis(30, 50, 'h', LOCK).dir).toBe('down');
   });
 });
 
