@@ -63,6 +63,29 @@ jobs:
       - name: Verify SQL Migrations and Protocol Assertions
         run: npm run db:verify
 
+      # Last on purpose: a failure in any gate above must not hide it, and it must not hide
+      # them. It checks the built artifact through `vite preview`, never the dev server,
+      # because only the build carries the inlined assets and the real chunk layout.
+      # BM_CHROME points the script at the Chrome the runner image ships, so no browser
+      # download is needed; the script reads it before it goes looking for a macOS cache path.
+      - name: Real-browser gameplay check (desktop & mobile viewports)
+        env:
+          BM_CHROME: /usr/bin/google-chrome
+        run: |
+          npx vite preview --port 5199 --strictPort &
+          SERVER=$!
+          trap 'kill $SERVER 2>/dev/null || true' EXIT
+          READY=0
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:5199/games/ >/dev/null 2>&1; then READY=1; break; fi
+            sleep 1
+          done
+          if [ "$READY" -ne 1 ]; then
+            echo "vite preview tidak naik dalam 30 detik di http://localhost:5199/games"
+            exit 1
+          fi
+          npm run gameplay:check -- http://localhost:5199/games
+
   deploy-to-vercel:
     name: Deploy to Vercel
     needs: audit-and-test

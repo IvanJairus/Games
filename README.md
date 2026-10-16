@@ -69,7 +69,40 @@ npm run build
 
 ## 🛡️ Arsitektur CI/CD & Keamanan (Vercel)
 
-- **Otomasi**: GitHub Actions (`deploy.yml`) menguji *TypeScript*, *Game Engines*, dan *Viewport UI Automation* (Desktop 1024px & Mobile 375px) sebelum auto-deploy ke Vercel pada branch `main`.
+- **Job audit `Security & Quality Audit`** (`deploy.yml`) menjalankan, berurutan: Gitleaks secret
+  scanner, `npm ci`, `npx tsc -b`, `npm run test:unit`, `npm run test:ui`,
+  `npm run release:check` (typecheck + unit + UI + build produksi + guard), `npm run guard:check`,
+  `npm run db:verify` (Postgres 16 nyata di Docker, butuh dua baris "ready" dan TCP dari host
+  sebelum statement pertama), lalu `npm run gameplay:check` sebagai langkah terakhir.
+- **Gerbang browser nyata** menggerakkan Chrome headless terhadap **artefak build** lewat
+  `vite preview`, bukan dev server: tujuh lintasan viewport (desktop 1280x800, potret 375x667,
+  lanskap 667x375, ponsel kecil 360x640, dan tiga lintasan papan besar), mengukur overflow,
+  ukuran petak yang benar-benar tergambar, frame rate, decode tekstur lantai, kuota bom, geser
+  layout, dan resize di tengah pertandingan. jsdom tidak punya layout engine, jadi klaim
+  "muat di ponsel" tidak bisa dibuktikan dari sana.
+- **Deploy** ke Vercel hanya jalan pada push `main`, dan hanya setelah job audit di atas hijau.
+- **Branch protection aktif** pada `main`: check wajib `Security & Quality Audit` harus hijau
+  sebelum merge diterima.
+- **Rollback dari laptop**, dengan catatan: laptop ini tidak punya kredensial Vercel CLI (tidak
+  ada `~/.vercel/auth.json`, tidak ada `.vercel/` di repo), satu-satunya token ada di secrets
+  Actions, jadi `vercel rollback` bukan opsi dari mesin ini. Jalur yang tersedia adalah
+  menjalankan ulang push run lama di `main`, misalnya run `38936266817` untuk commit `df25a8c`:
+
+  ```bash
+  gh run list --branch main --workflow "CI & Auto-Deploy to Vercel" --limit 15
+  gh run rerun <run-id>            # tanpa --failed, supaya job deploy ikut jalan
+  ```
+
+  Run itu men-checkout commit aslinya, membangun ulang, dan job `Deploy to Vercel` mempromosikan
+  hasil build tersebut ke produksi. **Status klaim: mekanisme ini disimpulkan dari konfigurasi
+  workflow (`actions/checkout` tanpa `ref` memakai commit run, dan `deploy-to-vercel` bernames
+  `needs: audit-and-test`), belum pernah dijalankan sebagai rollback sungguhan.**
+- **Ukuran bundle sengaja tidak diberi gerbang.** Terukur 2026-10-17 pada `df25a8c` dari build
+  lokal: `dist/` 1250,7 kB dalam 41 file, 34 chunk JS total 1164,4 kB. Satu-satunya chunk di atas
+  500 kB adalah `SlapArenaMatch` 574,3 kB raw / 149,4 kB gzip, dan chunk itu lazy: hanya termuat
+  saat halaman Slap Arena dibuka. Entry `index` 349,7 kB raw / 109,8 kB gzip. Arsitektur sudah
+  memecah per game, jadi angka tunggal tidak mengukur pengalaman pemain. Keputusan ini ditulis
+  supaya usulan gerbang ukuran di masa depan harus datang dengan data baru, bukan asumsi.
 - **Keamanan Web Game**:
   - *Content-Security-Policy (CSP)* ketat dengan izin terkunci hanya ke Supabase.
   - *X-Frame-Options: DENY* (Anti-Clickjacking).
