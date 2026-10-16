@@ -22,6 +22,7 @@ import {
   InputState,
   POWER_CHANCE,
   PlayerState,
+  ROUND_SECONDS,
   PowerKind,
   ROUND_OVER_SECONDS,
   SCORE_TO_WIN,
@@ -81,6 +82,7 @@ export class BombermanSim {
   private baseSeed: string;
   private gridOverride?: CellKind[][];
   private roundNumber = 1;
+  private roundStarted = 0;
 
   constructor(opts: SimOptions) {
     const seats = opts.seats ?? opts.players.length;
@@ -134,6 +136,7 @@ export class BombermanSim {
         shield: false,
         grace: 0,
         wins: 0,
+        roundBombs: 0,
         step: null,
         cool: 0,
         bombsPlaced: 0,
@@ -198,6 +201,7 @@ export class BombermanSim {
     });
     p.cool = COOLDOWN_SECONDS;
     p.bombsPlaced++;
+    p.roundBombs++;
     this.queue.push({ t: 'place', seat, x: p.x, y: p.y });
     return { ok: true };
   }
@@ -303,6 +307,7 @@ export class BombermanSim {
         y: c.y,
         life: FLAME_SECONDS,
         kind: c.core ? 'core' : c.end ? 'tip' : 'arm',
+        owner: bomb.seat,
       });
     }
     for (const soft of blast.softs) {
@@ -345,7 +350,7 @@ export class BombermanSim {
         }
         p.alive = false;
         p.step = null;
-        this.queue.push({ t: 'ko', seat: p.seat });
+        this.queue.push({ t: 'ko', seat: p.seat, by: f.owner });
       }
     }
   }
@@ -353,8 +358,21 @@ export class BombermanSim {
   private judge(): void {
     const s = this.state;
     const left = aliveSeats(s);
-    if (left.length > 1) return;
-    const winner = left.length === 1 ? left[0] : null;
+    if (left.length > 1) {
+      // Nobody has died yet. Past the limit the round is decided by who actually
+      // fought, so turtling cannot run the clock out.
+      if (s.elapsed - this.roundStarted < ROUND_SECONDS) return;
+      const best = s.players.reduce((a, b) => (b.roundBombs > a.roundBombs ? b : a), s.players[0]);
+      const tie = s.players.some((p) => p !== best && p.roundBombs === best.roundBombs && p.alive);
+      this.endRound(tie ? null : best.seat);
+      return;
+    }
+    this.endRound(left.length === 1 ? left[0] : null);
+  }
+
+  private endRound(winner: number | null): void {
+    const s = this.state;
+    if (s.phase !== 'battle') return;
     if (winner !== null) {
       const p = this.player(winner);
       if (p) p.wins += 1;
@@ -400,7 +418,9 @@ export class BombermanSim {
       p.grace = 0;
       p.step = null;
       p.cool = 0;
+      p.roundBombs = 0;
     });
+    this.roundStarted = s.elapsed;
     s.phase = 'countdown';
     s.countdown = COUNTDOWN_SECONDS;
     this.lastCountdown = s.countdown;

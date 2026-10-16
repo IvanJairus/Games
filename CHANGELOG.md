@@ -8,6 +8,64 @@ terpisah saat kamu menerbitkan rilis.
 Entri dimulai dari 14 Oktober 2026. Perubahan sebelum tanggal itu ada pada riwayat git dan daftar
 pull request, karena tidak dicatat saat terjadi.
 
+## 2026-10-16 - Bomberman: bot benar-benar bunuh diri, dan metrik saya yang salah
+
+Laporan pemain: "bot sempurna selalu mati dalam bomnya sendiri, seperti tidak tahu area
+yang harus dihindari". Laporanannya benar. Yang mengecewakan adalah alat ukur saya.
+
+### Tes soak saya tidak bisa melihatnya
+
+Soak yang saya tulis menjalankan pertandingan **semua bot**. Mode solo yang dimainkan
+punya satu kursi manusia yang dikejar bot. Konfigurasi berbeda, dan tidak ada satu pun tes
+yang menutup konfigurasi kedua.
+
+Metrik pertama yang saya pakai untuk membela diri juga salah: "bot mati di petak tempat ia
+terakhir menekan tombol". Itu bukan atribusi, itu tebakan. Yang benar adalah engine harus
+tahu siapa pemilik tiap api, jadi `Flame` kini membawa `owner` dan event `ko` membawa
+`by`. Setelah itu angkanya tidak bisa dibantah:
+
+| konfigurasi | kematian bot | karena bom sendiri |
+|---|---|---|
+| semua bot, soak lama | 92 | tidak terukur |
+| solo, sebelum perbaikan | 92 | 92 (100%) |
+| solo, sesudah | 26 sampai 64 | 24 sampai 61 (89-95%) |
+
+### Yang diperbaiki, dan apa yang sebenarnya terjadi
+
+Jejak frame per frame menunjukkan penyebabnya bukan perencanaan rute, seperti dugaan saya
+berturut-turut, melainkan hal yang lebih sederhana: **bot mulai berjalan lagi di detik bomnya
+meledak, padahal apinya masih menyala 0,42 detik dan satu langkah butuh 0,15 detik.** Ia
+membalik ke baranya sendiri. Sekarang bot menahan petak amannya sampai api miliknya padam.
+
+Dua perbaikan lain menyusul dan keduanya nyata: rute kabur hanya boleh melewati zona bomnya
+sendiri, bukan zona bom lain; dan api diperlakukan sebagai tembok, bukan sebagai biaya.
+
+Tingkat bot akhirnya terpisah setelah itu: santai 64 kematian, sedang 35, sempurna 26, dan
+kematian pemain naik dari 1 menjadi 6-7 per 10 pertandingan. Sebelumnya ketiganya identik
+di 3,00 kematian per pertandingan, yang ternyata angka kosong: di ruangan 4 kursi memang
+3 kursi harus mati tiap ronde, jadi metrik itu mengukur permainan yang bekerja, bukan bot
+yang pintar.
+
+### Cacat desain yang ketemu di tengah jalan: ronde bisa molor selamanya
+
+Waktu bot berhenti bunuh diri, satu tes gagal dengan cara yang berharga: `phase` masih
+`battle` setelah enam menit simulasi. Ronde hanya bisa selesai kalau ada yang mati, jadi
+dua bot yang sama-sama hati-hati, atau dua pemain yang sama-sama bersembunyi, mengunci
+pertandingan tanpa akhir.
+
+Sekarang ada batas waktu ronde. Ronde yang habis waktunya dimenangkan oleh pihak yang lebih
+banyak menanam bom pada ronde itu, jadi bersembunyi tidak lagi merupakan strategi yang
+aman, dan seri kalau keduanya sama-sama diam.
+
+### Sisa yang belum beres, dicatat bukan disembunyikan
+
+Tingkat bunuh diri masih 89-95%. Yang sudah diperbaiki adalah jumlah kematiannya, bukan
+sebab paling dalam. Untuk itu bot butuh peta keselamatan (time-to-safety vs sisa sumbu
+untuk setiap petak), bukan aturan "cari satu petak aman lalu lari ke sana". Itu pekerjaan
+berikutnya dan saya tidak menyebut bot ini pintar sekarang.
+
+323 tes hijau di 27 file. `npm run release:check` lulus lima tahap.
+
 ## 2026-10-15 - Bomberman: game kelima, dan alat ukurnya
 
 Bomberman masuk sebagai game kelima. Ia bukan cuma tambahan isi: ia memaksa satu celah
