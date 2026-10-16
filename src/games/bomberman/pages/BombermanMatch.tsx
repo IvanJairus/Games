@@ -247,7 +247,7 @@ export function BombermanMatch() {
           net = new BombermanNet({
             channel,
             isHost: () => isHostRef.current,
-            localSeat: mySeatRef.current,
+            localSeat: () => mySeatRef.current,
             getInput: () => inputRef.current,
             getWorld: (): WorldPayload => {
               const sim = simRef.current;

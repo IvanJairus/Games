@@ -84,7 +84,13 @@ export interface NetOptions {
   channel: RealtimeChannel;
   /** Read live: host election happens after the first room sync, not at construction. */
   isHost: () => boolean;
-  localSeat: number;
+  /**
+   * Also read live. The channel can be open before this tab's own seat row exists, and a
+   * seat captured at construction would stay -1 for the rest of the match: every input the
+   * guest sent would name a seat nobody has, and the runner would never move while its bomb
+   * press, which passes the seat at call time, still worked.
+   */
+  localSeat: () => number;
   getInput: () => InputState;
   getWorld: () => WorldPayload;
   /** Null until this tab knows both its seat and its player's character. */
@@ -152,7 +158,10 @@ export class BombermanNet {
       }
     }
     const input = this.opts.getInput();
-    this.send(EV_INPUT, encodeInput({ seat: this.opts.localSeat, dir: input.dir, bomb: input.bomb, seq: input.seq }));
+    const seat = this.opts.localSeat();
+    // Nothing to say while this tab does not know which seat it owns.
+    if (seat < 0) return;
+    this.send(EV_INPUT, encodeInput({ seat, dir: input.dir, bomb: input.bomb, seq: input.seq }));
   }
 
   /** A press is reported as an edge, so the sender bumps the counter, not the flag. */
