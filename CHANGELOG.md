@@ -8,6 +8,55 @@ terpisah saat kamu menerbitkan rilis.
 Entri dimulai dari 14 Oktober 2026. Perubahan sebelum tanggal itu ada pada riwayat git dan daftar
 pull request, karena tidak dicatat saat terjadi.
 
+## 2026-10-16 - Tic Tac Toe online: jatah tahan yang tak terlihat habis
+
+Dilaporkan dari room sungguhan (FULQAM, screenshot 16 Oktober 17.17). Pemain O menekan petak bidak
+tertuanya, ditolak dengan strip merah "Petak itu sudah terisi...", dan pertanyaannya: apakah tahan itu
+jadi tidak aktif kalau papan sudah berputar-putar?
+
+Jawabannya tidak: jatah tahan 2 kali per kursi per ronde, tidak terkait jumlah lap. Yang benar adalah
+dua-duanya sudah terpakai, dan itu tidak pernah diberitahukan kepadanya.
+
+### Diperbaiki
+
+- **Chip "Tahan N/2" kini terlihat sejak langkah pertama**, bukan hanya saat satu kursi sudah punya
+  tiga bidak. Chip emas penuh saat tahan benar-benar tersedia buat saya, netral saat masih ada tapi
+  bukan giliran saya, dan redup saat 0. Ini yang membuat jatah terasa sebagai sumber daya, bukan
+  sebagai penolakan acak.
+- **Menahan bidak sekarang diumumkan.** Tahan adalah satu-satunya langkah yang tidak mengubah papan:
+  yang berpindah hanya giliran dan urutan antrean. Di mode lokal sudah ada notice, di online tidak ada
+  apa pun, jadi menekan petak tertua terasa seperti aplikasi tidak merespons dan pemain menekan lagi.
+  Pesannya dibedakan: "Anda menahan bidak di petak #N. Sisa tahan Anda 1/2." lawan "Lawan menahan
+  bidaknya di petak #N. Sisa tahan mereka 1/2."
+- **Kejadian tahan dibaca dari selisih dua snapshot**, bukan dari tombol. Room online mengirim state
+  baru lewat realtime, jadi `holdEvent(before, after)` membandingkan `holdsLeft` dan mengambil petak
+  dari bidak terbaru kursi itu. Refill `resetRound` adalah kenaikan angka sehingga tidak bisa salah
+  baca jadi tahan.
+- **Kalimat bidak lenyap pindah ke slot dengan tinggi tetap (44 px).** Sebelumnya ia duduk di dalam
+  baris giliran, jadi barisnya tumbuh dan menyeret papan ke bawah begitu satu kursi punya tiga bidak,
+  persis lompatan yang sudah dilarang di entri sebelumnya.
+- Notice lokal dan online kini satu komponen, `src/games/common/NoticeToast.tsx`, supaya keduanya
+  tidak melain gaya. `data-testid` dan `data-tone` yang lama tidak berubah.
+
+### Terukur
+
+- 6 tes baru di `tests/ui/tic-tac-toe-online.test.tsx` me-render halaman room sungguhan dengan data
+  sync palsu: chip `Tahan 2/2` pada papan kosong, `Tahan 0/2` saat jatah habis, slot hint dengan
+  `minHeight` 44 px, pesan untuk tahan lawan, pesan untuk tahan sendiri, dan tidak ada pesan untuk
+  langkah biasa.
+- 4 tes baru di `tests/unit/tic-tac-toe.test.ts` untuk `holdEvent`, termasuk state room lama yang
+  belum punya kolom `holdsLeft`.
+- Suite penuh di branch ini: 347 tes pada 28 file lolos, `tsc -b` bersih, build bersih, `guard:check`
+  bersih.
+
+### Batas
+
+- Warna chip dan pembungkusan teksnya di HP belum dilihat di browser nyata: mesin ini tidak punya
+  kredensial Supabase, jadi halaman room berhenti di layar memuat. Yang dibuktikan jsdom adalah
+  struktur dan teks, bukan tata letak.
+- Aturan dan angkanya tidak berubah: tetap 2 tahan per kursi per ronde, dan `santai` tetap tidak
+  pernah menahan.
+
 ## 2026-10-16 - WallGo: satu klik memasang di desktop, dua tap tetap di HP
 
 ### Diubah

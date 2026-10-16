@@ -171,6 +171,25 @@ export function applyMove(state: TicTacToeState, index: number): TicTacToeState 
   };
 }
 
+// Which seat spent a hold between two snapshots, and on which square. A room only ever receives the
+// new state, so the event has to be read off the budget dropping; a refill on resetRound is an
+// increase and cannot be mistaken for one.
+export function holdEvent(
+  before: TicTacToeState,
+  after: TicTacToeState
+): { player: PlayerSymbol; cellIndex: number } | null {
+  const budget = (state: TicTacToeState, p: PlayerSymbol) =>
+    state.holdsLeft?.[p] ?? MAX_HOLDS_PER_ROUND;
+
+  const spent = (['X', 'O'] as PlayerSymbol[]).find((p) => budget(after, p) < budget(before, p));
+  if (!spent) return null;
+
+  // A hold moves the mover's oldest piece to the back of the queue without changing its square.
+  const pieces = getPlayerPieces(after.pieces, spent);
+  const held = pieces[pieces.length - 1];
+  return held ? { player: spent, cellIndex: held.cellIndex } : null;
+}
+
 export function resetRound(state: TicTacToeState): TicTacToeState {
   return {
     board: Array(9).fill(null),
