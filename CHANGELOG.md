@@ -8,6 +8,37 @@ terpisah saat kamu menerbitkan rilis.
 Entri dimulai dari 14 Oktober 2026. Perubahan sebelum tanggal itu ada pada riwayat git dan daftar
 pull request, karena tidak dicatat saat terjadi.
 
+## 2026-10-16 - WallGo: satu klik memasang di desktop, dua tap tetap di HP
+
+### Diubah
+
+- **Aturan dua tap sekarang hanya berlaku untuk sentuh.** Mouse sudah punya pratinjau lewat ghost
+  hover yang mengikuti kursor, jadi satu klik di celah langsung memasang. Layar sentuh dan pen tetap
+  tap pertama pratinjau, tap kedua pasang, karena keduanya tidak punya hover.
+- Alih fungsi kursor mouse tidak lagi men-staged pratinjau di tengah jalan; ghost hover yang
+  berbicara. Ini membuat desktop dan online dengan mouse terasa seperti game papan biasa.
+- Petunjuk di dock kini mengikuti alat yang dipakai: "Arahkan kursor ke celah untuk pratinjau, klik
+  untuk pasang" untuk mouse, "Tap celah untuk pratinjau, tap lagi untuk pasang" untuk sentuh.
+- Klik yang datang tanpa `pointerdown` sebelumnya, misalnya dari keyboard atau klik sintetis,
+  dianggap sentuh (jalur dua langkah), bukan mouse.
+
+### Diperbaiki saat penyusunan
+
+Perubahan pertama saya membuat dua test viewport gagal, karena keduanya mengirim `click` tanpa
+`pointerdown` dan mengharapkan pratinjau tertahan. Penyebabnya default penjaga input yang salah
+sisi: nilai awal harus konservatif (butuh dua langkah), bukan longgar. Setelah itu seluruh suite
+hijau.
+
+### Terukur
+
+- 3 test baru di `tests/ui/wall-game-board.test.tsx`: satu klik mouse memasang dan memanggil
+  `onPlaceWall` satu kali, slot ilegal ditolak tanpa memanggilnya, dan teks petunjuk berganti setelah
+  satu sentuhan.
+- Suite penuh di worktree terpisah pada basis `288c74d`: 340 test lulus (27 file). `tsc -b` bersih dan
+  `vite build` sukses.
+- Test lama yang menjaga aturan sentuh (tap pertama hanya pratinjau, tap kedua pasang) tetap lulus,
+  jadi perilaku HP yang baru diperbaiki tidak berubah.
+
 ## 2026-10-16 - Bomberman online: tamu bisa menaruh bom tapi tidak bisa jalan
 
 Laporan pemain yang menjalankan room sungguhan: pembuat room bisa jalan dengan WASD, pemain
