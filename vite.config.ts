@@ -8,6 +8,11 @@ export default defineConfig({
   build: {
     outDir: 'dist/games',
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks: { three: ['three'] },
+      },
+    },
   },
   resolve: {
     alias: {
