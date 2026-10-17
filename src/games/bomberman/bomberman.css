@@ -608,12 +608,6 @@
   margin: 0 auto;
 }
 
-.bm-setup > * {
-  max-width: 640px;
-  margin-left: auto;
-  margin-right: auto;
-}
-
 .bm-back--page {
   background: #fff;
   margin-bottom: 18px;
