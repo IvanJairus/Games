@@ -8,6 +8,9 @@ export default defineConfig({
   build: {
     outDir: 'dist/games',
     emptyOutDir: true,
+    // Namespace sekali jalan: objek cache edge lama menyimpan respons HTML di URL
+    // chunk tertentu dengan header immutable, jadi nama baru harus diminta ulang.
+    assetsDir: 'assets/v2',
     rollupOptions: {
       output: {
         manualChunks: { three: ['three'] },

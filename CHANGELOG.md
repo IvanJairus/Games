@@ -8,6 +8,53 @@ terpisah saat kamu menerbitkan rilis.
 Entri dimulai dari 14 Oktober 2026. Perubahan sebelum tanggal itu ada pada riwayat git dan daftar
 pull request, karena tidak dicatat saat terjadi.
 
+## 2026-10-17 - Hotfix: empat game mati karena cache edge menyimpan HTML sebagai JavaScript
+
+Empat game serentak memunculkan "Terjadi Kesalahan Aplikasi" dengan isi
+`Failed to fetch dynamically imported module`, masing-masing pada chunk halamannya sendiri:
+`BombermanLocal-Fk5CV-7s.js`, `SlapArenaLobby-CB-DarNW.js`, `TicTacToeLocal-14RFaAgf.js`,
+`BattleshipLocal-D469svUr.js`. WallGo satu-satunya yang masih hidup.
+
+### Penyebab
+
+Empat PR digabung ke main dalam 20 menit, jadi job `Deploy to Vercel` berlari empat kali
+beruntusan sementara workflow memakai `cancel-in-progress: true`. Salah satu deployment terpotong
+di tengah upload: HTML dan chunk entry yang tayang berasal dari build yang berbeda dari sisa asetnya.
+Chunk halaman yang diminta entry tidak ada di deployment itu, dan rewrite SPA
+`/games/:path*` menjawabnya dengan `index.html`.
+
+Yang membuat kerusakan ini mengunci: `vercel.json` memasang `Cache-Control: public,
+max-age=31536000, immutable` untuk pola `/games/assets/(.*)`, dan header itu ikut menempel pada
+respons HTML hasil fallback. Edge dan browser lalu menyimpan HTML sebagai JavaScript selama setahun
+untuk URL itu.
+
+### Terukur
+
+| Uji pada URL chunk yang gagal | Hasil |
+| --- | --- |
+| `GET` tanpa query | 200, `content-type: text/html`, 648 byte, `x-vercel-cache: HIT` |
+| `GET` dengan `?x=<acak>` | 200, `content-type: application/javascript` |
+| `HEAD` | 200, `content-type: application/javascript` |
+| Chromium bersih tanpa cache, 4 rute | `Terjadi Kesalahan Aplikasi` pada Bomberman, Slap Arena, Tic Tac Toe, Battleship; WallGo normal |
+
+Jadi file-nya ada di origin; hanya objek cache untuk URL persis itulah yang teracuni. Redeploy
+(`gh run rerun` pada run `4d9479c`, hijau) tidak menyembuhkannya, karena kunci cache-nya sama.
+
+### Diperbaiki
+
+- `assetsDir` dipindah ke `assets/v2`. Semua URL chunk berubah, jadi klien melewati objek cache yang
+  teracuni tanpa perlu menunggu kedaluwarsa setahun. Rotasi ini sekali pakai; kalau kejadian lagi,
+  naikkan ke `v3`.
+- `cancel-in-progress` pada workflow diubah ke `false`. Dua deployment produksi tidak boleh lagi
+  saling membatalkan. Antrean lebih lambat, tapi tidak menghasilkan deployment cacat.
+
+### Belum diverifikasi
+
+- Purge cache di dashboard Vercel akan membuang objek lama tanpa rotasi nama. Tidak dilakukan di sini
+  karena butuh akses dashboard; rotasi nama dipilih supaya pemulihannya ada di tangan CI.
+- Penyebab pasti upload terpotong (Vercel alias vs job yang dibatalkan) disimpulkan dari header dan
+  timeline run, bukan dari log Vercel.
+
 ## 2026-10-17 - Hub: supabase-js keluar dari chunk entry
 
 `src/pages/Hub.tsx` memanggil `fetchCompletedCounts` dari `src/games/common/matchStats.ts`, dan file
