@@ -4,7 +4,6 @@
     { "source": "/games", "destination": "/games/index.html" },
     { "source": "/favicon.ico", "destination": "/games/favicon.svg" },
     { "source": "/favicon.svg", "destination": "/games/favicon.svg" },
-    { "source": "/games/assets/:path*", "destination": "/games/assets/:path*" },
     { "source": "/games/:path*", "destination": "/games/index.html" },
     { "source": "/games/:path*/", "destination": "/games/index.html" }
   ],

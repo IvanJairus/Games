@@ -43,6 +43,39 @@ Penjaga baru di `tests/unit/wall-game.test.ts` menuntut selisih 0 untuk 2 sampai
 9, 11, dan 13, plus tidak ada dua kursi berbagi sel. Test lama yang menyebut angka jarak (4 untuk
 2 dan 3 kursi, 5 untuk 4 kursi) tidak berubah karena susunan kursi 2 sampai 4 memang sudah rata.
 
+## 2026-10-17 - Cabut aturan 404 yang tidak bekerja, dan buat gerbang routing jadi jujur
+
+Aturan identitas `/games/assets/:path*` yang saya kirim di `0209a5de` ternyata tidak mengubah
+apa pun. Diukur terhadap situs tayang setelah commit itu deploy: `GET
+/games/assets/DefinitelyMissing-<probe>.js` masih menjawab 200 `text/html`. Vercel melanjutkan
+rantai rewrite ke fallback SPA, jadi aset yang hilang tetap menerima HTML.
+
+### Diperbaiki
+
+- Baris rewrite itu dihapus. Ia tidak melakukan apa pun dan menyisakan kesan palsu bahwa
+  mekanisme penyebab insiden kemarin sudah ditutup.
+- Langkah `Verify deployed routing` hanya menuntut hal yang memang berlaku: deep link mengembalikan
+  HTML dan manifest mengembalikan `application/manifest+json`. Perilaku aset hilang dicetak sebagai
+  informasi, bukan assertion, supaya tidak ada langkah yang merah karena alasan yang salah.
+- Assertion deep link sekarang memakai `curl -L`. Tanpa itu ia akan gagal selamanya, karena
+  `/games/bomberman/local` menjawab 308 ke bentuk bergaris penutup lebih dulu. Ini cacat di gerbang
+  yang saya tulis sendiri di `0209a5de`, ketahuan saat menulis ulang.
+
+### Terukur
+
+| Uji terhadap situs tayang | Hasil |
+| --- | --- |
+| `GET /games/assets/DefinitelyMissing-<probe>.js` | 200 `text/html`, aturan identitas tidak berpengaruh |
+| `GET /games/assets/v2/BattleshipLobby-C2DMWZ3G.js` | 200 `application/javascript` |
+| `GET -L /games/bomberman/local` | 308 lalu 200 `text/html` |
+| `GET /games/manifest.webmanifest` | 200 `application/manifest+json` |
+| Entri `index-CuWmgSMs.js` di tayang | memuat `ij_games_chunk_reload_at`, jadi pemulihan otomatis tab lama sudah aktif |
+
+### Belum diverifikasi
+
+Cara yang benar untuk mengecualikan `/games/assets/*` dari fallback SPA, misalnya negative lookahead
+pada `source`, belum dicoba. Butuh satu deployment lagi untuk mengukurnya, dan kuota deployment
+harian sedang habis.
 ## 2026-10-17 - Tab lama tidak lagi membuat game mati, dan aset hilang tidak lagi balik sebagai HTML
 
 User menemukan `Terjadi Kesalahan Aplikasi` lagi di Battleship, kali ini pada
