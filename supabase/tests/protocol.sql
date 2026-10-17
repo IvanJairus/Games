@@ -275,28 +275,66 @@ declare
   room_stale uuid := 'bbbbbbbb-0000-0000-0000-000000000001';
   room_fresh uuid := 'bbbbbbbb-0000-0000-0000-000000000002';
   match_done uuid := 'bbbbbbbb-0000-0000-0000-000000000003';
+  game_stale uuid := 'bbbbbbbb-0000-0000-0000-000000000004';
+  game_live uuid := 'bbbbbbbb-0000-0000-0000-000000000005';
+  game_rematch uuid := 'bbbbbbbb-0000-0000-0000-000000000006';
+  ids uuid[] := array['bbbbbbbb-0000-0000-0000-000000000001',
+                      'bbbbbbbb-0000-0000-0000-000000000002',
+                      'bbbbbbbb-0000-0000-0000-000000000003',
+                      'bbbbbbbb-0000-0000-0000-000000000004',
+                      'bbbbbbbb-0000-0000-0000-000000000005',
+                      'bbbbbbbb-0000-0000-0000-000000000006'];
   results_before int;
   results_after int;
+  hub_before bigint;
+  hub_after bigint;
+  rows_before bigint;
+  rows_after bigint;
   got_rooms int;
   got_moves int;
   n int;
 begin
-  delete from public.match_moves where match_id in (room_stale, room_fresh, match_done);
-  delete from public.match_results where match_id in (room_stale, room_fresh, match_done);
-  delete from public.matches where id in (room_stale, room_fresh, match_done);
+  delete from public.match_moves where match_id = any (ids);
+  delete from public.match_results where match_id = any (ids);
+  delete from public.matches where id = any (ids);
 
   insert into public.matches (id, room_code, game_type, status, max_players, current_turn, game_state, updated_at)
   values (room_stale, 'STALE1', 'wall-game', 'waiting', 2, 0, '{}'::jsonb, now() - interval '25 hours'),
          (room_fresh, 'FRESH1', 'wall-game', 'waiting', 2, 0, '{}'::jsonb, now() - interval '1 hour'),
-         (match_done, 'DONE40', 'battleship', 'completed', 2, 0, '{}'::jsonb, now() - interval '40 days');
+         (match_done, 'DONE40', 'battleship', 'completed', 2, 0, '{}'::jsonb, now() - interval '40 days'),
+         (game_stale, 'PLAY8', 'bomberman', 'playing', 2, 0, '{}'::jsonb, now() - interval '8 days'),
+         (game_live, 'PLAY1H', 'bomberman', 'playing', 2, 0, '{}'::jsonb, now() - interval '1 hour');
 
   insert into public.match_results (match_id, game_type, winner_index) values (match_done, 'battleship', 1);
   insert into public.match_moves (match_id, player_index, action, payload)
-  values (match_done, 0, 'SHOT', '{}'::jsonb), (match_done, 1, 'SHOT', '{}'::jsonb);
+  values (match_done, 0, 'SHOT', '{}'::jsonb), (match_done, 1, 'SHOT', '{}'::jsonb),
+         (game_stale, 0, 'MOVE', '{}'::jsonb);
 
+  -- Laga yang di-rematch lalu ditinggalkan: statusnya `playing` lagi, tapi sejarahnya tinggal.
+  -- Jalur ini dibangun lewat protokol sungguhan, bukan insert manual, supaya klaimnya bisa
+  -- dibela: pemicu 005 yang menulis riwayat saat status pindah ke `completed`.
+  insert into public.matches (id, room_code, game_type, status, max_players, current_turn, game_state, updated_at)
+  values (game_rematch, 'REPLAY6', 'tic-tac-toe', 'waiting', 2, 0, '{}'::jsonb, now());
+  update public.matches set status = 'playing' where id = game_rematch;
+  update public.matches set status = 'completed', winner_index = 0 where id = game_rematch;
+  update public.matches set status = 'playing', winner_index = null, current_turn = 0 where id = game_rematch;
+
+  select count(*) into n from public.match_results where match_id = game_rematch;
+  if n <> 1 then raise exception 'ASSERT 15i FAIL: jalur rematch tidak meninggalkan riwayat, % baris', n; end if;
+
+  -- Pemicu protokol selalu memajukan `updated_at`, jadi menua baris ini harus melewati dia
+  -- sebentar. Dua pernyataan alter hanya menutupi satu update, dan blok ini berjalan dalam satu
+  -- transaksi, jadi kalau ada assertion yang gagal pemicunya ikut kembali aktif.
+  alter table public.matches disable trigger enforce_match_protocol;
+  update public.matches set updated_at = now() - interval '8 days' where id = game_rematch;
+  alter table public.matches enable trigger enforce_match_protocol;
+
+  select count(*) into rows_before from public.matches;
   select count(*) into results_before from public.match_results;
+  select coalesce(sum(completed), 0) into hub_before from public.match_completion_counts();
 
   select deleted_rooms, deleted_moves into got_rooms, got_moves from public.cleanup_stale_rooms();
+  select count(*) into rows_after from public.matches;
 
   select count(*) into n from public.matches where id = room_stale;
   if n <> 0 then raise exception 'ASSERT 15a FAIL: room waiting 25 jam masih ada, sisa % baris', n; end if;
@@ -318,10 +356,51 @@ begin
     raise exception 'ASSERT 15f FAIL: jumlah riwayat turun dari % menjadi %', results_before, results_after;
   end if;
 
-  if got_rooms <> 1 then raise exception 'ASSERT 15g FAIL: deleted_rooms melapor %, seharusnya 1', got_rooms; end if;
+  -- Laporan fungsi harus sama dengan jumlah baris yang benar-benar hilang. Jumlahnya tidak
+  -- di-hardcode di sini: sisa fixture blok 14 juga sebuah `playing` berumur bertahun-tahun tanpa
+  -- riwayat, jadi ia ikut menjadi mangsa aturan baru dan angkanya bergerak kalau urutannya berubah.
+  if got_rooms <> rows_before - rows_after then
+    raise exception 'ASSERT 15g FAIL: deleted_rooms melapor % tapi baris matches berkurang %',
+      got_rooms, rows_before - rows_after;
+  end if;
+
+  if got_rooms < 2 then
+    raise exception 'ASSERT 15g-2 FAIL: deleted_rooms melapor % padahal dua fixture basi seharusnya hilang', got_rooms;
+  end if;
+
   if got_moves <> 2 then raise exception 'ASSERT 15h FAIL: deleted_moves melapor %, seharusnya 2', got_moves; end if;
 
-  delete from public.matches where id in (room_stale, room_fresh, match_done);
+  -- Laga `playing` yang 8 hari tidak disentuh dan tidak pernah selesai: inilah yang dulu abadi.
+  select count(*) into n from public.matches where id = game_stale;
+  if n <> 0 then raise exception 'ASSERT 15j FAIL: laga playing 8 hari tanpa riwayat masih ada, sisa % baris', n; end if;
+
+  select count(*) into n from public.match_moves where match_id = game_stale;
+  if n <> 0 then raise exception 'ASSERT 15k FAIL: log laga playing ikut tertinggal, sisa % baris', n; end if;
+
+  -- Laga yang masih jelas dipakai: baru satu jam tidak disentuh.
+  select count(*) into n from public.matches where id = game_live;
+  if n <> 1 then
+    raise exception 'ASSERT 15l FAIL: laga playing 1 jam ikut terhapus, padahal ambangnya 7 hari, sisa % baris', n;
+  end if;
+
+  -- Penjaga utama: `playing` yang PUNYA riwayat harus tetap ada, cascade riwayat tidak boleh
+  -- terjadi hanya karena statusnya belum final.
+  select count(*) into n from public.matches where id = game_rematch;
+  if n <> 1 then raise exception 'ASSERT 15m FAIL: laga playing berumur 8 hari yang punya riwayat ikut terhapus, % baris', n; end if;
+
+  select count(*) into n from public.match_results where match_id = game_rematch;
+  if n <> 1 then raise exception 'ASSERT 15n FAIL: riwayat hasil rematch hilang, sisa % baris', n; end if;
+
+  -- Angka yang dilihat pengunjung di Hub tidak boleh bergerak oleh pembersihan apa pun.
+  select coalesce(sum(completed), 0) into hub_after from public.match_completion_counts();
+  if hub_after <> hub_before then
+    raise exception 'ASSERT 15o FAIL: angka laga selesai di Hub berubah dari % menjadi %', hub_before, hub_after;
+  end if;
+
+  select count(*) into n from pg_trigger where tgname = 'enforce_match_protocol' and tgenabled = 'O';
+  if n <> 1 then raise exception 'ASSERT 15p FAIL: pemicu protokol tidak diaktifkan kembali, % baris', n; end if;
+
+  delete from public.matches where id = any (ids);
 end $$;
 
 -- 16. Pengunjung tidak boleh bisa memanggil pembersihnya sendiri.

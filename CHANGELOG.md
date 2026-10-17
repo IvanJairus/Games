@@ -8,6 +8,84 @@ terpisah saat kamu menerbitkan rilis.
 Entri dimulai dari 14 Oktober 2026. Perubahan sebelum tanggal itu ada pada riwayat git dan daftar
 pull request, karena tidak dicatat saat terjadi.
 
+## 2026-10-17 - Pembersihan: laga yang ditinggalkan saat sudah berjalan akhirnya ikut dibersihkan
+
+`cleanup_stale_rooms()` hasil PR #62 hanya menatap room `waiting` berumur 24 jam dan log
+`match_moves` dari laga final berumur 30 hari. Laga yang ditinggalkan pemainnya ketika status sudah
+`playing` tidak punya jalur penutup sama sekali: ia tetap `playing` selamanya dan tidak pernah
+disentuh fungsi itu.
+
+Room uji `A9CTGC` adalah contohnya. Halaman `/games/bomberman/m/A9CTGC` menjawab "Permainan di room
+ini sudah berlangsung", jadi statusnya `playing`, dan barisnya tidak akan pernah dihapus aturan
+lama.
+
+### Ditambah
+
+Cabang ketiga di `supabase/migrations/006_cleanup_stale_rooms.sql`: hapus `matches` berstatus
+`playing` yang `updated_at`-nya lebih tua dari 7 hari DAN tidak punya baris di `match_results`.
+Ambangnya konstanta `stale_games` di awal fungsi, sejajar `stale_rooms` dan `stale_moves`. Ambang
+24 jam dan 30 hari tidak diubah.
+
+### Kenapa `playing` aman dihapus
+
+- `updated_at` selalu dimajukan pemicu `enforce_match_protocol` dan nilai kiriman klien dibuang.
+  Sudah terbukti di assertion 3, jadi "7 hari tanpa tulisan" berarti benar-benar "7 hari tanpa satu
+  langkah pun".
+- Baris tanpa riwayat belum pernah menyentuh `completed`, jadi tidak ada sejarah yang hilang dan
+  angka laga selesai di Hub tidak bergerak.
+- `winner_index`-nya pasti `null`: pemicu menolak winner selama status masih `playing` (002) dan
+  assertion 6 menjaganya.
+- Yang ikut hilang hanya `match_players` dan `match_moves` milik room itu lewat cascade 001. Keduanya
+  tidak dibaca setelah roomnya tidak ada.
+
+### Yang terbukti dari pembacaan migrasi
+
+Baris `playing` BISA punya riwayat, dan itu bukan celah: 005 sengaja membebaskan siklus
+`completed -> playing` supaya "Ronde Berikutnya" bekerja, sementara riwayat lama tidak dihapus siapa
+pun. Jadi syarat `not exists` pada `match_results` adalah penahan utama, bukan hiasan. Dua bukti
+terukur di Postgres nyata:
+
+| Eksperimen | Hasil |
+| --- | --- |
+| `stale_games` sementara `0 seconds` | merah: `ASSERT 15l FAIL: laga playing 1 jam ikut terhapus, padahal ambangnya 7 hari, sisa 0 baris` |
+| `not exists` dilepas dari cabang `playing` | merah: `ASSERT 15f FAIL: jumlah riwayat turun dari 2 menjadi 1`, cascade riwayat tertangkap |
+| keduanya dipulihkan | hijau, 18 blok assertion lulus |
+
+### Test
+
+Assertion 15 sekarang 17 checks berlabel (sebelumnya 8). Fixture baru dibangun lewat protokol
+sungguhan, bukan insert manual: `waiting -> playing -> completed -> playing`, sehingga baris
+riwayatnya ditulis pemicu 005. Penjaga baru: `playing` 8 hari tanpa riwayat hilang, `playing` 1 jam
+tetap ada, `playing` 8 hari yang punya riwayat tetap ada, jumlah `match_results` tidak pernah
+berkurang, dan angka `match_completion_counts()` tidak bergerak.
+
+`deleted_rooms` kini menjumlahkan room `waiting` dan laga `playing` yang dihapus; tanda tangannya
+sengaja tidak berubah karena Postgres menolak `create or replace function` yang mengganti tipe
+return, dan fungsi ini sudah terpasang di DB tayang. Jumlahnya tidak lagi di-hardcode di test:
+yang diperiksa adalah laporan sama dengan selisih baris `matches`, karena fixture blok 14 sendiri
+ikut menjadi mangsa aturan baru.
+
+### Penerapan ulang file ini sekarang aman
+
+Blok pg_cron di ujung 006 tidak idempoten terhadap penerapan ulang: job `cleanup-stale-rooms` sudah
+ada di DB tayang, dan `cron.schedule` dengan jobname rangkap melempar error yang menghentikan
+seluruh batch SQL editor, padahal fungsinya sudah terganti. Job lama dilepas dulu di dalam penjaga
+pg_cron yang sama, pola yang sama dengan rollback 006, jadi menjalankan file ini sekali lagi
+mengembalikan DB ke keadaan yang sama. Perilakunya tidak berubah: jadwalnya tetap `17 3 * * *`.
+Yang diterima: kalau jadwal job ini pernah diubah langsung di DB, menerapkan ulang file ini
+mengembalikannya ke nilai di file.
+
+Terukur dengan tiruan API pg_cron 1.4 (`postgres:16-alpine` tidak punya ekstensi itu, lihat
+`select count(*) from pg_available_extensions where name = 'pg_cron'` menghasilkan 0): blok baru
+dijalankan tiga kali berturut-turut, ketiga-tiganya `DO` tanpa error dan menyisakan tepat satu job
+berjadwal `17 3 * * *`; blok lama pada job yang sudah ada memberi
+`ERROR: A job named "cleanup-stale-rooms" already exists`. Bagian non-pg_cron dibuktikan langsung
+di Postgres: `006_cleanup_stale_rooms.sql` dijalankan tiga kali pada container yang sama, exit 0
+ketiga-tiganya, fungsi tetap satu, pemicu riwayat tetap ada, dan `anon` tetap tidak memegang execute.
+
+Jumlah baris `playing` basi di produksi belum diukur: laptop ini tidak punya kredensial. Kueri
+penghitungnya ada di PR.
+
 ## 2026-10-17 - Perbaikan: WallGo desktop tidak bisa memasang dinding sama sekali
 
 Klik mouse pada celah papan tidak menghasilkan apa pun: jumlah dinding di papan tetap nol dan
