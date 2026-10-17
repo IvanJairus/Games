@@ -9,9 +9,12 @@ on:
       - main
   workflow_dispatch:
 
+# cancel-in-progress sengaja dimatikan: dua deploy produksi yang tumpang tindih
+# meninggalkan deployment dengan HTML dan aset dari build berbeda, dan browser
+# menyimpan respons HTML itu sebagai JS selama setahun karena header immutable.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: read
