@@ -11,8 +11,8 @@ pull request, karena tidak dicatat saat terjadi.
 ## 2026-10-17 - Perbaikan: WallGo desktop tidak bisa memasang dinding sama sekali
 
 Klik mouse pada celah papan tidak menghasilkan apa pun: jumlah dinding di papan tetap nol dan
-"Jumlah Dinding" kursi pertama tetap 10. Berlaku di mode lokal dan online desktop; sentuh di
-smartphone tetap jalan, jadi keluhan hanya datang dari pointer mouse.
+"Sisa: 10 balok" pada kursi pertama tidak pernah turun. Berlaku di mode lokal dan online desktop;
+sentuh di smartphone tetap jalan, jadi keluhan hanya datang dari pointer mouse.
 
 ### Penyebab
 
