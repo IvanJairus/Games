@@ -8,6 +8,41 @@ terpisah saat kamu menerbitkan rilis.
 Entri dimulai dari 14 Oktober 2026. Perubahan sebelum tanggal itu ada pada riwayat git dan daftar
 pull request, karena tidak dicatat saat terjadi.
 
+## 2026-10-17 - WallGo: kursi ke-5 dan ke-6 akhirnya berangkat dari jarak yang sama
+
+`docs/wallgame-rules.md:23` sudah menuntutnya: semua pemain berangkat dengan jarak tempuh yang
+persis sama ke The Golden Core. `getSpawnPositions` melanggarnya untuk 5 dan 6 kursi, satu-satunya
+jumlah kursi yang bisa dipilih pemain.
+
+Terukur sebelum perbaikan, jarak awal dari `distanceToCore` hasil `createGame`:
+
+| Papan | 5 kursi | 6 kursi |
+| --- | --- | --- |
+| 9 × 9 | 4, 4, 6, 6, 4 (selisih 2) | 6, 6, 4, 6, 6, 4 (selisih 2) |
+| 11 × 11 | 5, 5, 7, 7, 5 (selisih 2) | 7, 7, 5, 7, 7, 5 (selisih 2) |
+| 13 × 13 | 6, 6, 9, 9, 6 (selisih 3) | 9, 9, 6, 9, 9, 6 (selisih 3) |
+
+### Penyebab
+
+Kursi tambahan digeser menyamping sebesar `q = floor(gridSize / 4)` dan tetap menempel di tepi. Di
+papan persegi hanya empat titik tengah sisi yang berjarak `mid` dari pusat, jadi menggeser sejajar
+tepi selalu menambah `q` langkah: kursinya lebih jauh, tepat `q` langkah.
+
+### Perubahan
+
+Kursi yang digeser sekarang ikut masuk sebanyak offsetnya sendiri, `(mid ± q, q)` dan
+`(mid ± q, max - q)` sehingga jaraknya `q + (mid - q) = mid`. Simetri cermin tetap, kursinya masih
+di sekitar tepi dan tetap terbaca sebagai empat sudut, tidak ada dua kursi berbagi sel.
+`corePosition`, aturan gerak, dan jumlah dinding tidak diubah. Semua ukuran papan yang benar-benar
+ditawarkan game (picker "Ukuran Papan" 9/11/13 dan `getRecommendedGridSize` untuk room daring)
+rata, dan susunan ini juga rata untuk tiap ukuran ganjil dari 7 × 7 sampai 19 × 19 yang masih
+diterima `createGame`: 35 kombinasi, selisih 0 semua. Papan genap tidak pernah sampai ke engine
+karena `index.ts:177` menaikkan nilainya ke ganjil berikutnya.
+
+Penjaga baru di `tests/unit/wall-game.test.ts` menuntut selisih 0 untuk 2 sampai 6 kursi pada papan
+9, 11, dan 13, plus tidak ada dua kursi berbagi sel. Test lama yang menyebut angka jarak (4 untuk
+2 dan 3 kursi, 5 untuk 4 kursi) tidak berubah karena susunan kursi 2 sampai 4 memang sudah rata.
+
 ## 2026-10-17 - Tab lama tidak lagi membuat game mati, dan aset hilang tidak lagi balik sebagai HTML
 
 User menemukan `Terjadi Kesalahan Aplikasi` lagi di Battleship, kali ini pada

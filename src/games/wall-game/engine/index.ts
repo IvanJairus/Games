@@ -57,23 +57,26 @@ export function getSpawnPositions(playerCount: number, gridSize: number): Positi
         { x: max, y: mid }, // East
       ];
     case 5: {
+      // Kursi ke-5 dan ke-6 tidak bisa menempel di tepi dan tetap rata: hanya empat titik tengah
+      // sisi yang berjarak mid dari pusat. Menggesernya masuk sebesar offset sampingnya sendiri
+      // (q + (mid - q) = mid) mengembalikan keseimbangan dan tetap terasa seperti sudut.
       const q = Math.max(1, Math.floor(gridSize / 4));
       return [
         { x: mid, y: max },
         { x: 0, y: mid },
-        { x: mid - q, y: 0 },
-        { x: mid + q, y: 0 },
+        { x: mid - q, y: q },
+        { x: mid + q, y: q },
         { x: max, y: mid },
       ];
     }
     case 6: {
       const q = Math.max(1, Math.floor(gridSize / 4));
       return [
-        { x: mid - q, y: max },
-        { x: mid + q, y: max },
+        { x: mid - q, y: max - q },
+        { x: mid + q, y: max - q },
         { x: 0, y: mid },
-        { x: mid - q, y: 0 },
-        { x: mid + q, y: 0 },
+        { x: mid - q, y: q },
+        { x: mid + q, y: q },
         { x: max, y: mid },
       ];
     }
