@@ -51,6 +51,31 @@ describe('WallGo: Race to the Golden Core Engine', () => {
       expect(game.gridSize).toBe(11); // Rounded up to odd
     });
 
+    it('gives every seat the same opening distance on every board the game offers', () => {
+      // 9, 11, 13 adalah satu-satunya ukuran yang bisa dipilih pemain: picker "Ukuran Papan" di
+      // WallgameLocal.tsx:418 dan getRecommendedGridSize untuk room daring.
+      const rows: string[] = [];
+      const offenders: string[] = [];
+
+      for (const gridSize of [9, 11, 13]) {
+        for (const playerCount of [2, 3, 4, 5, 6]) {
+          const game = createGame({ playerCount, gridSize });
+          const distances = game.players.map((p) => p.distanceToCore);
+          const spread = Math.max(...distances) - Math.min(...distances);
+          const spawns = game.players.map((p) => `${p.position.x},${p.position.y}`);
+          const unique = new Set(spawns).size === playerCount;
+          const row = `${playerCount} kursi grid ${gridSize}: jarak [${distances.join(', ')}] ` +
+            `spread ${spread}`;
+          rows.push(row);
+          if (spread !== 0) offenders.push(row);
+          if (!unique) offenders.push(`${playerCount} kursi grid ${gridSize}: kursi berbagi sel`);
+        }
+      }
+
+      console.log(rows.join('\n'));
+      expect(offenders, 'kursi dengan jarak awal tidak rata').toEqual([]);
+    });
+
     it('covers recommended grid sizes and default spawn positions', () => {
       expect(getRecommendedGridSize(2)).toBe(9);
       expect(getRecommendedGridSize(5)).toBe(11);
