@@ -43,6 +43,48 @@ Penjaga baru di `tests/unit/wall-game.test.ts` menuntut selisih 0 untuk 2 sampai
 9, 11, dan 13, plus tidak ada dua kursi berbagi sel. Test lama yang menyebut angka jarak (4 untuk
 2 dan 3 kursi, 5 untuk 4 kursi) tidak berubah karena susunan kursi 2 sampai 4 memang sudah rata.
 
+## 2026-10-17 - Tab lama tidak lagi membuat game mati, dan aset hilang tidak lagi balik sebagai HTML
+
+User menemukan `Terjadi Kesalahan Aplikasi` lagi di Battleship, kali ini pada
+`assets/v2/BattleshipLobby-xYmZFIsl.js`. Ini bukan cache yang teracuni seperti insiden
+sebelumnya: file itu memang tidak ada di deployment sekarang, dan tab yang bersangkutan
+masih memakai `index.html` dari deployment lama. Diukur dengan `curl`: GET tanpa query dan
+GET dengan query sama-sama mengembalikan `text/html` 1751 byte, jadi tidak ada objek cache
+yang salah, yang ada adalah tab yang tertinggal.
+
+### Diperbaiki
+
+- `RouteErrorBoundary` memuat ulang dokumen satu kali ketika galahnya berupa chunk yang
+  gagal diimpor. Pendingin 20 detik menahan percobaan kedua, jadi build yang memang rusak
+  tidak akan berputar-putar. Keputusannya dipecah ke `shouldRetryChunkLoad` dan
+  `retryChunkLoad` supaya teruji tanpa menyentuh `window.location` milik jsdom.
+- `vercel.json` tidak lagi menelan `/games/assets/*` ke `index.html`. Aturan identitas
+  diletakkan sebelum fallback SPA, sehingga aset yang hilang menjawab 404, bukan HTML.
+  Itulah mekanisme yang membuat insiden kemarin mengunci: header `immutable` untuk pola
+  `/games/assets/(.*)` ikut menempel pada HTML fallback, dan browser menyimpannya setahun.
+- Job deploy menambah langkah `Verify deployed routing` terhadap domain tayang: deep link
+  harus 200 `text/html`, aset yang sengaja tidak ada harus 404, dan manifest harus tetap
+  `application/manifest+json`.
+
+### Terukur
+
+| Uji | Sebelum | Sesudah |
+| --- | --- | --- |
+| `GET /games/assets/DefinitelyMissing-<run>.js` | 200 `text/html` | harus 404, dijaga langkah CI baru |
+| `GET /games/bomberman/local` | 200 `text/html` | tetap 200 `text/html` |
+| `GET /games/manifest.webmanifest` | 200 `application/manifest+json` | tetap sama |
+| Tab dengan HTML deployment lama | layar error sampai user memuat ulang manual | satu muat ulang otomatis |
+
+Angka kolom "Sesudah" untuk tiga baris pertama adalah yang akan dicetak langkah
+`Verify deployed routing` pada run main pertama setelah ini. Kalau salah satunya meleset,
+langkah itu membuat job deploy merah dan saya revert aturan `vercel.json`-nya.
+
+### Belum diverifikasi
+
+Perilaku rewrite identitas di `vercel.json` hanya bisa dibuktikan terhadap deployment
+sungguhan, bukan `vite preview`. Angka di atas karenanya masih janji yang diuji CI, bukan
+hasil ukur.
+
 ## 2026-10-17 - Pembersihan: laga yang ditinggalkan saat sudah berjalan akhirnya ikut dibersihkan
 
 `cleanup_stale_rooms()` hasil PR #62 hanya menatap room `waiting` berumur 24 jam dan log
