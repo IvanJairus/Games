@@ -134,3 +134,22 @@ jobs:
           echo "### 🚀 Vercel Production Deployment Success!" >> $GITHUB_STEP_SUMMARY
           echo "- **Production URL:** $DEPLOY_URL" >> $GITHUB_STEP_SUMMARY
           echo "- **Games Hub:** $DEPLOY_URL/games/" >> $GITHUB_STEP_SUMMARY
+
+      # Runs against the live alias, not the deployment URL, because the two routing rules we
+      # care about are the SPA fallback for deep links and the 404 for a missing hashed asset.
+      # A missing asset must never come back as HTML: that is how four games went dead on
+      # 17 October, when the HTML fallback got cached as JavaScript for a year.
+      - name: Verify deployed routing
+        run: |
+          set -e
+          BASE=https://www.ivanjairus.xyz/games
+          PROBE=$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT
+          deep=$(curl -s -o /dev/null -w '%{http_code} %{content_type}' "$BASE/bomberman/local?probe=$PROBE")
+          missing=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/assets/DefinitelyMissing-$PROBE.js?probe=$PROBE")
+          real=$(curl -s -o /dev/null -w '%{http_code} %{content_type}' "$BASE/manifest.webmanifest?probe=$PROBE")
+          echo "deep link   : $deep"
+          echo "aset hilang : $missing"
+          echo "manifest    : $real"
+          echo "$deep" | grep -q '^200 text/html' || { echo 'deep link SPA harus mengembalikan HTML'; exit 1; }
+          echo "$missing" | grep -q '^404' || { echo 'aset yang hilang harus 404, bukan HTML'; exit 1; }
+          echo "$real" | grep -q '^200 application/manifest+json' || { echo 'manifest harus tetap JSON'; exit 1; }
