@@ -8,6 +8,49 @@ terpisah saat kamu menerbitkan rilis.
 Entri dimulai dari 14 Oktober 2026. Perubahan sebelum tanggal itu ada pada riwayat git dan daftar
 pull request, karena tidak dicatat saat terjadi.
 
+## 2026-10-17 - Bomberman: kolom halaman Latihan akhirnya terpusat
+
+Halaman `/games/bomberman/local` menempel di kiri pada monitor lebar. Ketujuh blok setup (tautan
+kembali, `h2`, lede, tiga `.bm-pick`, tombol Mulai) mendarat di x=36 dengan lebar 640, sementara
+separuh kanan layar kosong. Halaman lobby dan halaman match online tidak bermasalah karena keduanya
+sudah memakai pembungkus yang benar.
+
+### Penyebab
+
+- `.bm-setup > * { max-width: 640px; margin-left: auto; margin-right: auto; }` memang aktif, tapi
+  shorthand `margin: 0 0 18px` pada `.bm-lede` dan `margin: 0 0 12px` pada `.bm-pick` berada lebih
+  belakang di berkas yang sama dengan specificity yang sama, sehingga margin left/right balik ke 0.
+- Anak pertama `.bm-setup` adalah `a.bm-back--page` dengan `display: inline-flex`. Margin auto tidak
+  memusatkan box inline-level, jadi elemen itu tidak akan pernah pusat oleh aturan tersebut.
+
+### Diubah
+
+- Isi setup dibungkus `<div className="bm-page__inner">`, pola yang sama dengan
+  `BombermanLobby.tsx:87` dan `BombermanMatch.tsx:427`. Tidak ada mekanisme centering baru: tanpa
+  flex wrapper, tanpa `margin-inline` per elemen, tanpa `text-align`.
+- Aturan `.bm-setup > *` dihapus. Ia tidak pernah bekerja dan setelah pembungkus dipakai ia juga tidak
+  diperlukan.
+- `tests/ui/desktop-viewport.test.tsx`: satu kasus yang menuntut ketujuh blok setup berada di dalam
+  `.bm-page__inner`.
+- `scripts/gameplay-check.mjs`: satu pengukuran nyata per viewport, selisih ruang kiri dan kanan
+  kolom harus tidak lebih dari 4 px. jsdom tidak punya layout engine, jadi angka x dan lebar hanya
+  bisa dibuktikan di Chromium.
+
+### Terukur
+
+| viewport | x sebelum | lebar sebelum | x sesudah | lebar sesudah | ruang kiri / kanan sesudah |
+| --- | --- | --- | --- | --- | --- |
+| 1440 | 36 | 640 | 360 | 720 | 360 / 360 |
+| 1920 | 36 | 640 | 600 | 720 | 600 / 600 |
+
+Lebar kolom ikut berubah dari 640 ke 720 karena nilai itu milik `.bm-page__inner` yang sudah dipakai
+dua halaman lain. Ini bukan pelebaran untuk baris karakter.
+
+Baris kartu karakter: ketujuh tile (6 karakter plus Acak) kini muat satu baris di 1440 dan di 1920.
+Sebelumnya tile ke-7 jatuh ke baris kedua. Sweep lebar kolom pada build ini: kolom 668 px satu baris,
+kolom 648 px dua baris. Komponen terukurnya 7 tile x 82 px + 6 celah x 8 px = 622 px isi, plus
+30 px padding dan border fieldset, jadi ambang nyatanya sekitar 652 px kolom.
+
 ## 2026-10-17 - Hotfix: empat game mati karena cache edge menyimpan HTML sebagai JavaScript
 
 Empat game serentak memunculkan "Terjadi Kesalahan Aplikasi" dengan isi
