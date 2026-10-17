@@ -106,9 +106,24 @@ revoke execute on function public.cleanup_stale_rooms() from public, anon, authe
 
 -- Penjadwalan hanya hidup di Supabase. Postgres CI tidak punya pg_cron, jadi blok ini dilewati
 -- tanpa membuat migrasi gagal.
+--
+-- Blok ini harus aman dijalankan ulang, karena file inilah yang ditempel manual di SQL editor dan
+-- job `cleanup-stale-rooms` sudah ada di DB tayang: `cron.schedule` dengan jobname yang sama akan
+-- melempar error dan menghentikan seluruh batch, padahal fungsinya sudah terganti. Job lama
+-- dilepas lebih dulu supaya jadwal yang tertinggal di DB selalu sama dengan yang tertulis di file
+-- ini, mengikuti pola drop-policy-then-create dan drop-trigger-then-create di atas. Konsekuensinya:
+-- kalau suatu saat jadwal job ini diubah langsung di DB, menjalankan file ini mengembalikannya ke
+-- `17 3 * * *`.
 do $$ begin
   if exists (select 1 from pg_available_extensions where name = 'pg_cron') then
     create extension if not exists pg_cron;
+    begin
+      perform cron.unschedule('cleanup-stale-rooms');
+    exception when others then
+      -- Belum ada job dengan nama itu: ini penerapan pertama. Kegagalan di sini sengaja tidak
+      -- menghentikan apa pun, karena statement di bawah yang menentukan keadaan akhir.
+      null;
+    end;
     perform cron.schedule('cleanup-stale-rooms', '17 3 * * *', 'select public.cleanup_stale_rooms()');
   end if;
 end $$;

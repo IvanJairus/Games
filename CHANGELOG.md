@@ -65,6 +65,24 @@ return, dan fungsi ini sudah terpasang di DB tayang. Jumlahnya tidak lagi di-har
 yang diperiksa adalah laporan sama dengan selisih baris `matches`, karena fixture blok 14 sendiri
 ikut menjadi mangsa aturan baru.
 
+### Penerapan ulang file ini sekarang aman
+
+Blok pg_cron di ujung 006 tidak idempoten terhadap penerapan ulang: job `cleanup-stale-rooms` sudah
+ada di DB tayang, dan `cron.schedule` dengan jobname rangkap melempar error yang menghentikan
+seluruh batch SQL editor, padahal fungsinya sudah terganti. Job lama dilepas dulu di dalam penjaga
+pg_cron yang sama, pola yang sama dengan rollback 006, jadi menjalankan file ini sekali lagi
+mengembalikan DB ke keadaan yang sama. Perilakunya tidak berubah: jadwalnya tetap `17 3 * * *`.
+Yang diterima: kalau jadwal job ini pernah diubah langsung di DB, menerapkan ulang file ini
+mengembalikannya ke nilai di file.
+
+Terukur dengan tiruan API pg_cron 1.4 (`postgres:16-alpine` tidak punya ekstensi itu, lihat
+`select count(*) from pg_available_extensions where name = 'pg_cron'` menghasilkan 0): blok baru
+dijalankan tiga kali berturut-turut, ketiga-tiganya `DO` tanpa error dan menyisakan tepat satu job
+berjadwal `17 3 * * *`; blok lama pada job yang sudah ada memberi
+`ERROR: A job named "cleanup-stale-rooms" already exists`. Bagian non-pg_cron dibuktikan langsung
+di Postgres: `006_cleanup_stale_rooms.sql` dijalankan tiga kali pada container yang sama, exit 0
+ketiga-tiganya, fungsi tetap satu, pemicu riwayat tetap ada, dan `anon` tetap tidak memegang execute.
+
 Jumlah baris `playing` basi di produksi belum diukur: laptop ini tidak punya kredensial. Kueri
 penghitungnya ada di PR.
 
