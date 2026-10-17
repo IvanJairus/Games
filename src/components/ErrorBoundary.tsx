@@ -2,6 +2,35 @@ import React from 'react';
 import { useRouteError, isRouteErrorResponse, Link } from 'react-router-dom';
 import { RotateCw, ArrowLeft, AlertTriangle } from 'lucide-react';
 
+const CHUNK_FAILURE = /dynamically imported module|Importing a module script failed/i;
+const RETRY_STAMP = 'ij_games_chunk_reload_at';
+const RETRY_COOLDOWN_MS = 20000;
+
+export const shouldRetryChunkLoad = (message: string, lastStamp: number, now: number): boolean =>
+  CHUNK_FAILURE.test(message) && now - lastStamp >= RETRY_COOLDOWN_MS;
+
+export const retryChunkLoad = (reload: () => void, message: string, lastStamp: number, now: number): boolean => {
+  if (!shouldRetryChunkLoad(message, lastStamp, now)) return false;
+  reload();
+  return true;
+};
+
+function lastRetryStamp(): number {
+  try {
+    return Number(sessionStorage.getItem(RETRY_STAMP) || 0);
+  } catch {
+    return 0;
+  }
+}
+
+function markRetry(): void {
+  try {
+    sessionStorage.setItem(RETRY_STAMP, String(Date.now()));
+  } catch {
+    /* Private mode: the cooldown simply does not apply, the boundary still renders. */
+  }
+}
+
 export const RouteErrorBoundary: React.FC = () => {
   const error = useRouteError();
 
@@ -18,6 +47,13 @@ export const RouteErrorBoundary: React.FC = () => {
   } else if (typeof error === 'string') {
     message = error;
   }
+
+  /* A tab opened before the last deploy asks for chunk names that no longer exist, and the
+     only way back is a fresh document. Reload once, then let the boundary show if it fails
+     again, so a genuinely broken build cannot loop. */
+  React.useEffect(() => {
+    if (retryChunkLoad(() => window.location.reload(), message, lastRetryStamp(), Date.now())) markRetry();
+  }, [message]);
 
   return (
     <div
