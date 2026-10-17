@@ -8,6 +8,46 @@ terpisah saat kamu menerbitkan rilis.
 Entri dimulai dari 14 Oktober 2026. Perubahan sebelum tanggal itu ada pada riwayat git dan daftar
 pull request, karena tidak dicatat saat terjadi.
 
+## 2026-10-17 - Perbaikan: WallGo desktop tidak bisa memasang dinding sama sekali
+
+Klik mouse pada celah papan tidak menghasilkan apa pun: jumlah dinding di papan tetap nol dan
+"Jumlah Dinding" kursi pertama tetap 10. Berlaku di mode lokal dan online desktop; sentuh di
+smartphone tetap jalan, jadi keluhan hanya datang dari pointer mouse.
+
+### Penyebab
+
+`handlePointerDown` di `src/games/wall-game/components/Board.tsx` memanggil `setPointerCapture`
+sebelum memeriksa jenis pointernya. Selama sebuah pointer ter-capture, browser mengirim `pointerup`
+dan `click` ke elemen yang me-capture, yaitu akar `<svg>`, bukan ke `<rect>` celah tempat handler
+`onClick` dipasang. Jadi setiap handler per-sel mati untuk mouse.
+
+Sentuh tidak ikut rusak karena Chromium mengirim click kompatibilitas ke elemen hasil hit-test
+sentuhan, bukan ke elemen capture. Probe peristiwa di Chromium:
+
+| Pointer | Urutan peristiwa yang terukur |
+| --- | --- |
+| mouse | `pointerdown -> rect`, `pointerup -> svg`, `lostpointercapture -> svg`, `click -> svg` |
+| touch | tap 1 menyimpan preview, tap 2 memasang: `Sisa: 10 balok` menjadi `Sisa: 9 balok` |
+
+Sebelum perbaikan, penjaga browser melaporkan `placed 0 -> 0, seat0 10 -> 10`. Setelah perbaikan
+`placed 0 -> 1, seat0 10 -> 9`.
+
+### Perubahan
+
+Capture diambil di `handlePointerMove`, saat gerakan melewati ambang 8 px yang sudah ada, bukan di
+saat menekan. Klik yang diam tidak pernah ter-capture sehingga handler per-sel berjalan seperti
+yang diasumsikan PR #38. Capture tetap ada ketika memang menyeret, jadi melepaskan pointer di luar
+papan tidak membuat papan macet dalam keadaan men-drag. Aturan dua tap sentuh, jumlah dinding, dan
+tata letak tidak berubah.
+
+### Penjaga baru
+
+`scripts/gameplay-check.mjs` sekarang punya langkah `wallgo desktop`: membuka `/wall-game/local`,
+mengarah ke celah tengah, mengirim `mouse.down` dan `mouse.up`, lalu menuntut jumlah
+`placed-wall-*` bertambah dan sisa dinding kursi pertama berkurang satu. Suite jsdom tidak bisa
+menangkap regression ini: `fireEvent.click` mengirim peristiwa langsung ke elemen yang diberi
+handler, sehingga perilaku retargeting tidak pernah terlihat di sana.
+
 ## 2026-10-17 - Hotfix: empat game mati karena cache edge menyimpan HTML sebagai JavaScript
 
 Empat game serentak memunculkan "Terjadi Kesalahan Aplikasi" dengan isi

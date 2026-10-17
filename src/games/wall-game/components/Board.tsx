@@ -38,6 +38,7 @@ export const Board: React.FC<BoardProps> = ({
   const isDraggingRef = useRef(false);
   const dragMovedRef = useRef(false);
   const dragStartClientPos = useRef<{ x: number; y: number } | null>(null);
+  const dragCapturedRef = useRef(false);
 
   // A tap raises pointerdown and click in one gesture, so the board cannot tell "second tap to
   // confirm" from "first tap to stage" without a gesture id.
@@ -137,13 +138,8 @@ export const Board: React.FC<BoardProps> = ({
     const gesture = ++gestureRef.current;
     isDraggingRef.current = true;
     dragMovedRef.current = false;
+    dragCapturedRef.current = false;
     dragStartClientPos.current = { x: e.clientX, y: e.clientY };
-
-    try {
-      e.currentTarget.setPointerCapture(e.pointerId);
-    } catch {
-      // Ignore in environments without pointer capture
-    }
 
     // A mouse pointer needs no staged preview: the hover ghost already follows it.
     if (!touch) return;
@@ -157,14 +153,24 @@ export const Board: React.FC<BoardProps> = ({
   };
 
   const handlePointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
-    if (!isDraggingRef.current || !gestureIsTouchRef.current) return;
+    if (!isDraggingRef.current) return;
     const start = dragStartClientPos.current;
-    if (start) {
+    if (start && !dragMovedRef.current) {
       const dist = Math.hypot(e.clientX - start.x, e.clientY - start.y);
       if (dist > 8) {
         dragMovedRef.current = true;
+        // Capturing on the press instead would move the browser's click onto the svg root and
+        // silence every slot handler, so a click that never moved must stay uncaptured.
+        dragCapturedRef.current = true;
+        try {
+          svgRef.current?.setPointerCapture(e.pointerId);
+        } catch {
+          // Ignore in environments without pointer capture
+        }
       }
     }
+
+    if (!gestureIsTouchRef.current) return;
 
     const slot = getSlotFromPointer(e.clientX, e.clientY);
     if (!slot) return;
@@ -183,10 +189,13 @@ export const Board: React.FC<BoardProps> = ({
     if (!isDraggingRef.current) return;
     isDraggingRef.current = false;
 
-    try {
-      e.currentTarget.releasePointerCapture(e.pointerId);
-    } catch {
-      // Ignore
+    if (dragCapturedRef.current) {
+      dragCapturedRef.current = false;
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch {
+        // Ignore
+      }
     }
   };
 

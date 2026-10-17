@@ -84,6 +84,94 @@ const MEASURE = () => {
   };
 };
 
+/* WallGo on a desktop pointer.
+ *
+ * jsdom dispatches fireEvent.click straight onto the node that carries the handler, so it
+ * cannot see a browser behaviour where pointer capture moves the click somewhere else. The
+ * one-click mouse rule only has a real meaning in a real browser, which is why it lives here
+ * instead of in tests/ui.
+ */
+async function checkWallGamePlacement(browser) {
+  const ctx = await browser.newContext({
+    viewport: { width: 1280, height: 800 },
+    hasTouch: false,
+    deviceScaleFactor: 2,
+  });
+  const page = await ctx.newPage();
+  const errors = [];
+  const noise = (text) => /_vercel\/(insights|speed-insights)/.test(text ?? '');
+  page.on('console', (m) => {
+    if (m.type() !== 'error') return;
+    if (noise(m.text()) || noise(m.location()?.url)) return;
+    errors.push(`${m.text()} @ ${m.location()?.url ?? '?'}`);
+  });
+  page.on('pageerror', (e) => errors.push(String(e)));
+  page.on('response', (r) => {
+    if (r.status() >= 400 && !noise(r.url())) errors.push(`HTTP ${r.status()} ${r.url()}`);
+  });
+
+  await page.goto(`${BASE}/wall-game/local`, { waitUntil: 'load' });
+  await page.waitForSelector('[data-testid="start-game-btn"]', { timeout: 15000 });
+  await page.click('[data-testid="start-game-btn"]');
+  await page.waitForSelector('[data-testid="wall-slots-layer"]', { timeout: 15000 });
+
+  const read = () =>
+    page.evaluate(() => {
+      const roster = document.querySelector('[data-testid="roster-player-0"]')?.textContent ?? '';
+      const m = /Sisa:\s*(\d+)/.exec(roster);
+      return {
+        placed: document.querySelectorAll('[data-testid^="placed-wall-"]').length,
+        left: m ? Number(m[1]) : -1,
+        staged: document.querySelectorAll('[data-testid="staged-wall-preview"]').length,
+      };
+    });
+
+  // The middle grooves are the ones a fresh board cannot turn into a trap, so try them first.
+  const targets = await page.evaluate(() => {
+    const box = document.querySelector('[data-testid="wallgame-board-svg"]')?.getBoundingClientRect();
+    if (!box) return [];
+    const cx = box.left + box.width / 2;
+    const cy = box.top + box.height / 2;
+    return Array.from(document.querySelectorAll('[data-testid^="groove-cross-"]'))
+      .map((el) => {
+        const b = el.getBoundingClientRect();
+        const x = b.left + b.width / 2;
+        const y = b.top + b.height / 2;
+        return { id: el.getAttribute('data-testid'), x, y, d: Math.hypot(x - cx, y - cy) };
+      })
+      .sort((a, b) => a.d - b.d)
+      .slice(0, 5)
+      .map(({ id, x, y }) => ({ id, x: Math.round(x), y: Math.round(y) }));
+  });
+
+  const before = await read();
+  let hit = null;
+  for (const t of targets) {
+    await page.mouse.move(t.x, t.y);
+    await page.mouse.down();
+    await page.mouse.up();
+    await page.waitForTimeout(120);
+    const now = await read();
+    if (now.placed > before.placed) {
+      hit = { ...t, after: now };
+      break;
+    }
+  }
+
+  check(
+    'wallgo desktop: one mouse click places a wall',
+    !!hit && hit.after.placed === before.placed + 1 && hit.after.left === before.left - 1,
+    `placed ${before.placed} -> ${hit ? hit.after.placed : before.placed}, seat0 ${before.left} -> ${
+      hit ? hit.after.left : before.left
+    }, hovered ${targets.map((t) => t.id).join(' ')}`,
+  );
+
+  await page.screenshot({ path: `${OUT}/wallgo-desktop.png` });
+  check('wallgo desktop: no console errors', errors.length === 0, errors.slice(0, 2).join(' | '));
+
+  await ctx.close();
+}
+
 async function run() {
   const executablePath = findBrowser();
   if (!executablePath) {
@@ -316,6 +404,8 @@ async function run() {
 
     await ctx.close();
   }
+
+  await checkWallGamePlacement(browser);
 
   await browser.close();
   const passed = results.filter((r) => r.ok).length;
