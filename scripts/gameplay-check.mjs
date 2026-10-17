@@ -172,6 +172,26 @@ async function checkWallGamePlacement(browser) {
   await ctx.close();
 }
 
+/* The setup screen is a normal document flow page, so "is the column centered" is a
+   measurement, not a snapshot: the widest block defines the column, and the two gaps
+   between it and the viewport edges must be equal. */
+const SETUP_COLUMN = () => {
+  const root = document.querySelector('[data-testid="bomberman-setup"]');
+  const nodes = Array.from(root ? root.querySelectorAll('.bm-back--page, h2, .bm-lede, .bm-pick, .bm-go') : []);
+  const boxes = nodes.map((el) => el.getBoundingClientRect());
+  if (!boxes.length) return null;
+  const left = Math.min(...boxes.map((b) => b.left));
+  const right = Math.max(...boxes.map((b) => b.right));
+  return {
+    blocks: boxes.length,
+    x: Math.round(left),
+    width: Math.round(right - left),
+    leftGap: Math.round(left),
+    rightGap: Math.round(window.innerWidth - right),
+    viewport: window.innerWidth,
+  };
+};
+
 async function run() {
   const executablePath = findBrowser();
   if (!executablePath) {
@@ -218,6 +238,17 @@ async function run() {
     await page.waitForSelector('[data-testid="bomberman-start"]', { timeout: 15000 });
     check(`${vp.name}: setup screen renders`, true);
     await page.screenshot({ path: `${OUT}/${vp.name}-setup.png` });
+
+    /* Centering has to be measured before the arena replaces this page. The 4 px allowance
+       covers rounding at deviceScaleFactor 2; the bug this catches is a 500 px+ imbalance. */
+    const column = await page.evaluate(SETUP_COLUMN);
+    check(
+      `${vp.name}: setup column is centered`,
+      !!column && Math.abs(column.leftGap - column.rightGap) <= 4,
+      column
+        ? `x ${column.x}, width ${column.width} of ${column.viewport}, gap ${column.leftGap} / ${column.rightGap}, ${column.blocks} blocks`
+        : 'no setup blocks measured',
+    );
 
     await page.click('[data-testid="bomberman-start"]');
     await page.waitForSelector('[data-testid="bomberman-board"]', { timeout: 5000 });

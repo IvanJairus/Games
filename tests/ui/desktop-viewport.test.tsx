@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { Hub } from '@/pages/Hub';
 import { WallgameLocal } from '@/games/wall-game/pages/WallgameLocal';
 import { TicTacToeLocal } from '@/games/tic-tac-toe/pages/TicTacToeLocal';
+import { BombermanLocal } from '@/games/bomberman/pages/BombermanLocal';
 
 describe('Desktop Viewport Automation Suite (1024px)', () => {
   beforeEach(() => {
@@ -141,5 +142,33 @@ describe('Desktop Viewport Automation Suite (1024px)', () => {
     expect(screen.getByTestId('cell-0')).toHaveTextContent('');
     // Cell 6 has X
     expect(screen.getByTestId('cell-6')).toHaveTextContent('X');
+  });
+
+  /* jsdom has no layout engine, so this can only prove which element owns the column:
+     the measured left/right gaps live in scripts/gameplay-check.mjs, where a real browser
+     reports them. The bug this pins is the practice setup page rendering its blocks as
+     direct children of .bm-setup instead of inside the shared centered wrapper. */
+  it('puts every Bomberman practice setup block inside the shared centered column', () => {
+    const { container } = render(
+      <MemoryRouter initialEntries={['/bomberman/local']}>
+        <Routes>
+          <Route path="/bomberman/local" element={<BombermanLocal />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    const setup = container.querySelector('[data-testid="bomberman-setup"]');
+    expect(setup).not.toBeNull();
+
+    const column = setup!.querySelector('.bm-page__inner');
+    expect(column).not.toBeNull();
+    expect(setup!.children).toHaveLength(1);
+
+    for (const selector of ['.bm-back--page', 'h2', '.bm-lede', '.bm-pick', '.bm-go']) {
+      const all = Array.from(setup!.querySelectorAll(selector));
+      expect(all.length, selector).toBeGreaterThan(0);
+      const outside = all.filter((el) => !column!.contains(el));
+      expect(outside, `${selector} sits outside .bm-page__inner`).toHaveLength(0);
+    }
   });
 });

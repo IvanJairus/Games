@@ -211,67 +211,71 @@ export function BombermanLocal() {
   if (!sim) {
     return (
       <div className="bm-page bm-setup" data-testid="bomberman-setup">
-        <Link className="bm-back bm-back--page" to="/bomberman">
-          &larr; /games/bomberman
-        </Link>
-        <h2>Latihan melawan bot</h2>
-        <p className="bm-lede">
-          Tanam bom, bongkar bata lunak, dan keluar dari api sebelum sumburnya habis. Menang{' '}
-          {SCORE_TO_WIN} ronde untuk jadi juara.
-        </p>
+        <div className="bm-page__inner">
+          <Link className="bm-back bm-back--page" to="/bomberman">
+            &larr; /games/bomberman
+          </Link>
+          <h2>Latihan melawan bot</h2>
+          <p className="bm-lede">
+            Tanam bom, bongkar bata lunak, dan keluar dari api sebelum sumburnya habis. Menang{' '}
+            {SCORE_TO_WIN} ronde untuk jadi juara.
+          </p>
 
-        <fieldset className="bm-pick">
-          <legend>Karakter</legend>
-          <CharacterPicker value={setup.charId} onChange={chooseChar} />
-          <p className="bm-note">{characterById(setup.charId).blurb}</p>
-        </fieldset>
+          <fieldset className="bm-pick">
+            <legend>Karakter</legend>
+            <CharacterPicker value={setup.charId} onChange={chooseChar} />
+            <p className="bm-note">{characterById(setup.charId).blurb}</p>
+          </fieldset>
 
-        <fieldset className="bm-pick">
-          <legend>Lawan</legend>
-          <div className="bm-pick__row">
-            {BOMBER_BOT_LEVELS.map((l) => (
-              <button
-                key={l.id}
-                type="button"
-                aria-pressed={setup.level === l.id}
-                onClick={() => setSetup({ ...setup, level: l.id })}
-                data-testid={`bomberman-level-${l.id}`}
-              >
-                {l.label}
-              </button>
-            ))}
-          </div>
-          <p className="bm-note">{describeBombermanBot(setup.level)}</p>
-        </fieldset>
-
-        <fieldset className="bm-pick">
-          <legend>Papan</legend>
-          <div className="bm-field">
-            <span className="bm-field__label">Jumlah kursi</span>
+          <fieldset className="bm-pick">
+            <legend>Lawan</legend>
             <div className="bm-pick__row">
-              {[2, 4].map((n) => (
+              {BOMBER_BOT_LEVELS.map((l) => (
                 <button
-                  key={n}
+                  key={l.id}
                   type="button"
-                  aria-pressed={setup.seats === n}
-                  onClick={() => setSetup({ ...setup, seats: n })}
-                  data-testid={`bomberman-seats-${n}`}
+                  aria-pressed={setup.level === l.id}
+                  onClick={() => setSetup({ ...setup, level: l.id })}
+                  data-testid={`bomberman-level-${l.id}`}
                 >
-                  {n} pemain
+                  {l.label}
                 </button>
               ))}
             </div>
-          </div>
-          <div className="bm-field">
-            <span className="bm-field__label">Ukuran arena</span>
-            <BoardPicker seats={setup.seats} value={setup.size} onChange={(size) => setSetup({ ...setup, size })} />
-          </div>
-          <p className="bm-note">Papan besar hampir dua kali jumlah petaknya. Di layar ponsel petaknya jadi lebih kecil.</p>
-        </fieldset>
+            <p className="bm-note">{describeBombermanBot(setup.level)}</p>
+          </fieldset>
 
-        <button className="bm-go" type="button" onClick={() => start(setup)} data-testid="bomberman-start">
-          Mulai
-        </button>
+          <fieldset className="bm-pick">
+            <legend>Papan</legend>
+            <div className="bm-field">
+              <span className="bm-field__label">Jumlah kursi</span>
+              <div className="bm-pick__row">
+                {[2, 4].map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    aria-pressed={setup.seats === n}
+                    onClick={() => setSetup({ ...setup, seats: n })}
+                    data-testid={`bomberman-seats-${n}`}
+                  >
+                    {n} pemain
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="bm-field">
+              <span className="bm-field__label">Ukuran arena</span>
+              <BoardPicker seats={setup.seats} value={setup.size} onChange={(size) => setSetup({ ...setup, size })} />
+            </div>
+            <p className="bm-note">
+              Papan besar hampir dua kali jumlah petaknya. Di layar ponsel petaknya jadi lebih kecil.
+            </p>
+          </fieldset>
+
+          <button className="bm-go" type="button" onClick={() => start(setup)} data-testid="bomberman-start">
+            Mulai
+          </button>
+        </div>
       </div>
     );
   }
