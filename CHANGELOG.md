@@ -79,6 +79,7 @@ Belum tertutup, dan tidak pura-pura tertutup: produk ini tidak punya akun sama s
 tiket tidak menghalangi orang yang tahu kode kamar; dia tetap bisa mint kursinya sendiri. Yang ditutup
 adalah pemalsuan tiket, pengambilan kursi orang lain lewat token tebak-tebakan, dan replay tiket ke
 kamar lain.
+
 ## 2026-10-19 - Slap Arena: aturan main dibungkus API murni, fisika tidak disentuh
 
 Langkah 2 dari rencana migrasi lapisan realtime ke Cloudflare Durable Objects
