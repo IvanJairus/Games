@@ -47,14 +47,32 @@ bisa merah.
 
 ## Deploy
 
-Belum dilakukan. Perintahnya nanti:
+Sudah dilakukan sebagai deploy uji, atas izin user, pada 19 Oktober:
 
 ```bash
 cd cloudflare
+npx wrangler secret put TICKET_SECRET   # sekali saja
 npx wrangler deploy
 ```
 
-Setelah itu `ALLOWED_ORIGINS` harus memuat domain Vercel produksi, dan frontend perlu env
+Worker aktif di `https://ij-game-rooms.filemonivanjairus.workers.dev` dengan `TEST_MODE = "0"`.
+Frontend belum ada yang menunjuk ke sini: tidak ada satu pun berkas di `src/` yang memanggil URL ini,
+jadi jalur Supabase hari ini tidak berubah.
+
+Terukur pada deploy uji itu, dari laptop ini ke edge Cloudflare:
+
+| Yang diukur | Hasil |
+| --- | --- |
+| Suite 16 tes dijalankan terhadap URL tayang (`TEST_MODE=1` sementara) | 16 lulus dari 16, n = 1 rangkaian |
+| `POST /room/<kode>/ticket` | n = 8: min 28 ms, median 41 ms, max 546 ms |
+| Handshake WebSocket dengan tiket sah | n = 5: min 59 ms, median 61 ms, max 70 ms |
+| Konfigurasi produksi setelah revert | `/health` 200, mint 200, `?probe=1` menolak 426, koneksi bertiket 101 |
+
+Angka latensi ini satu sampel dari satu laptop, dan catatan `macos-environment` berlaku: jaringan
+kantor tidak layak untuk mengukur latensi. Interval dunia (`applied`/`held`) belum terukur karena
+protokolnya belum membawa keduanya.
+
+Setelah deploy nyata, `ALLOWED_ORIGINS` harus memuat domain Vercel produksi, dan frontend perlu env
 `VITE_TRANSPORT=cloudflare` plus URL Worker.
 
 ## Batas yang dijaga kode ini
@@ -94,3 +112,8 @@ berhenti), bukan kode close-nya. Perilaku pada `wrangler deploy` belum diukur.
   untuk `acceptWebSocket`, `getWebSockets`, dan `webSocketMessage`.
 - [Workers Runtime APIs, Context](https://developers.cloudflare.com/workers/runtime-apis/context/)
   untuk larangan `waitUntil()` sebagai penahan hidup objek.
+- [Web Crypto](https://developers.cloudflare.com/workers/runtime-apis/web-crypto/) untuk daftar
+  algoritma yang tersedia di runtime: HMAC mendukung `sign`, `verify`, dan `importKey`, yang dipakai
+  `src/ticket.ts`.
+- [Environment variables](https://developers.cloudflare.com/workers/configuration/environment-variables/)
+  untuk pemisahan `[vars]` di `wrangler.toml`, `wrangler secret put`, dan `.dev.vars` lokal.
