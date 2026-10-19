@@ -8,6 +8,33 @@ terpisah saat kamu menerbitkan rilis.
 Entri dimulai dari 14 Oktober 2026. Perubahan sebelum tanggal itu ada pada riwayat git dan daftar
 pull request, karena tidak dicatat saat terjadi.
 
+## 2026-10-19 - Kamar Cloudflare akhirnya punya pintu: tiket bertanda tangan
+
+`cloudflare/src/room.ts` versi sebelumnya menerbitkan token sendiri dan menerima token apa pun yang
+sudah ada di tabelnya, jadi yang menahan akses hanya allowlist Origin. Origin bisa dikirim dari skrip
+mana pun. Audit `netbench/audits/do-slap-arena-2026-10-19.md` mencatat ini sebagai temuan 1.
+
+Sekarang kursi dialokasikan lewat `POST /room/<kode>/ticket`, dan handshake WebSocket hanya diterima
+kalau membawa tiket HMAC-SHA256 yang ditandatangani Worker untuk kode kamar itu, id pemain 32 heks,
+nama game, dan jatuh tempo. Alasannya ditolak dengan 401 sebelum socket diterima: `missing_ticket`,
+`malformed_ticket`, `bad_signature`, `wrong_room`, `expired`. Tiket yang kedaluwarsa di tengah sesi
+menutup socket dengan 4001 pada pesan berikutnya. Nama pemain tidak lagi diambil dari query koneksi,
+dan game dikunci pada mint pertama (`game_conflict` 409), yang sekaligus menutup temuan kecil
+"`gameCode` diambil dari query koneksi terakhir".
+
+Terukur pada `wrangler dev --local`, n = 1 rangkaian untuk setiap baris:
+
+| Tahap | Hasil |
+| --- | --- |
+| Suite baru dijalankan terhadap worker versi commit | 3 lulus, 13 gagal. Yang paling penting: `tiket palsu seharusnya ditolak, dapat: terbuka`, dan probe tangan `koneksi tanpa tiket` membalas `HEAD: koneksi tanpa tiket DITERIMA, kursi langsung diberikan` |
+| Suite yang sama setelah tiket masuk | 16 lulus dari 16, `npx tsc --noEmit` exit 0 |
+
+Belum tertutup, dan tidak pura-pura tertutup: produk ini tidak punya akun sama sekali
+(`src/lib/supabase.ts` hanya memakai anon key, id pemain adalah string acak di localStorage), jadi
+tiket tidak menghalangi orang yang tahu kode kamar; dia tetap bisa mint kursinya sendiri. Yang ditutup
+adalah pemalsuan tiket, pengambilan kursi orang lain lewat token tebak-tebakan, dan replay tiket ke
+kamar lain.
+
 ## 2026-10-17 - WallGo: kursi ke-5 dan ke-6 akhirnya berangkat dari jarak yang sama
 
 `docs/wallgame-rules.md:23` sudah menuntutnya: semua pemain berangkat dengan jarak tempuh yang

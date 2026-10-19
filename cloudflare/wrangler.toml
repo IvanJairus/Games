@@ -18,3 +18,6 @@ new_sqlite_classes = ["GameRoom"]
 ALLOWED_ORIGINS = "http://localhost:5199,https://www.ivanjairus.xyz,https://ij-games.vercel.app"
 # Game uji hanya aktif saat flag ini "1". Jangan nyalakan di produksi.
 TEST_MODE = "0"
+
+# TICKET_SECRET (kunci HMAC tiket) sengaja tidak ada di file ini.
+# Produksi: npx wrangler secret put TICKET_SECRET. Lokal: .dev.vars atau --var.
