@@ -22,9 +22,9 @@ cd cloudflare
 ROOM_BASE=http://localhost:8790 node --test --test-timeout=20000 tests/ws.test.mjs
 ```
 
-Enam belas tes, semuanya lulus pada `wrangler dev --local` (n = 1 rangkaian, 19 Oktober). Suite ini
-dijalankan lebih dulu terhadap worker versi commit dan gagal 13 dari 16, jadi penjaga barunya terbukti
-bisa merah.
+Enam belas tes tiket plus dua tes timer, semuanya lulus pada `wrangler dev --local` (n = 1 rangkaian,
+19 Oktober). Suite ini dijalankan lebih dulu terhadap worker tanpa fitur yang dijaganya, dan gagal di
+sana, jadi penjaganya terbukti bisa merah.
 
 | Tes | Yang dijaga |
 | --- | --- |
@@ -44,6 +44,8 @@ bisa merah.
 | pengambilalihan kursi | socket lama berhenti menerima siaran dan tidak dihitung dua kali |
 | aksi sebelum mulai | `wrong_phase`, dan `too_few_players` untuk mulai sendirian |
 | dua pemain mulai | fase `playing` dan dunia benar-benar maju |
+| kamar diam total | server tetap menyiarkan ~19 state per detik dan tick naik sendiri tanpa satu byte pun dari klien |
+| banjir 30 input | siaran yang diterima klien tidak menempel ke jumlah input (dibatasi <= 15 untuk 30 input dalam 400 ms) |
 
 ## Deploy
 
@@ -84,20 +86,21 @@ Setelah deploy nyata, `ALLOWED_ORIGINS` harus memuat domain Vercel produksi, dan
 - Pesan masuk maksimal 1024 karakter, payload di luar itu dibuang.
 - Origin harus sama dengan host Worker atau ada di `ALLOWED_ORIGINS`.
 - Nama dibersihkan dari `<`, `>`, `&` dan dipotong 12 karakter, dan hanya diterima lewat mint.
+- Dunia dimajukan timer 50 ms selama ada pemain, dan setiap tick menghasilkan tepat satu siaran,
+  termasuk saat tidak ada satu pesan masuk pun. Timer mati saat kamar kosong atau laga selesai.
 
 ## Yang belum benar, diketahui, dan jadi pekerjaan berikutnya
 
-Tiga temuan audit yang tersisa dari `netbench/audits/do-slap-arena-2026-10-19.md`:
+Satu temuan audit yang tersisa dari `netbench/audits/do-slap-arena-2026-10-19.md`:
 
-1. Tick didorong pesan masuk klien. Komentar lama yang melarangnya salah: yang dilarang dokumentasi
-   Cloudflare adalah memakai `waitUntil()` untuk menahan objek tetap hidup, bukan memakai timer selama
-   masih ada WebSocket terbuka.
-2. Satu pesan masuk memicu satu siaran keluar, jadi siaran tumbuh mengikuti jumlah pesan masuk,
-   bukan mengikuti tick.
-3. Protokol tidak membawa `applied` dan `held`, sehingga loop latency tidak terukur di game ini.
+1. Protokol tidak membawa `applied` dan `held`, sehingga loop latency tidak terukur dari sisi klien.
+   Timer sekarang mengirim tepat satu siaran per tick (terukur 19,0 siaran per detik, 57 tick unik,
+   0 dobel, gap median 52,6 ms pada satu jendela lokal), tapi tanpa dua field itu tidak bisa dibuktikan
+   klien menerimanya dengan laju yang sama.
 
-Ditambah dua hal lebih kecil: batas pesan masih menghitung karakter UTF-16 bukan byte (PR #75 sudah
-membuktikan versi byte di sisi klien), dan belum ada batas laju per koneksi.
+Ditambah tiga hal lebih kecil: batas pesan masih menghitung karakter UTF-16 bukan byte (PR #75 sudah
+membuktikan versi byte di sisi klien), belum ada batas laju per koneksi, dan hasil laga belum ditulis
+ke Postgres dari sisi server.
 
 Satu catatan lingkungan: saat socket lama ditutup karena kursi diambil alih, workerd lokal mengirim
 close frame tapi tidak menuntaskan teardown, jadi klien bertahan di readyState 2 dan event `close`

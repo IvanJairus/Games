@@ -284,3 +284,53 @@ test('start dengan dua pemain mengubah fase dan dunia maju seiring waktu', async
   assert.ok(mine && mine.x > 0, `dunia harus maju, x=${mine?.x}`);
   a.ws.terminate(); b.ws.terminate();
 });
+
+test('kamar yang semua pemainnya diam tetap menyiarkan dan memajukan dunia', async () => {
+  const code = room('Q');
+  const a = await connect(code, { name: 'Aina' });
+  await a.open();
+  const wa = await a.recv('welcome');
+  const b = await connect(code, { name: 'Bella' });
+  await b.open();
+  await b.recv('welcome');
+
+  a.ws.send(JSON.stringify({ t: 'start' }));
+  await a.recvPhase('playing');
+  a.ws.send(JSON.stringify({ t: 'setvx', vx: 10 }));
+  await a.recvPhase('playing');
+
+  // Setelah ini tidak ada satu byte pun yang dikirim dari klien.
+  const mark = a.log.length;
+  await new Promise((r) => setTimeout(r, 700));
+  const quiet = a.log.slice(mark).filter((m) => m.t === 'state');
+  const ticks = quiet.map((m) => m.tick);
+  const last = quiet.at(-1)?.world?.find((p) => p.id === wa.id);
+  assert.ok(quiet.length >= 5, `selama diam harus ada siaran dari server, dapat ${quiet.length}`);
+  assert.ok(ticks.at(-1) > ticks[0], `tick harus naik sendiri: ${ticks[0]} -> ${ticks.at(-1)}`);
+  assert.ok(last && last.x > 0, `dunia harus maju tanpa input, x=${last?.x}`);
+  a.ws.terminate(); b.ws.terminate();
+});
+
+test('banjir tiga puluh input tidak menghasilkan tiga puluh siaran', async () => {
+  const code = room('R');
+  const a = await connect(code, { name: 'Candra' });
+  await a.open();
+  await a.recv('welcome');
+  const b = await connect(code, { name: 'Dina' });
+  await b.open();
+  await b.recv('welcome');
+
+  a.ws.send(JSON.stringify({ t: 'start' }));
+  await a.recvPhase('playing');
+
+  const mark = a.log.length;
+  const sent = 30;
+  for (let i = 0; i < sent; i += 1) {
+    a.ws.send(JSON.stringify({ t: 'setvx', vx: i % 2 ? 5 : -5 }));
+  }
+  await new Promise((r) => setTimeout(r, 400));
+  const states = a.log.slice(mark).filter((m) => m.t === 'state');
+  assert.ok(states.length >= 3, `400 ms harus berisi beberapa tick, dapat ${states.length}`);
+  assert.ok(states.length <= sent / 2, `siaran ${states.length} untuk ${sent} input: siaran masih menempel ke pesan masuk`);
+  a.ws.terminate(); b.ws.terminate();
+});
