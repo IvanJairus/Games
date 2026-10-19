@@ -237,3 +237,55 @@ gap terkecil 0,1 ms berpasangan dengan gap terbesar 142,3 ms dalam jendela yang 
 dengan siaran yang tertahan lalu datang berdekatan, tapi itu baru pembacaan satu jendela dan belum
 dibuktikan. Membedakan jitter jaringan dari keterlambatan aplikasi butuh `applied` dan `held` di
 protokol, dan itu langkah berikutnya.
+
+## 10. Hasil langkah 4 urutan audit: `applied`, `held`, dan harness soak (19 Oktober)
+
+Bentuk pesannya diambil dari netbench (`netbench/src/shared/protocol.ts:54-71` dan
+`netbench/src/client/metrics.ts:1-8`), bukan karangan sendiri: `applied[seat]` adalah seq terakhir yang
+benar-benar dieksekusi pemegang sim, `held[seat]` adalah milidetik aksi itu tertahan di pemegang sim
+sebelum ikut terbit, diukur dengan satu jam di dalam pemegang sim. Loop latency dihitung dari satu jam,
+jam klien: t0 saat aksi dikirim, t1 saat `applied[seat] >= seq` terlihat. Tidak ada timestamp server yang
+dipercaya dan tidak ada sinkronisasi clock antar mesin.
+
+Di DO pencatatannya ada di lapisan transport, bukan di adapter game. Pesan masuk yang membawa `seq`
+dicatat saat diterima, dan aksi yang ditolak (`apply()` membalas `ok: false`) tidak dicatat sama sekali.
+`publishApplied()` dipanggil di dalam `broadcast()`, jadi `applied` dan `held` yang terbit selalu merujuk
+aksi yang sama.
+
+Bukti merah-lalu-hijau, n = 1 rangkaian per baris:
+
+| Tahap | Hasil |
+| --- | --- |
+| Empat tes baru terhadap kode tick tanpa metrik (`95327d1`) | 4 gagal dari 4: dua assertion (`state harus punya peta applied`, `state harus punya applied`) dan dua timeout menunggu applied |
+| Suite penuh setelah metrik masuk, lokal | 22 lulus dari 22, `npx tsc --noEmit` exit 0, `guard:check` bersih |
+| Suite penuh terhadap URL tayang (`TEST_MODE=1` sementara, versi `18e08d7d`) | 22 lulus dari 22, n = 1 rangkaian |
+
+Terukur dengan `tests/soak.mjs`: 4 kursi, 30 detik, satu aksi per kursi per 50 ms.
+
+| | Lokal `wrangler dev` | Tayang `workers.dev` |
+| --- | --- | --- |
+| loop latency | n=2.316: p50 52,7 / p90 53,4 / max 57,0 ms | n=2.332: p50 50,1 / p90 73,5 / max 298,9 ms |
+| interval state | n=2.357: p50 51,9 / max 55,9 ms | n=2.442: p50 49,8 / max 258,1 ms |
+| held di server | n=2.361: p50 51,0 / max 53,0 ms | n=2.446: p50 24,0 / p90 44,0 / max 50,0 ms |
+| stall di atas 200 ms | 0 | 12 dari 2.442 (0,49%), rata-rata 244,1 ms |
+| tick hilang | 0 | 0 |
+| aksi terbalas | 2.316 dari 2.316 | 2.332 dari 2.332 |
+| state per detik per kursi | 19,6 | 20,4 |
+| byte per detik per kursi | terima 12.408, kirim 585 | terima 12.867, kirim 589 |
+
+Yang dibaca dari angka itu: laju server tahan di 20 Hz lewat internet, dan sebagian besar loop adalah
+batas tick, bukan jaringan (`held` p50 24,0 ms dari total 50,1 ms di kolom tayang). Paralel dengan itu,
+12 stall di kolom tayang adalah konfirmasi sebagian dari pembacaan di bagian 9 yang waktu itu saya tulis
+sebagai "belum dibuktikan". Bentuk lokal juga jujur perlu dicatat: `held` p50 51,0 ms di lokal lebih
+tinggi dari kolom tayang karena klien tes dan timer server sama-sama 50 ms dan berjalan sephase. Itu
+artefak harness, bukan keunggulan jaringan.
+
+Yang TIDAK boleh disimpulkan dari angka ini: bahwa Cloudflare lebih cepat dari Supabase untuk game ini.
+Angka pembanding 86,4 ms di bagian 2 diukur netbench dengan dunia dan harness milik sendiri, sementara
+kolom tayang di atas mengukur dunia `selftest` dengan harness baru. Perbandingan yang sah keluar setelah
+langkah 5, saat Slap Arena asli bisa dijalankan di kedua pintu dengan `tests/soak.mjs` yang sama.
+
+Cara menjalankan: `node tests/soak.mjs --base <url> --seats 4 --seconds 30 --out <csv>`. Perlu
+`TEST_MODE=1` karena game `selftest` hanya terdaftar saat flag itu aktif. CSV-nya memakai bentuk
+`MetricRow` netbench (`seat,kind,t,v` dengan kind `loop`, `interval`, `queue`, `stall`, `loss`, `bytes`)
+supaya alat analisa netbench bisa dibaca ulang nanti.

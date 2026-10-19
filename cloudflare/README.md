@@ -22,9 +22,9 @@ cd cloudflare
 ROOM_BASE=http://localhost:8790 node --test --test-timeout=20000 tests/ws.test.mjs
 ```
 
-Enam belas tes tiket plus dua tes timer, semuanya lulus pada `wrangler dev --local` (n = 1 rangkaian,
-19 Oktober). Suite ini dijalankan lebih dulu terhadap worker tanpa fitur yang dijaganya, dan gagal di
-sana, jadi penjaganya terbukti bisa merah.
+Dua puluh dua tes: enam belas tiket, dua timer, empat metrik protokol. Semuanya lulus pada
+`wrangler dev --local` (n = 1 rangkaian, 19 Oktober). Tiap kelompok tes dijalankan lebih dulu terhadap
+worker tanpa fitur yang dijaganya, dan gagal di sana, jadi penjaganya terbukti bisa merah.
 
 | Tes | Yang dijaga |
 | --- | --- |
@@ -46,6 +46,10 @@ sana, jadi penjaganya terbukti bisa merah.
 | dua pemain mulai | fase `playing` dan dunia benar-benar maju |
 | kamar diam total | server tetap menyiarkan ~19 state per detik dan tick naik sendiri tanpa satu byte pun dari klien |
 | banjir 30 input | siaran yang diterima klien tidak menempel ke jumlah input (dibatasi <= 15 untuk 30 input dalam 400 ms) |
+| state punya peta | `applied` dan `held` terbit untuk tiap kursi, bernilai 0 sebelum ada aksi |
+| aksi dieksekusi | `applied[seat]` naik ke seq-nya dan `held[seat]` di bawah satu tick |
+| seq lama datang telat | `applied` tidak pernah mundur |
+| aksi ditolak | `applied` tidak bergeser, jadi angka itu berarti "benar-benar dieksekusi" |
 
 ## Deploy
 
@@ -58,16 +62,16 @@ npx wrangler deploy
 ```
 
 Worker aktif di `https://ij-game-rooms.filemonivanjairus.workers.dev` dengan `TEST_MODE = "0"`.
-Versi tayang sekarang `187cba5b-f138-4e0b-a9e8-6971bb99cd4b` (kode timer tiket). Frontend belum ada
-yang menunjuk ke sini: tidak ada satu pun berkas di `src/` yang memanggil URL ini, jadi jalur Supabase
-hari ini tidak berubah.
+Versi tayang sekarang `7bbd4bf9-8e77-4270-8cb0-84f58203c858` (tiket + timer + metrik protokol).
+Frontend belum ada yang menunjuk ke sini: tidak ada satu pun berkas di `src/` yang memanggil URL ini,
+jadi jalur Supabase hari ini tidak berubah.
 
 Terukur dari laptop ini ke edge Cloudflare selama dua deploy uji (tiket, lalu timer). Baris suite dan
 laju siaran berasal dari deploy timer; baris mint dan handshake dari deploy tiket:
 
 | Yang diukur | Hasil |
 | --- | --- |
-| Suite 18 tes dijalankan terhadap URL tayang (`TEST_MODE=1` sementara) | 18 lulus dari 18, n = 1 rangkaian |
+| Suite 22 tes dijalankan terhadap URL tayang (`TEST_MODE=1` sementara) | 22 lulus dari 22, n = 1 rangkaian |
 | Laju siaran saat klien diam total, lewat internet | 60 state dalam 3.003 ms = 20,0 per detik, 60 tick unik, 0 dobel; gap min 0,1 / median 49,7 / max 142,3 ms |
 | `POST /room/<kode>/ticket` | n = 8: min 28 ms, median 41 ms, max 546 ms |
 | Handshake WebSocket dengan tiket sah | n = 5: min 59 ms, median 61 ms, max 70 ms |
@@ -94,16 +98,39 @@ Setelah deploy nyata, `ALLOWED_ORIGINS` harus memuat domain Vercel produksi, dan
 
 ## Yang belum benar, diketahui, dan jadi pekerjaan berikutnya
 
-Satu temuan audit yang tersisa dari `netbench/audits/do-slap-arena-2026-10-19.md`:
+Satu temuan audit yang tersisa dari `netbench/audits/do-slap-arena-2026-10-19.md` sudah tertutup:
+protokol sekarang membawa `applied` dan `held` (lihat bagian Mengukur di bawah). Yang masih terbuka:
 
-1. Protokol tidak membawa `applied` dan `held`, sehingga loop latency tidak terukur dari sisi klien.
-   Timer sekarang mengirim tepat satu siaran per tick (terukur 19,0 siaran per detik dan 57 tick unik
-   tanpa duplikasi di lokal, 20,0 siaran per detik dan 60 tick unik tanpa duplikasi pada deploy uji),
-   tapi tanpa dua field itu tidak bisa dibuktikan klien menerimanya dengan laju yang sama.
+1. Batas pesan masih menghitung karakter UTF-16 (`MAX_MESSAGE_CHARS`), bukan byte. PR #75 sudah
+   membuktikan versi byte di sisi klien; sisi Worker belum.
+2. Belum ada batas laju per koneksi, padahal mint adalah endpoint publik.
+3. Hasil laga masih ditulis klien. Keputusan Anda: DO yang menulis lewat function saat `finished`.
+   Yang belum Anda pilih: function itu dipanggil dengan anon key atau dengan `sb_secret_…` sebagai
+   secret Worker.
+4. Perbandingan Cloudflare versus Supabase Broadcast belum sah. `tests/soak.mjs` mengukur dunia
+   `selftest`; angka 86,4 ms di netbench mengukur dunianya sendiri. Yang sama baru terbandingkan setelah
+   Slap Arena asli berjalan di kedua pintu.
 
-Ditambah tiga hal lebih kecil: batas pesan masih menghitung karakter UTF-16 bukan byte (PR #75 sudah
-membuktikan versi byte di sisi klien), belum ada batas laju per koneksi, dan hasil laga belum ditulis
-ke Postgres dari sisi server.
+## Mengukur
+
+```bash
+cd cloudflare
+node tests/soak.mjs --base http://localhost:8790 --seats 4 --seconds 30 --out /tmp/soak.csv
+```
+
+Butuh `TEST_MODE=1` karena game `selftest` hanya terdaftar saat flag itu aktif. Definisinya sama dengan
+netbench: loop latency dari satu jam (jam klien, `t0` saat aksi dengan `seq` dikirim, `t1` saat
+`applied[seat] >= seq` terlihat), dan `held` adalah tahan di dalam pemegang sim yang memisahkan antrean
+server dari perjalanan jaringan. CSV memakai bentuk `MetricRow` netbench (`seat,kind,t,v`).
+
+Terukur pada 19 Oktober, 4 kursi x 30 detik (n = 2.316 loop lokal, n = 2.332 loop tayang):
+
+| | Lokal | Tayang |
+| --- | --- | --- |
+| loop latency p50 / p90 / max | 52,7 / 53,4 / 57,0 ms | 50,1 / 73,5 / 298,9 ms |
+| held p50 | 51,0 ms | 24,0 ms |
+| stall di atas 200 ms | 0 | 12 dari 2.442 |
+| state per detik per kursi | 19,6 | 20,4 |
 
 Satu catatan lingkungan: saat socket lama ditutup karena kursi diambil alih, workerd lokal mengirim
 close frame tapi tidak menuntaskan teardown, jadi klien bertahan di readyState 2 dan event `close`
