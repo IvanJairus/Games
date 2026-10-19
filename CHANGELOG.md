@@ -22,7 +22,7 @@ Yang dicari server nanti adalah satu pintu validasi, jadi `SlapSim` yang tetap b
   File ini hanya mengimpor `./sim` dan `./types`, jadi ia lolos cek kemurnian engine yang baru.
 - Master dan hitungan `seq` per pemain hidup di `WeakMap` milik modul. Tidak ada properti baru yang
   ditempel ke objek game.
-- `tests/unit/slap-arena-api.test.ts`, 18 test: satu per alasan penolakan (ketujuh `RejectReason`
+- `tests/unit/slap-arena-api.test.ts`, 19 test: satu per alasan penolakan (ketujuh `RejectReason`
   muncul minimal sekali), aturan nama, aturan kursi, aturan fase, aturan `seq`, aturan `dt`, batas
   ukuran pesan, dan satu golden trace.
 
@@ -53,12 +53,13 @@ di tick 40 dan 120, pemain B bergerak konstan).
 
 Angka ini dicetak `console.log` di dalam test, bukan saya salin ke dokumen terpisah.
 
-Gerbang ini dibuktikan bisa gagal, dua eksperimen:
+Gerbang ini dibuktikan bisa gagal, tiga eksperimen:
 
 | Eksperimen | Hasil |
 | --- | --- |
 | `setInput` dilewati dari API | baru 522 byte, `identical: false`, fase akhir `BATTLE`, test merah |
 | objek input di-clone sebelum masuk `setInput` | tetap 538 versus 538, **tidak terdeteksi** |
+| `byteLength` dihitung sebagai jumlah karakter, bukan byte UTF-8 | test nama multi-byte merah: `expected { ok: true } to deeply equal { ok: false, reason: 'bad_payload' }` |
 
 Eksperimen kedua adalah alasan tidak ada komentar di kode yang mengklaim bahwa meneruskan objek tanpa
 salinan itu penting: trace ini tidak bisa membedakannya.

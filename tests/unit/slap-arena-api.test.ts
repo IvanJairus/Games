@@ -187,6 +187,16 @@ describe('gameApi message budget', () => {
     // A message that fits the budget still gets through.
     expect(applyAction(sim, 'p1', join('p1', 'x'.repeat(40)))).toEqual({ ok: true });
   });
+
+  it('counts bytes and not characters, so a multibyte name is measured honestly', () => {
+    const sim = createGame();
+    // 300 characters is under 512, but 600 UTF-8 bytes is over it.
+    const wide = 'é'.repeat(300);
+    expect(wide.length).toBeLessThan(MAX_MESSAGE_BYTES);
+    expect(Buffer.byteLength(JSON.stringify(join('p1', wide)), 'utf8')).toBeGreaterThan(MAX_MESSAGE_BYTES);
+    expect(applyAction(sim, 'p1', join('p1', wide))).toEqual({ ok: false, reason: 'bad_payload' });
+    expect(Object.keys(sim.players)).toHaveLength(0);
+  });
 });
 
 describe('gameApi is a wrapper, not a new ruleset', () => {
