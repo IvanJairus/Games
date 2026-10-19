@@ -51,18 +51,20 @@ diperbaiki dengan tuning Supabase.
 `netbench` (proyek benchmark yang sudah Anda bangun untuk soal yang sama) punya hasil yang wajib
 dibaca sebelum menulis satu baris pun:
 
-- Gerbang P1b berstatus **blokir**: `preflight.mjs` mengukur endpoint Worker median 245-249 ms
-  (anycast ke HKG/CDG/NRT) sementara Supabase 21-30 ms dari mesin yang sama.
+- Gerbang P1b sempat berstatus **blokir** karena `preflight.mjs` mengukur endpoint Worker median
+  245-249 ms sementara Supabase 21-30 ms. Angka itu sudah ditarik. Penyebabnya dua: jaringan kantor
+  menolak koneksi baru, dan probe WebSocket punya bug yang dikoreksi di netbench bagian 12.9. Hasil
+  final justru berbalik mendukung Cloudflare: 53,4 ms versus 86,4 ms, CI90 27,5 sampai 41,4,
+  n = 12 run berpasangan (`netbench/audits/do-slap-arena-2026-10-19.md`).
 - Kesimpulan yang sudah ditulis di sana: arm DO memangkas loop latency 38 persen dan tidak terpengaruh
   host migration, tapi sebagian kemenangannya karena edge 41 ms lebih dekat, dan arm `C-r` hanya 9 persen.
 - Catatan metode: jaringan kantor menunjukkan SYN retransmit, dan satu baris pengukuran TCP connect
   ke edge Supabase memberi min 8,6 ms / median 1.030 ms / max 5.020 ms dengan 3 timeout. Angka selebar
   itu bukan latensi, itu artefak jaringan.
 
-Jadi sebelum menyetujui langkah 3, satu hal perlu diulang di jaringan lain (hotspot HP): `preflight`
-kedua endpoint. Kalau Worker tetap 240 ms dan Supabase 25 ms di jaringan bersih, migrasi ini akan
-**memperburuk** lag yang ingin dihilangkan, dan keputusan yang benar adalah memperbaiki H1 lebih dulu
-(kurangi laju dan ukuran pesan), bukan ganti transport.
+Karena itu pertanyaan "apakah edge Cloudflare lebih jauh" sudah terjawab oleh data berpasangan: tidak,
+arm DO justru lebih cepat. Yang tersisa dari H1 tetap berlaku: mengurangi laju dan ukuran pesan masih
+perlu, karena migrasi ini tidak otomatis memperbaikinya.
 
 ## 3. Anggaran kuota Cloudflare free plan
 
@@ -132,10 +134,27 @@ Kode Broadcast lama tidak dihapus sampai dua game real-time melewati soak.
    transport dan aturan validasi selesai di game real-time, jadi setiap temuan di langkah 2 harus
    ditulis dengan nama aksi dan kode alasannya supaya bisa dipakai ulang oleh Bomberman tanpa
    diubah bentuk.
-2. Gerbang latensi netbench (Worker 245-249 ms versus Supabase 21-30 ms dari mesin ini) **ditunda**:
-   dikerjakan dulu, diukur nanti. Karena itu langkah 3 wajib menyisakan saklar `TRANSPORT` dan jalur
-   Broadcast lama tetap hidup, supaya kalau angka nyata menunjukkan Cloudflare lebih jauh, kita bisa
-   kembali tanpa membongkar apa pun.
+2. Soal latensi: angka 245-249 ms yang saya kutip di sini berasal dari preflight jaringan kantor dan
+   sudah ditarik netbench. Hasil finalnya mendukung Cloudflare (53,4 ms versus 86,4 ms, n = 12 run
+   berpasangan). Saklar `TRANSPORT` dan jalur Broadcast lama tetap dipertahankan, tapi sebagai alat
+   uji A/B, bukan sebagai pagar kepanikan.
+
+## 6c. Audit worker dan empat temuan yang masih terbuka (19 Oktober)
+
+Audit `netbench/audits/do-slap-arena-2026-10-19.md` membaca `cloudflare/src/room.ts` pada snapshot
+md5 `06454c005bd4bf81fbf9b3496215943c`. Coordinator memverifikasi keempat temuan ke kode dan
+menyimpulkan semuanya benar. Temuan 2 adalah kesalahan faktual coordinator: komentar di `room.ts`
+memakai larangan `waitUntil()` sebagai alasan tidak memasang timer, padahal yang dilarang adalah
+menahan objek hidup dengan `waitUntil`, bukan memakai timer selama WebSocket masih terbuka.
+
+Urutan perbaikan yang disepakati: (1) commit worker dan PR draft, (2) token sebagai admission control
+dengan tes yang gagal lebih dulu, (3) tick berbasis alarm atau timer plus satu siaran per tick,
+(4) `applied` dan `held` di protokol lalu porting soak harness, (5) adapter Slap Arena memakai
+`gameApi.ts`. Berhenti di akhir setiap langkah.
+
+Bukti runtime worker pada commit ini: `wrangler dev --local` port 8790, `node --test` 8 lulus dari 8,
+termasuk `tick` naik 0 ke 5 ke 10 dan klaim ulang token. Belum terukur: latensi nyata lewat internet,
+karena worker belum di-deploy.
 
 ## 7. Yang akan dihasilkan langkah 2
 
