@@ -70,7 +70,22 @@ function dial(code, query) {
     };
     hunt();
   });
-  return { ws, recv, open, recvPhase, closes, queue, log, code, query: q.toString() };
+  /**
+   * Membaca log, bukan antrean recv: recvState bisa dibiarkan berjalan sambil tes lain mengirim
+   * pesan, dan lewat antrean ia meninggalkan janji yang meledak setelah tes selesai.
+   */
+  const recvState = (pred, ms = 8000) => new Promise((res, rej) => {
+    const seen = log.length;
+    const poll = setInterval(() => {
+      const hit = log.slice(seen).find((m) => m.t === 'state' && pred(m));
+      if (hit) { clearTimeout(stop); clearInterval(poll); res(hit); }
+    }, 25);
+    const stop = setTimeout(() => {
+      clearInterval(poll);
+      rej(new Error('tidak ada state yang memenuhi syarat dalam batas waktu'));
+    }, ms);
+  });
+  return { ws, recv, open, recvPhase, recvState, closes, queue, log, code, query: q.toString() };
 }
 
 /** Masuk kamar lewat jalur sah: mint tiket lalu pakai untuk handshake. */
@@ -332,5 +347,62 @@ test('banjir tiga puluh input tidak menghasilkan tiga puluh siaran', async () =>
   const states = a.log.slice(mark).filter((m) => m.t === 'state');
   assert.ok(states.length >= 3, `400 ms harus berisi beberapa tick, dapat ${states.length}`);
   assert.ok(states.length <= sent / 2, `siaran ${states.length} untuk ${sent} input: siaran masih menempel ke pesan masuk`);
+  a.ws.terminate(); b.ws.terminate();
+});
+
+/** Dua kursi sampai laga berjalan, dipakai tes metrik supaya tidak mengulang perakitan. */
+async function table(name) {
+  const code = room(name);
+  const a = await connect(code, { name: `${name}A` });
+  await a.open();
+  const wa = await a.recv('welcome');
+  const b = await connect(code, { name: `${name}B` });
+  await b.open();
+  await b.recv('welcome');
+  a.ws.send(JSON.stringify({ t: 'start' }));
+  await a.recvPhase('playing');
+  return { code, a, b, seat: wa.seat };
+}
+
+test('pesan state membawa peta applied dan held untuk tiap kursi', async () => {
+  const c = await connect(room('M1'), { name: 'Amin' });
+  await c.open();
+  await c.recv('welcome');
+  const st = await c.recv('state');
+  assert.ok(st.applied && typeof st.applied === 'object', 'state harus punya peta applied');
+  assert.ok(st.held && typeof st.held === 'object', 'state harus punya peta held');
+  assert.equal(st.applied[0], 0);
+  assert.equal(st.held[0], 0);
+  c.ws.terminate();
+});
+
+test('applied naik saat aksi dieksekusi dan held mencatat tahanan di dalam server', async () => {
+  const { a, b, seat } = await table('M2');
+  const t0 = Date.now();
+  a.ws.send(JSON.stringify({ t: 'setvx', vx: 3, seq: 1 }));
+  const seen = await a.recvState((s) => (s.applied?.[seat] ?? 0) >= 1);
+  assert.equal(seen.applied[seat], 1);
+  assert.ok(seen.held[seat] >= 0 && seen.held[seat] < 120, `held harus di dalam satu tick, dapat ${seen.held[seat]} ms`);
+  assert.ok(Date.now() - t0 < 2000, 'applied harus terlihat dalam dua detik');
+  a.ws.terminate(); b.ws.terminate();
+});
+
+test('applied tidak pernah mundur walau seq lebih kecil datang kemudian', async () => {
+  const { a, b, seat } = await table('M3');
+  a.ws.send(JSON.stringify({ t: 'setvx', vx: 2, seq: 7 }));
+  await a.recvState((s) => (s.applied?.[seat] ?? 0) >= 7);
+  a.ws.send(JSON.stringify({ t: 'setvx', vx: 2, seq: 3 }));
+  const after = await a.recvState(() => true);
+  assert.equal(after.applied[seat], 7, 'seq lama tidak boleh menarik applied mundur');
+  a.ws.terminate(); b.ws.terminate();
+});
+
+test('aksi yang ditolak tidak menggeser applied', async () => {
+  const { a, b, seat } = await table('M4');
+  a.ws.send(JSON.stringify({ t: 'setvx', vx: 999, seq: 4 }));
+  assert.equal((await a.recv('error')).reason, 'out_of_range');
+  const st = await a.recvState(() => true);
+  assert.ok(st.applied, 'state harus punya applied');
+  assert.equal(st.applied[seat], 0, 'aksi yang tidak dieksekusi tidak boleh ditandai diterapkan');
   a.ws.terminate(); b.ws.terminate();
 });

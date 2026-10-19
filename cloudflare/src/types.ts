@@ -32,7 +32,18 @@ export type ServerMessage =
       players: { id: string; name: string }[];
       exp: number;
     }
-  | { t: 'state'; phase: string; master: string | null; tick: number; players: { id: string; name: string }[]; world: unknown }
+  | {
+      t: 'state';
+      phase: string;
+      master: string | null;
+      tick: number;
+      players: { id: string; name: string }[];
+      world: unknown;
+      /** seat -> seq terakhir yang benar-benar sudah dieksekusi. */
+      applied: Record<number, number>;
+      /** seat -> milidetik aksi tertahan di pemegang sim sebelum ikut terbit. */
+      held: Record<number, number>;
+    }
   | { t: 'error'; reason: string };
 
 export interface GameAdapter {
