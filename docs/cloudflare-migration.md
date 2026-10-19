@@ -126,6 +126,17 @@ Kode Broadcast lama tidak dihapus sampai dua game real-time melewati soak.
    Tic Tac Toe untuk kerangka, Bomberman sebagai ujian sesungguhnya. Kalau Anda ingin langsung
    Bomberman, bilang, karena itu mengubah urutan tes.
 
+## 6b. Keputusan user (18 Oktober 2026)
+
+1. Game pertama yang dimigrasikan: **Slap Arena**, bukan Tic Tac Toe. Konsekuensinya kerangka
+   transport dan aturan validasi selesai di game real-time, jadi setiap temuan di langkah 2 harus
+   ditulis dengan nama aksi dan kode alasannya supaya bisa dipakai ulang oleh Bomberman tanpa
+   diubah bentuk.
+2. Gerbang latensi netbench (Worker 245-249 ms versus Supabase 21-30 ms dari mesin ini) **ditunda**:
+   dikerjakan dulu, diukur nanti. Karena itu langkah 3 wajib menyisakan saklar `TRANSPORT` dan jalur
+   Broadcast lama tetap hidup, supaya kalau angka nyata menunjukkan Cloudflare lebih jauh, kita bisa
+   kembali tanpa membongkar apa pun.
+
 ## 7. Yang akan dihasilkan langkah 2
 
 Untuk game pertama: modul murni dengan `createGame(players)`, `applyAction(state, playerId, action)`,
