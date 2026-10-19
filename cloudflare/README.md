@@ -58,14 +58,17 @@ npx wrangler deploy
 ```
 
 Worker aktif di `https://ij-game-rooms.filemonivanjairus.workers.dev` dengan `TEST_MODE = "0"`.
-Frontend belum ada yang menunjuk ke sini: tidak ada satu pun berkas di `src/` yang memanggil URL ini,
-jadi jalur Supabase hari ini tidak berubah.
+Versi tayang sekarang `187cba5b-f138-4e0b-a9e8-6971bb99cd4b` (kode timer tiket). Frontend belum ada
+yang menunjuk ke sini: tidak ada satu pun berkas di `src/` yang memanggil URL ini, jadi jalur Supabase
+hari ini tidak berubah.
 
-Terukur pada deploy uji itu, dari laptop ini ke edge Cloudflare:
+Terukur dari laptop ini ke edge Cloudflare selama dua deploy uji (tiket, lalu timer). Baris suite dan
+laju siaran berasal dari deploy timer; baris mint dan handshake dari deploy tiket:
 
 | Yang diukur | Hasil |
 | --- | --- |
-| Suite 16 tes dijalankan terhadap URL tayang (`TEST_MODE=1` sementara) | 16 lulus dari 16, n = 1 rangkaian |
+| Suite 18 tes dijalankan terhadap URL tayang (`TEST_MODE=1` sementara) | 18 lulus dari 18, n = 1 rangkaian |
+| Laju siaran saat klien diam total, lewat internet | 60 state dalam 3.003 ms = 20,0 per detik, 60 tick unik, 0 dobel; gap min 0,1 / median 49,7 / max 142,3 ms |
 | `POST /room/<kode>/ticket` | n = 8: min 28 ms, median 41 ms, max 546 ms |
 | Handshake WebSocket dengan tiket sah | n = 5: min 59 ms, median 61 ms, max 70 ms |
 | Konfigurasi produksi setelah revert | `/health` 200, mint 200, `?probe=1` menolak 426, koneksi bertiket 101 |
@@ -94,9 +97,9 @@ Setelah deploy nyata, `ALLOWED_ORIGINS` harus memuat domain Vercel produksi, dan
 Satu temuan audit yang tersisa dari `netbench/audits/do-slap-arena-2026-10-19.md`:
 
 1. Protokol tidak membawa `applied` dan `held`, sehingga loop latency tidak terukur dari sisi klien.
-   Timer sekarang mengirim tepat satu siaran per tick (terukur 19,0 siaran per detik, 57 tick unik,
-   0 dobel, gap median 52,6 ms pada satu jendela lokal), tapi tanpa dua field itu tidak bisa dibuktikan
-   klien menerimanya dengan laju yang sama.
+   Timer sekarang mengirim tepat satu siaran per tick (terukur 19,0 siaran per detik dan 57 tick unik
+   tanpa duplikasi di lokal, 20,0 siaran per detik dan 60 tick unik tanpa duplikasi pada deploy uji),
+   tapi tanpa dua field itu tidak bisa dibuktikan klien menerimanya dengan laju yang sama.
 
 Ditambah tiga hal lebih kecil: batas pesan masih menghitung karakter UTF-16 bukan byte (PR #75 sudah
 membuktikan versi byte di sisi klien), belum ada batas laju per koneksi, dan hasil laga belum ditulis

@@ -225,12 +225,15 @@ Bukti merah-lalu-hijau, n = 1 rangkaian per baris, `wrangler dev --local`:
 
 Terukur pada versi lokal, satu jendela 3 detik dengan dua pemain dan nol byte dari klien:
 
-| Yang diukur | Hasil |
-| --- | --- |
-| state diterima | 57 pesan dalam 3.000 ms = 19,0 siaran per detik |
-| tick unik / tick dobel | 57 / 0, jadi persis satu siaran per tick |
-| gap antar siaran | min 50,6 ms, median 52,6 ms, max 54,0 ms |
+| Yang diukur | Lokal (`wrangler dev`) | Tayang (`workers.dev`, dari laptop yang sama) |
+| --- | --- | --- |
+| state diterima | 57 di 3.000 ms = 19,0 per detik | 60 di 3.003 ms = 20,0 per detik |
+| tick unik / tick dobel | 57 / 0 | 60 / 0 |
+| gap antar siaran | min 50,6 / median 52,6 / max 54,0 ms | min 0,1 / median 49,7 / max 142,3 ms |
+| suite penuh | 18 lulus dari 18 | 18 lulus dari 18 (n = 1 rangkaian) |
 
-Yang belum terukur: angka yang sama lewat internet, latensi round-trip dunia ke klien, dan konsumsi
-CPU per jam kamar. Interval `applied` dan `held` juga belum ada, jadi angka di atas baru membuktikan
-sisi server mengirim tepat 20 Hz, bukan bahwa klien menerimanya dengan laju yang sama.
+Yang masih belum terukur: konsumsi CPU per jam kamar, dan penyebab bentuk di kolom tayang. Di sana
+gap terkecil 0,1 ms berpasangan dengan gap terbesar 142,3 ms dalam jendela yang sama, yang konsisten
+dengan siaran yang tertahan lalu datang berdekatan, tapi itu baru pembacaan satu jendela dan belum
+dibuktikan. Membedakan jitter jaringan dari keterlambatan aplikasi butuh `applied` dan `held` di
+protokol, dan itu langkah berikutnya.
