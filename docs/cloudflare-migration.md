@@ -156,9 +156,19 @@ Bukti runtime worker pada commit ini: `wrangler dev --local` port 8790, `node --
 termasuk `tick` naik 0 ke 5 ke 10 dan klaim ulang token. Belum terukur: latensi nyata lewat internet,
 karena worker belum di-deploy.
 
-## 7. Yang akan dihasilkan langkah 2
+## 7. Hasil langkah 2 (API aturan murni, PR #75)
 
-Untuk game pertama: modul murni dengan `createGame(players)`, `applyAction(state, playerId, action)`,
-`removePlayer(state, playerId)`, tanpa jaringan, DOM, atau Supabase, plus unit test aturan main.
-Gerbang berhenti: test aturan harus terlihat merah sebelum hijau, dan `guard:check` tetap lolos
-(aturan kemurnian engine dijaga mesin sejak PR #50).
+Yang jadi: `src/games/slap-arena/engine/gameApi.ts` 148 baris dengan `createGame()` tanpa argumen,
+`applyAction(state, playerId, action)`, `removePlayer(state, playerId)`, `MAX_PLAYERS` 6,
+`MAX_MESSAGE_BYTES` 512, tujuh `RejectReason`. Rencananya dulu menulis `createGame(players)` dan
+`name_rejected` sebagai alasan untuk nama kosong; implementasi PR #75 yang dipakai dan dokumen ini
+disamakan ke sana. Nama kosong setelah sanitasi kembali ke `Pemain`, `name_rejected` hanya untuk `name`
+yang bukan string.
+
+Verifikasi coordinator di worktree bersih dari `ab62fcd`: `npx vitest run tests/unit/slap-arena-api.test.ts`
+19 lulus dari 19 (dua rangkaian terpisah), `npx tsc -b` exit 0, `guard:check` bersih, diff hanya tiga file.
+Belum teruji: `removePlayer` pemain terakhir saat `BATTLE` (yang teruji fase `WAITING`), dan lompatan `seq`
+maju yang besar diterima tanpa assertion. Bukti lengkap di komentar PR #75.
+
+Satu koreksi yang dibawa PR #75 ke worker: batas pesan harus dihitung dalam byte UTF-8, bukan jumlah
+karakter. `cloudflare/src/types.ts` masih memakai `MAX_MESSAGE_CHARS`; itu masuk langkah berikutnya.
