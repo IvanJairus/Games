@@ -28,7 +28,7 @@ Delapan tes, semuanya lulus pada `wrangler dev --local` (n = 1 rangkaian, 19 Okt
 | tanpa upgrade | 426 |
 | path salah | 404 |
 | welcome | id dan token terbit, pemain pertama jadi master |
-| aksi sebelum mulai | `wrong_phase`, mulai sendirian | `too_few_players` |
+| aksi sebelum mulai | `wrong_phase`, dan `too_few_players` untuk mulai sendirian |
 | dua pemain mulai | fase `playing` dan `tick` naik 0 ke 5 ke 10, dunia benar-benar maju |
 | klaim ulang token | koneksi baru dengan token lama mendapat id yang sama |
 | kursi ketujuh | 409 |
