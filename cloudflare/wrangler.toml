@@ -1,0 +1,20 @@
+name = "ij-game-rooms"
+main = "src/index.ts"
+compatibility_date = "2026-10-01"
+
+# Satu Worker untuk semua room. Kelas DO wajib berbasis SQLite di free plan,
+# jadi migrations memakai new_sqlite_classes, bukan new_classes.
+[[durable_objects.bindings]]
+name = "ROOM"
+class_name = "GameRoom"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["GameRoom"]
+
+[vars]
+# Dipisah koma. Origin yang sama dengan Worker selalu diterima tanpa daftar ini.
+# Tambah domain Vercel produksi saat deploy.
+ALLOWED_ORIGINS = "http://localhost:5199,https://www.ivanjairus.xyz,https://ij-games.vercel.app"
+# Game uji hanya aktif saat flag ini "1". Jangan nyalakan di produksi.
+TEST_MODE = "0"

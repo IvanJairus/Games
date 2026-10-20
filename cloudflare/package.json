@@ -1,0 +1,17 @@
+{
+  "name": "ij-game-rooms",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --local --port 8787",
+    "typecheck": "tsc --noEmit",
+    "deploy": "wrangler deploy",
+    "test:ws": "node tests/ws.test.mjs"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261019.1",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.20.0",
+    "ws": "^8.18.0"
+  }
+}
