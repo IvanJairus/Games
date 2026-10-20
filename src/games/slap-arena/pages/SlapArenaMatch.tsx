@@ -423,7 +423,9 @@ export const SlapArenaMatch: React.FC = () => {
       return;
     }
     void (async () => {
-      const ticket = await mintRoomTicket(roomCode, 'slap-arena', playerName);
+      // Id kursi ikut dalam tiket: tanpa dia, Worker mencetak kursi baru setiap muat ulang dan
+      // kamar penuh pemain hantu dengan nama yang sama.
+      const ticket = await mintRoomTicket(roomCode, 'slap-arena', playerName, doorId);
       if (cancelled) return;
       const net = new ArenaServerNet({
         wsUrl: socketUrl(base, roomCode, ticket.ticket),
@@ -435,6 +437,15 @@ export const SlapArenaMatch: React.FC = () => {
           slap: wireRef.current.slap,
           dash: wireRef.current.dash,
         }),
+        onActionsRead: () => {
+          // Pintu server menghitung tepi dari bendera ini. Loop render tidak boleh
+          // melipatnya (tick jaringan 50 ms bisa lewat setelah frame), jadi yang
+          // melipat adalah tick yang sudah membacanya. Tanpa ini hanya slap pertama
+          // dalam satu muat halaman yang pernah terkirim.
+          wireRef.current.slap = false;
+          wireRef.current.dash = false;
+          wireRef.current.charge = 0;
+        },
         onWelcome: (info) => {
           isDoorMasterRef.current = info.master === info.id;
           if (startArmedRef.current || isDoorMasterRef.current) doorRef.current?.sendStart();

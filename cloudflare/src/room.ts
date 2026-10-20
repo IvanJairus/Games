@@ -320,11 +320,21 @@ export class GameRoom extends DurableObject<Env> {
       /* already closed */
     }
     if (!session) return;
+    // Menerima socket baru untuk kursi yang sama menutup socket lama dengan 4002, dan peristiwa
+    // close itu tiba setelah pemain sudah duduk lagi. Tanpa pagar ini, penutupan socket lama
+    // menghapus pemain yang baru saja tersambung dari dunia dan inpunya ditolak selamanya.
+    // Socket yang sedang ditutup sendiri masih terlihat di getWebSockets(), jadi dia
+    // dikeluarkan dari hitungan: yang dicari hanya socket lain pemilik kursi yang sama.
+    if (this.ctx.getWebSockets().some((live) => live !== ws && this.sessionOf(live)?.id === session.id)) return;
     if (this.game) this.game.removePlayer(session.id);
     this.joinedOrder = this.joinedOrder.filter((id) => id !== session.id);
     this.appliedSeq.delete(session.id);
     this.heldMs.delete(session.id);
     this.pendingSeq.delete(session.id);
+    // Kursi yang ditinggalkan tanpa socket hidup dilepas, jadi muat ulang halaman atau ganti
+    // perangkat tidak menumpuk pemain hantu sampai kamar "penuh". Kursi pemain yang masih
+    // tersambung (kamar dengan dua socket untuk reconnect) tetap dipertahankan.
+    this.ctx.storage.sql.exec('DELETE FROM room_seats WHERE player_id = ?', session.id);
     if (this.game?.door) this.syncMaster();
     else if (this.master === session.id) this.master = this.sessions()[0]?.session.id ?? null;
     if (!this.sessions().length) this.stopTicker();

@@ -216,6 +216,68 @@ test('mint dengan id pemain lama mengembalikan kursi yang sama', async () => {
   assert.equal(again.body.playerId, first.body.playerId);
 });
 
+test('kursi pemain yang keluar tanpa socket hidup dilepas, id yang sama bisa duduk lagi', async () => {
+  const code = room('L');
+  const first = await mint(code, { name: 'Fara' });
+  const a = dial(code, { ticket: first.body.ticket });
+  await a.open();
+  await a.recv('welcome');
+  a.ws.terminate();
+
+  // dropSession berjalan async di DO; beri waktu sebelum mint ulang.
+  await new Promise((r) => setTimeout(r, 400));
+  const again = await mint(code, { player: first.body.playerId, name: 'Fara' });
+  assert.equal(again.status, 200, `kursi harus bisa diduduki lagi, bukan jadi hantu: ${JSON.stringify(again.body)}`);
+  assert.equal(again.body.playerId, first.body.playerId);
+});
+
+test('kursi yang ditinggalkan tidak menggembungkan kamar sampai penuh', async () => {
+  const code = room('P');
+  const sockets = [];
+  for (let i = 0; i < 6; i += 1) {
+    const c = await connect(code, { name: `K${i}` });
+    await c.open();
+    await c.recv('welcome');
+    sockets.push(c);
+  }
+  for (let i = 0; i < 5; i += 1) sockets[i].ws.terminate();
+  await new Promise((r) => setTimeout(r, 400));
+  const newcomer = await mint(code, { name: 'Baru' });
+  assert.equal(newcomer.status, 200, `kursi pemain yang pergi harus dilepas: ${JSON.stringify(newcomer.body)}`);
+  const back = dial(code, { ticket: newcomer.body.ticket });
+  await back.open();
+  await back.recv('welcome');
+  back.ws.terminate();
+  sockets[5].ws.terminate();
+});
+
+test('ambil alih kursi di tengah game tidak menghapus pemain dari dunia', async () => {
+  const code = room('M');
+  const first = await mint(code, { name: 'Gita' });
+  const a = dial(code, { ticket: first.body.ticket });
+  await a.open();
+  const wa = await a.recv('welcome');
+  const other = await mint(code, { name: 'Hana' });
+  const b = dial(code, { ticket: other.body.ticket });
+  await b.open();
+  await b.recv('welcome');
+  a.ws.send(JSON.stringify({ t: 'start' }));
+  await a.recvPhase('playing');
+
+  // Pemain membuka ulang halaman: kursi yang sama diambil alih socket baru, lalu peristiwa
+  // close socket lama tiba. Dunia tetap harus memuat pemain itu dan inpunya tetap hidup.
+  const again = await mint(code, { player: first.body.playerId });
+  const a2 = dial(code, { ticket: again.body.ticket });
+  await a2.open();
+  await a2.recv('welcome');
+  await new Promise((r) => setTimeout(r, 400));
+
+  a2.ws.send(JSON.stringify({ t: 'setvx', vx: 10 }));
+  const moved = await a2.recvState((m) => (m.world ?? []).some((p) => p.id === wa.id && p.x > 0));
+  assert.ok(moved, 'pemain harus masih ada di dunia dan bisa bergerak setelah socket lamanya ditutup');
+  a.ws.terminate(); b.ws.terminate(); a2.ws.terminate();
+});
+
 test('kursi ketujuh ditolak saat mint', async () => {
   const code = room('G');
   const sockets = [];
