@@ -1,4 +1,5 @@
-import { SlapSim } from './sim';
+import { SlapSim, HISTORY_SECONDS } from './sim';
+import { REMOTE_DELAY_SECONDS } from './interpolate';
 import type { InputState } from './types';
 
 export const MAX_PLAYERS = 6;
@@ -9,6 +10,8 @@ const NAME_LIMIT = 12;
 const FALLBACK_NAME = 'Pemain';
 /** The server owns the world, so nobody joins under this id. */
 const SERVER_ID = '__server__';
+/** A round trip past this is a lie or a satellite link, not something to rewind for. */
+const MAX_RTT_MS = 400;
 
 export type RejectReason =
   | 'unknown_player'
@@ -25,7 +28,7 @@ export type Action =
   | { t: 'join'; id: string; name: string; color?: string }
   | { t: 'start' }
   | { t: 'nextRound' }
-  | { t: 'input'; seq: number; input: InputState }
+  | { t: 'input'; seq: number; input: InputState; rtt?: number }
   | { t: 'tick'; dt: number };
 
 interface RoomRules {
@@ -82,6 +85,38 @@ const sanitizeName = (raw: string): string => raw.replace(/[<>]/g, '').trim().sl
 
 const byteLength = (text: string): number => new TextEncoder().encode(text).length;
 
+/**
+ * How far back a slap should be judged, from the round trip its attacker measured.
+ *
+ * Half the trip is how stale that attacker's view of everyone else was; the render delay
+ * is how far in the past their screen drew the body they aimed at. Without the first the
+ * swing has to be aimed where the target will be, with the second it has to be aimed where
+ * the target is not drawn yet. Together they are the difference between "I hit him" and
+ * "the server says I missed".
+ *
+ * The number is computed here, never taken from the wire: a client that could name its own
+ * rewind could name itself extra reach.
+ */
+export function rewindSecondsFor(rttMs: unknown): number {
+  const rtt =
+    typeof rttMs === 'number' && Number.isFinite(rttMs) ? Math.min(Math.max(rttMs, 0), MAX_RTT_MS) : 0;
+  return Math.min(rtt / 2000 + REMOTE_DELAY_SECONDS, HISTORY_SECONDS);
+}
+
+/** Whitelisted on purpose: a payload cannot smuggle `rewind` past the policy above. */
+function cleanInput(input: InputState, rewind: number): InputState {
+  const clean: InputState = {
+    x: input.x,
+    z: input.z,
+    slap: input.slap,
+    dash: input.dash,
+    held: input.held === true,
+    charge: typeof input.charge === 'number' ? input.charge : 0,
+  };
+  if (rewind > 0) clean.rewind = rewind;
+  return clean;
+}
+
 export function applyAction(state: SlapSim, playerId: string, action: Action): ActionResult {
   if (!action || typeof action !== 'object' || typeof action.t !== 'string') return reject('bad_payload');
   if (byteLength(JSON.stringify(action)) > MAX_MESSAGE_BYTES) return reject('bad_payload');
@@ -129,7 +164,7 @@ export function applyAction(state: SlapSim, playerId: string, action: Action): A
         if (last !== undefined && action.seq <= last) return reject('duplicate_seq');
         rules.seq.set(playerId, action.seq);
       }
-      state.setInput(playerId, action.input);
+      state.setInput(playerId, cleanInput(action.input, rewindSecondsFor(action.rtt)));
       return { ok: true };
     }
 

@@ -67,6 +67,13 @@ const isWorld = (v: unknown): v is WorldSnapshot =>
 const TERMINAL_CODES = new Set([1000, 4001, 4002]);
 const RETRY_BASE_MS = 400;
 const RETRY_CAP_MS = 6000;
+/**
+ * A ping a second is enough to follow a phone changing networks, and cheap enough that it
+ * never competes with the 30 inputs a second the same socket carries.
+ */
+const PING_INTERVAL_MS = 1000;
+/** One bad sample must nudge the rewind, not throw the slap across the island. */
+const RTT_SMOOTHING = 0.75;
 
 /**
  * Pintu klien untuk Durable Object: dunia dihitung server, jadi kursi ini tidak pernah memegang
@@ -90,7 +97,10 @@ export class ArenaServerNet {
   private stopped = false;
   private retries = 0;
   /** Sama seperti ArenaNet: dibaca lewat window.__slapNet untuk memisahkan "tidak kirim" dan "tidak terima". */
-  readonly stats = { sent: 0, received: 0, drop: 0, lastError: 'init', lastTick: -1, reconnects: 0 };
+  readonly stats = { sent: 0, received: 0, drop: 0, lastError: 'init', lastTick: -1, reconnects: 0, rtt: 0 };
+  /** Smoothed round trip in milliseconds. 0 until the first pong comes back. */
+  private rttMs = 0;
+  private lastPingAt = 0;
 
   constructor(private opts: ServerNetOptions) {}
 
@@ -184,6 +194,13 @@ export class ArenaServerNet {
   }
 
   private tick(): void {
+    const now = Date.now();
+    // The door answers ping with the same `ts`, which is the only clock both ends agree on.
+    if (now - this.lastPingAt >= PING_INTERVAL_MS) {
+      this.lastPingAt = now;
+      this.raw({ t: 'ping', ts: now });
+    }
+
     const input = this.opts.getInput();
     this.seq += 1;
     const slapPressed = !!input.slap && !this.firedSlap;
@@ -204,6 +221,9 @@ export class ArenaServerNet {
     this.raw({
       t: 'input',
       seq: this.seq,
+      // The door turns this into a rewind for the hit test. It is a measurement, not a
+      // claim: the door clamps it and computes the window itself.
+      rtt: Math.round(this.rttMs),
       input: {
         x: input.x,
         z: input.z,
@@ -248,6 +268,15 @@ export class ArenaServerNet {
     }
     if (msg.t === 'error') {
       this.stats.lastError = String(msg.reason ?? 'error');
+      return;
+    }
+    if (msg.t === 'pong') {
+      const sentAt = typeof msg.ts === 'number' ? msg.ts : 0;
+      if (sentAt > 0) {
+        const sample = Math.max(0, Date.now() - sentAt);
+        this.rttMs = this.rttMs > 0 ? this.rttMs * RTT_SMOOTHING + sample * (1 - RTT_SMOOTHING) : sample;
+        this.stats.rtt = Math.round(this.rttMs);
+      }
       return;
     }
     if (msg.t !== 'state') return;

@@ -390,7 +390,7 @@ const Arena3D = forwardRef<Arena3DHandle, Arena3DProps>(function Arena3D(
 
     /**
      * The swing of an authoritative brawler comes straight from the sim clock. A remote
-     * one arrives as a 20 Hz pose with no animation state, so its swing is detected from
+     * one arrives as a 30 Hz pose with no animation state, so its swing is detected from
      * the cooldown jumping back up and then played out locally at the real frame rate.
      */
     function poseFor(
@@ -480,7 +480,7 @@ const Arena3D = forwardRef<Arena3DHandle, Arena3DProps>(function Arena3D(
         let pz = p.z;
         const nowSec = performance.now() / 1000;
         if (!own) {
-          // The host speaks 20 times a second and the screen draws 60. Drawing a little in
+          // The host speaks 30 times a second and the screen draws 60. Drawing a little in
           // the past interpolates between two reports that are already known; guessing
           // forward overshoots on a knockback and snaps when the truth arrives.
           e.interp.push(nowSec, p.x, p.z);

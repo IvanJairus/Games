@@ -101,8 +101,10 @@ Setelah deploy nyata, `ALLOWED_ORIGINS` harus memuat domain Vercel produksi, dan
 - Pesan masuk maksimal 1024 karakter, payload di luar itu dibuang.
 - Origin harus sama dengan host Worker atau ada di `ALLOWED_ORIGINS`.
 - Nama dibersihkan dari `<`, `>`, `&` dan dipotong 12 karakter, dan hanya diterima lewat mint.
-- Dunia dimajukan timer 50 ms selama ada pemain, dan setiap tick menghasilkan tepat satu siaran,
-  termasuk saat tidak ada satu pesan masuk pun. Timer mati saat kamar kosong atau laga selesai.
+- Dunia dimajukan timer 33 ms (30 Hz) selama ada pemain, dan setiap tick menghasilkan tepat satu
+  siaran, termasuk saat tidak ada satu pesan masuk pun. Timer mati saat kamar kosong atau laga
+  selesai. Sisa waktu di bawah satu tick dibawa ke tick berikutnya, bukan dibuang: `setInterval`
+  tidak pernah tepat 33 ms, dan membuang sisanya menjalankan dunia lebih lambat dari jam dinding.
 
 ## Yang belum benar, diketahui, dan jadi pekerjaan berikutnya
 

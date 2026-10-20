@@ -259,12 +259,17 @@ export function canSlap(player: PlayerState): boolean {
  * player who is still reading the controls does not get shoved into the sea by three
  * bots before they have moved once. `charge` is 0..1 from a held slap button: it buys
  * range through force, not through the hitbox, so who gets hit never changes.
+ *
+ * `ghosts` is the pose the attacker actually saw, keyed by victim id. Only the distance
+ * and the cone are judged against it; the knockback, the stun and the launch always land
+ * on the live body, so a rewind can never move anyone.
  */
 export function executeSlap(
   attacker: PlayerState,
   allPlayers: PlayerState[],
   knockScale = 1,
-  charge = 0
+  charge = 0,
+  ghosts?: Record<string, { x: number; z: number }>
 ): SlapResult[] {
   if (!canSlap(attacker)) {
     return [];
@@ -283,8 +288,9 @@ export function executeSlap(
   for (const victim of allPlayers) {
     if (victim.id === attacker.id || victim.isFalling || victim.eliminated) continue;
 
-    const dx = victim.x - attacker.x;
-    const dz = victim.z - attacker.z;
+    const ghost = ghosts?.[victim.id];
+    const dx = (ghost ? ghost.x : victim.x) - attacker.x;
+    const dz = (ghost ? ghost.z : victim.z) - attacker.z;
     const dist = Math.hypot(dx, dz);
     if (dist > SLAP_RANGE) continue;
 

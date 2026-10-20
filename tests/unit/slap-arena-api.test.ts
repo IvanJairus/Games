@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
-import { SlapSim } from '../../src/games/slap-arena/engine/sim';
-import { MAX_MESSAGE_BYTES, MAX_PLAYERS, applyAction, createGame, masterOf, removePlayer } from '../../src/games/slap-arena/engine/gameApi';
+import { SlapSim, HISTORY_SECONDS } from '../../src/games/slap-arena/engine/sim';
+import {
+  MAX_MESSAGE_BYTES,
+  MAX_PLAYERS,
+  applyAction,
+  createGame,
+  masterOf,
+  removePlayer,
+  rewindSecondsFor,
+} from '../../src/games/slap-arena/engine/gameApi';
+import { REMOTE_DELAY_SECONDS } from '../../src/games/slap-arena/engine/interpolate';
 import type { InputState } from '../../src/games/slap-arena/engine/types';
 
 const join = (id: string, name: string, color?: string) => ({ t: 'join' as const, id, name, ...(color ? { color } : {}) });
@@ -193,6 +202,65 @@ describe('gameApi tick rules', () => {
       expect(applyAction(sim, 'p1', { t: 'tick', dt })).toEqual({ ok: false, reason: 'bad_payload' });
     }
     expect(applyAction(sim, 'p1', { t: 'tick', dt: 0.25 })).toEqual({ ok: true });
+  });
+});
+
+describe('gameApi lag compensation', () => {
+  it('turns a measured round trip into a rewind, with the render delay on top', () => {
+    // Half the trip is how stale the attacker's view of everyone else was; the render
+    // delay is how far in the past their screen drew the body they aimed at.
+    expect(rewindSecondsFor(0)).toBeCloseTo(REMOTE_DELAY_SECONDS, 6);
+    expect(rewindSecondsFor(100)).toBeCloseTo(REMOTE_DELAY_SECONDS + 0.05, 6);
+    // A round trip nobody could play on is clamped, not believed.
+    expect(rewindSecondsFor(10_000)).toBeCloseTo(0.25, 6);
+    expect(rewindSecondsFor(Number.NaN)).toBeCloseTo(REMOTE_DELAY_SECONDS, 6);
+    expect(rewindSecondsFor('80' as unknown as number)).toBeCloseTo(REMOTE_DELAY_SECONDS, 6);
+    expect(rewindSecondsFor(10_000)).toBeLessThan(HISTORY_SECONDS);
+  });
+
+  /**
+   * p1 at the origin facing +x, p2 inside slap range. History is built with p2 there, then
+   * p2 is teleported out and a few ticks pass so the recent history agrees he left.
+   */
+  const runAway = () => {
+    const sim = started();
+    sim.state.phase = 'BATTLE';
+    sim.players.p1.x = 0;
+    sim.players.p1.z = 0;
+    sim.players.p1.angle = 0;
+    sim.players.p2.x = 2;
+    sim.players.p2.z = 0;
+    for (let i = 0; i < 12; i++) applyAction(sim, 'p1', { t: 'tick', dt: 0.033 });
+    sim.players.p2.x = 6;
+    for (let i = 0; i < 4; i++) applyAction(sim, 'p1', { t: 'tick', dt: 0.033 });
+    return sim;
+  };
+
+  it('rewinds far enough for a slow connection to land the slap it saw', () => {
+    const sim = runAway();
+    applyAction(sim, 'p1', { t: 'input', seq: 1, rtt: 300, input: { ...idle, slap: true } });
+    applyAction(sim, 'p1', { t: 'tick', dt: 0.033 });
+    expect(sim.players.p2.isHit).toBe(true);
+  });
+
+  it('misses on a fast connection, where the attacker really did swing at air', () => {
+    const sim = runAway();
+    applyAction(sim, 'p1', { t: 'input', seq: 1, rtt: 0, input: { ...idle, slap: true } });
+    applyAction(sim, 'p1', { t: 'tick', dt: 0.033 });
+    expect(sim.players.p2.isHit).toBe(false);
+  });
+
+  it('ignores a rewind the client wrote for itself', () => {
+    // A payload that could name its own rewind could name itself extra reach.
+    const sim = runAway();
+    applyAction(sim, 'p1', {
+      t: 'input',
+      seq: 1,
+      rtt: 0,
+      input: { ...idle, slap: true, rewind: 0.4 } as InputState,
+    });
+    applyAction(sim, 'p1', { t: 'tick', dt: 0.033 });
+    expect(sim.players.p2.isHit).toBe(false);
   });
 });
 

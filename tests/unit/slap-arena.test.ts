@@ -603,6 +603,113 @@ describe('SlapSim multiplayer snapshot', () => {
     expect(client.players.host).toBeUndefined();
     expect(client.players.other?.name).toBe('Other');
   });
+
+  it('ages out the hit reaction on an opponent a client never steps', () => {
+    // The reported bug: slap someone on a phone and they tremble for the rest of the
+    // round. `bump` is raised by the hit effect, and the only code that lowers it lives in
+    // updatePlayerMovement, which a client runs for its own body and nobody else's. So a
+    // remote opponent kept bump = 1 and the rig held a 40 rad/s torso wobble forever.
+    const host = hostWithTwo();
+    const client = new SlapSim({ localId: 'guest', authoritative: false, scoreToWin: 3 });
+    client.addPlayer({ id: 'guest', name: 'Guest', color: '#ff5d5d' });
+    client.applySnapshot(host.snapshot());
+
+    client.players.host.bump = 1;
+    for (let i = 0; i < 40; i++) client.step(1 / 60);
+    expect(client.players.host.bump).toBe(0);
+  });
+
+  it('keeps ageing the hit reaction outside a live round', () => {
+    // A hit on the last frame of a round would otherwise freeze the pose on the podium.
+    const client = new SlapSim({ localId: 'guest', authoritative: false });
+    client.addPlayer({ id: 'guest' });
+    client.addPlayer({ id: 'host' });
+    client.state.phase = 'ROUND_OVER';
+    client.players.host.bump = 1;
+    for (let i = 0; i < 40; i++) client.step(1 / 60);
+    expect(client.players.host.bump).toBe(0);
+  });
+});
+
+describe('Slap Arena lag compensation', () => {
+  /** Two brawlers on the x axis, already fighting, with `victim` inside slap range. */
+  const arena = () => {
+    const events: string[] = [];
+    const sim = new SlapSim({ localId: 'a', authoritative: true });
+    sim.onEvent = (e) => events.push(e.kind);
+    sim.addPlayer({ id: 'a', name: 'A' });
+    sim.addPlayer({ id: 'b', name: 'B' });
+    sim.state.phase = 'BATTLE';
+    sim.players.a.x = 0;
+    sim.players.a.z = 0;
+    sim.players.a.angle = 0;
+    sim.players.b.x = 2;
+    sim.players.b.z = 0;
+    return { sim, events };
+  };
+
+  const buildHistory = (sim: SlapSim, seconds = 0.3) => {
+    for (let t = 0; t < seconds; t += 1 / 60) sim.step(1 / 60);
+  };
+
+  it('judges a slap against where the attacker saw the victim', () => {
+    const { sim, events } = arena();
+    buildHistory(sim);
+    // The victim ran. On the attacker's screen, a third of a second behind, he had not.
+    sim.players.b.x = 6;
+
+    sim.setInput('a', { x: 0, z: 0, slap: true, dash: false, rewind: 0.3 });
+    sim.step(1 / 60);
+    expect(events).toContain('hit');
+  });
+
+  it('misses without the rewind, which is the bug the window exists to fix', () => {
+    const { sim, events } = arena();
+    buildHistory(sim);
+    sim.players.b.x = 6;
+
+    sim.setInput('a', { x: 0, z: 0, slap: true, dash: false });
+    sim.step(1 / 60);
+    expect(events).not.toContain('hit');
+  });
+
+  it('knocks back the live body, never the remembered one', () => {
+    const { sim } = arena();
+    buildHistory(sim);
+    sim.players.b.x = 6;
+
+    sim.setInput('a', { x: 0, z: 0, slap: true, dash: false, rewind: 0.3 });
+    sim.step(1 / 60);
+    // Pushed away from the attacker, from where he actually stands, not from x = 2.
+    expect(sim.players.b.x).toBeGreaterThan(6);
+    expect(sim.players.b.vx).toBeGreaterThan(0);
+  });
+
+  it('keeps half a second of history and no more', () => {
+    const { sim } = arena();
+    buildHistory(sim, 1.2);
+    const at = (seconds: number) => sim.positionsAt(seconds);
+    expect(at(0.4)?.b.x).toBeCloseTo(2, 1);
+    // Nothing older survives, so the oldest frame answers instead of nothing at all.
+    expect(at(5)?.b.x).toBeCloseTo(2, 1);
+    expect(at(0)).toBeNull();
+  });
+
+  it('forgets the old round, so the first slap cannot land on a ghost', () => {
+    const { sim, events } = arena();
+    buildHistory(sim);
+    sim.players.b.x = 6;
+    sim.beginRound();
+    sim.players.a.x = 0;
+    sim.players.a.z = 0;
+    sim.players.a.angle = 0;
+    sim.players.b.x = 6;
+    sim.players.b.z = 0;
+
+    sim.setInput('a', { x: 0, z: 0, slap: true, dash: false, rewind: 0.3 });
+    sim.step(1 / 60);
+    expect(events).not.toContain('hit');
+  });
 });
 
 describe('SlapSim team colours', () => {
@@ -713,6 +820,16 @@ describe('Slap Arena stays inside the site CSP', () => {
     const css = readFileSync(resolve(process.cwd(), 'src/games/slap-arena/slap-arena.css'), 'utf8');
     const block = /\.sa-label-layer\s*\{([^}]*)\}/.exec(css)?.[1] ?? '';
     expect(block).toMatch(/z-index:\s*([1-9]\d*)/);
+  });
+
+  it('gives the room-code row its pointer events back', () => {
+    // `.sa-hud` is pointer-events:none so the canvas keeps every tap it does not need, and
+    // pointer-events inherits. The copy pill and the FX chip live in this row; without an
+    // explicit override both were painted, focusable by keyboard, and impossible to click
+    // or tap. jsdom applies no stylesheet, so the HUD click test cannot see this.
+    const css = readFileSync(resolve(process.cwd(), 'src/games/slap-arena/slap-arena.css'), 'utf8');
+    expect(/\.sa-hud\s*\{([^}]*)\}/.exec(css)?.[1] ?? '').toMatch(/pointer-events:\s*none/);
+    expect(/\.sa-topmeta\s*\{([^}]*)\}/.exec(css)?.[1] ?? '').toMatch(/pointer-events:\s*auto/);
   });
 
   it('draws the cast from primitives, not from an asset pipeline', () => {

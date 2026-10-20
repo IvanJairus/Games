@@ -50,6 +50,12 @@ export interface InputState {
   charge?: number;
   /** Counts actions, so a peer can tell a fresh slap from a flag still held up. */
   seq?: number;
+  /**
+   * Seconds to rewind the hit test by, set by the authoritative seat from the sender's
+   * measured latency. Only the distance and the cone look into the past; the body that
+   * gets knocked back is always the live one.
+   */
+  rewind?: number;
 }
 
 export type ArenaPhase = 'WAITING' | 'COUNTDOWN' | 'BATTLE' | 'ROUND_OVER' | 'MATCH_OVER';

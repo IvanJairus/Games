@@ -99,6 +99,10 @@ afterEach(() => {
 });
 
 describe('ArenaServerNet kirim', () => {
+  /** The socket also carries one ping a second, which is not an input and has no `seq`. */
+  const inputs = (socket: FakeSocket | null) =>
+    (socket?.parsed() ?? []).filter((m) => m.t === 'input');
+
   it('naik nomor setiap tick supaya gerak tidak dianggap replay', () => {
     let x = 0;
     const { net } = makeNet(() => ({ x, z: 0, slap: false, dash: false, held: false, charge: 0 }) as InputState);
@@ -106,9 +110,9 @@ describe('ArenaServerNet kirim', () => {
     vi.advanceTimersByTime(TICK_MS * 4);
     x = 0.5;
     vi.advanceTimersByTime(TICK_MS * 2);
-    const seqs = (FakeSocket.last?.parsed() ?? []).map((m) => m.seq);
+    const seqs = inputs(FakeSocket.last).map((m) => m.seq);
     expect(seqs).toEqual([1, 2, 3, 4, 5, 6]);
-    expect(FakeSocket.last?.parsed()[5]).toMatchObject({ t: 'input', input: { x: 0.5 } });
+    expect(inputs(FakeSocket.last)[5]).toMatchObject({ t: 'input', input: { x: 0.5 } });
     net.stop();
   });
 
@@ -119,9 +123,9 @@ describe('ArenaServerNet kirim', () => {
     vi.advanceTimersByTime(TICK_MS);
     pressed = true;
     vi.advanceTimersByTime(TICK_MS * 3);
-    const flags = (FakeSocket.last?.parsed() ?? []).map((m) => (m.input as Record<string, unknown>).slap);
+    const flags = inputs(FakeSocket.last).map((m) => (m.input as Record<string, unknown>).slap);
     expect(flags).toEqual([false, true, false, false]);
-    const dash = (FakeSocket.last?.parsed() ?? []).map((m) => (m.input as Record<string, unknown>).dash);
+    const dash = inputs(FakeSocket.last).map((m) => (m.input as Record<string, unknown>).dash);
     expect(dash).toEqual([false, true, false, false]);
     net.stop();
   });
@@ -130,7 +134,7 @@ describe('ArenaServerNet kirim', () => {
     const { net } = makeNet(() => ({ x: 0, z: 0, slap: false, dash: false, held: true, charge: 0.6 }) as InputState);
     net.start();
     vi.advanceTimersByTime(TICK_MS * 2);
-    expect(FakeSocket.last?.parsed()[1]).toMatchObject({ input: { held: true, charge: 0.6 } });
+    expect(inputs(FakeSocket.last)[1]).toMatchObject({ input: { held: true, charge: 0.6 } });
     net.stop();
   });
 
@@ -142,6 +146,35 @@ describe('ArenaServerNet kirim', () => {
     const sent = FakeSocket.last?.parsed() ?? [];
     expect(sent[0]).toEqual({ t: 'start' });
     expect(sent[1]).toEqual({ t: 'nextRound' });
+    net.stop();
+  });
+
+  it('mengukur round trip dari pong dan menempelkannya di setiap input', () => {
+    // The door has no clock in common with the phone, so the only honest measurement is
+    // the client stamping its own send time and getting it back.
+    const { net } = makeNet(() => ({ x: 0, z: 0, slap: false, dash: false }) as InputState);
+    net.start();
+    vi.advanceTimersByTime(TICK_MS);
+    const socket = FakeSocket.last!;
+    const ping = socket.parsed().find((m) => m.t === 'ping');
+    expect(ping).toBeTruthy();
+
+    vi.advanceTimersByTime(80);
+    socket.emitMessage({ t: 'pong', ts: ping!.ts });
+    expect(net.stats.rtt).toBe(80);
+
+    vi.advanceTimersByTime(TICK_MS);
+    expect(inputs(socket).at(-1)?.rtt).toBe(80);
+    net.stop();
+  });
+
+  it('tidak mengirim ping lebih dari sekali per detik', () => {
+    const { net } = makeNet(() => ({ x: 0, z: 0, slap: false, dash: false }) as InputState);
+    net.start();
+    const socket = FakeSocket.last!;
+    vi.advanceTimersByTime(1100);
+    const pings = socket.parsed().filter((m) => m.t === 'ping');
+    expect(pings).toHaveLength(2);
     net.stop();
   });
 });

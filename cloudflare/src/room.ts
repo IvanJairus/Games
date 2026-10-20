@@ -32,10 +32,12 @@ interface Seat {
 const ROOM_PATH = /^\/room\/([A-Za-z0-9]{4,12})\/(ws|ticket)$/;
 const GAME_SHAPE = /^[a-z0-9-]{2,32}$/;
 const PLAYER_SHAPE = /^[0-9a-f]{32}$/;
-/** Input is 20 Hz; anything far above that is a script, not a hand. */
+/** Input is 30 Hz, plus a ping a second. Anything far above that is a script, not a hand. */
 const MAX_MESSAGES_PER_SECOND = 120;
 /** A gap this long means the timer was starved or the object was frozen mid-match. */
 const STALL_MS = 1000;
+/** A step cap, so one absurd delta cannot lock the object in a catch-up loop. */
+const MAX_STEPS_PER_TICK = 8;
 
 const newPlayerId = (): string => crypto.randomUUID().replace(/-/g, '');
 
@@ -54,11 +56,17 @@ export class GameRoom extends DurableObject<Env> {
   private ticking = false;
   /** Wall clock of the last tick, used to notice a starved timer. */
   private lastTickAtMs = 0;
+  /**
+   * Time measured but not yet simulated. A 33 ms timer never fires on 33 ms: it fires on
+   * 32, then 34. Dropping the leftover each tick silently ran the world slow, which at
+   * 30 Hz is a tenth of the match, so the remainder is carried instead.
+   */
+  private carrySeconds = 0;
   /** playerId -> seq terakhir yang sudah dieksekusi dan sudah ikut terbit. */
   private appliedSeq = new Map<string, number>();
   private heldMs = new Map<string, number>();
   private pendingSeq = new Map<string, { seq: number; at: number }>();
-  /** playerId -> jendela hitung pesan, untuk menolak kiriman yang jauh di atas 20 Hz. */
+  /** playerId -> jendela hitung pesan, untuk menolak kiriman yang jauh di atas 30 Hz. */
   private msgWindow = new Map<string, { at: number; count: number }>();
   /** Urutan duduk di game berpintu; DO menyalip master dari sini supaya sama dengan pintunya. */
   private joinedOrder: string[] = [];
@@ -370,13 +378,14 @@ export class GameRoom extends DurableObject<Env> {
   }
 
   /**
-   * Timer biasa, bukan Alarm: Alarm punya granularity detik dan tidak cocok untuk 20 Hz.
+   * Timer biasa, bukan Alarm: Alarm punya granularity detik dan tidak cocok untuk 30 Hz.
    * Yang dilarang dokumentasi Cloudflare adalah memakai `waitUntil()` untuk menahan objek
    * tetap hidup, bukan memakai `setInterval` selama masih ada WebSocket terbuka.
    */
   private startTicker(): void {
     if (this.tickTimer) return;
     this.lastAdvanceMs = Date.now();
+    this.carrySeconds = 0;
     this.tickTimer = setInterval(() => {
       void this.tickOnce();
     }, TICK_SECONDS * 1000);
@@ -415,16 +424,21 @@ export class GameRoom extends DurableObject<Env> {
   private async advanceClock(): Promise<void> {
     if (this.phase !== 'playing' || !this.game) {
       this.lastAdvanceMs = Date.now();
+      this.carrySeconds = 0;
       return;
     }
     const now = Date.now();
     if (!this.lastAdvanceMs) this.lastAdvanceMs = now;
-    let remaining = Math.min((now - this.lastAdvanceMs) / 1000, MAX_STEP_SECONDS);
+    // Clamp the gap, never the carry: a long freeze must not be replayed as a burst of
+    // steps, but the few milliseconds a jittery timer owes must not be thrown away.
+    this.carrySeconds += Math.min(Math.max((now - this.lastAdvanceMs) / 1000, 0), MAX_STEP_SECONDS);
     this.lastAdvanceMs = now;
-    while (remaining >= TICK_SECONDS) {
+    let steps = 0;
+    while (this.carrySeconds >= TICK_SECONDS && steps < MAX_STEPS_PER_TICK) {
       this.game.step(TICK_SECONDS);
       this.tick += 1;
-      remaining -= TICK_SECONDS;
+      this.carrySeconds -= TICK_SECONDS;
+      steps += 1;
     }
     if (this.game.finished()) {
       this.phase = 'finished';

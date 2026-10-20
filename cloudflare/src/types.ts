@@ -9,7 +9,12 @@ export interface Env {
 export const MAX_PLAYERS = 6;
 export const MIN_PLAYERS = 2;
 export const MAX_MESSAGE_CHARS = 1024;
-export const TICK_SECONDS = 0.05;
+/**
+ * 30 Hz. The room broadcasts once per tick, so this is also the snapshot rate: a client
+ * draws remote brawlers between two of these, and at 50 ms the gap was wide enough that a
+ * slap looked like it landed early. A third more CPU and bandwidth for a room of six.
+ */
+export const TICK_SECONDS = 0.033;
 export const MAX_STEP_SECONDS = 0.25;
 export const SNAPSHOT_MIN_INTERVAL_SECONDS = 15;
 

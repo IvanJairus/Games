@@ -25,9 +25,9 @@ export const getSupabase = (): SupabaseClient | null => {
     clientInstance = createClient(supabaseUrl, supabaseAnonKey, {
       realtime: {
         params: {
-          // Slap Arena sends one world snapshot per host tick at 20 Hz. Anything lower
+          // Slap Arena sends one world snapshot per host tick at 30 Hz. Anything lower
           // makes the server drop messages and silently fall back to REST.
-          eventsPerSecond: 20,
+          eventsPerSecond: 30,
         },
       },
     });
