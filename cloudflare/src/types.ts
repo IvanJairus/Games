@@ -53,6 +53,15 @@ export interface GameAdapter {
   removePlayer(playerId: string): void;
   load(world: unknown): void;
   finished(): boolean;
+  /**
+   * Game yang punya pintu aturan sendiri (Slap Arena lewat `gameApi.ts`). DO tidak boleh menilai
+   * fase, jumlah pemain, atau siapa master: semua sudah diputus pintu itu.
+   */
+  door?: boolean;
+  /** Hanya untuk game berpintu: kursi yang naik ke panggung saat koneksinya diterima. */
+  join?(playerId: string, name: string): { ok: true } | { ok: false; reason: string };
+  /** Hanya untuk game berpintu: fase dalam bahasa DO, supaya gerbang transport tetap satu bentuk. */
+  phase?(): 'lobby' | 'playing' | 'finished';
 }
 
 import type { GameRoom } from './room';

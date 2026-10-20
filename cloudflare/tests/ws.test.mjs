@@ -72,9 +72,12 @@ function dial(code, query) {
   });
   /**
    * Membaca log, bukan antrean recv: recvState bisa dibiarkan berjalan sambil tes lain mengirim
-   * pesan, dan lewat antrean ia meninggalkan janji yang meledak setelah tes selesai.
+   * pesan, dan lewat antrean ia meninggalkan janji yang meledak setelah tes selesai. State pertama
+   * sering datang sesaat setelah welcome, jadi log lama ikut diperiksa sebelum menunggu yang baru.
    */
   const recvState = (pred, ms = 8000) => new Promise((res, rej) => {
+    const already = [...log].reverse().find((m) => m.t === 'state' && pred(m));
+    if (already) return res(already);
     const seen = log.length;
     const poll = setInterval(() => {
       const hit = log.slice(seen).find((m) => m.t === 'state' && pred(m));
@@ -404,5 +407,77 @@ test('aksi yang ditolak tidak menggeser applied', async () => {
   const st = await a.recvState(() => true);
   assert.ok(st.applied, 'state harus punya applied');
   assert.equal(st.applied[seat], 0, 'aksi yang tidak dieksekusi tidak boleh ditandai diterapkan');
+  a.ws.terminate(); b.ws.terminate();
+});
+
+const SLAP = 'slap-arena';
+const moveInput = (seq, x = 0, z = 0) => ({ t: 'input', seq, input: { x, z, slap: false, dash: false } });
+
+/** Dua kursi pada game nyata, lewat mint dan handshake yang sama seperti game lain. */
+async function slapTable(tag) {
+  const code = room(tag);
+  const a = await connect(code, { name: 'Salma', game: SLAP });
+  await a.open();
+  const wa = await a.recv('welcome');
+  const b = await connect(code, { name: 'Tasya', game: SLAP });
+  await b.open();
+  const wb = await b.recv('welcome');
+  return { code, a, b, wa, wb };
+}
+
+test('kamar slap-arena menyambut dua brawlers ke lorong lewat dunia nyata', async () => {
+  const { a, b, wa, wb } = await slapTable('G1');
+  const st = await a.recvState((s) => s.phase === 'lobby');
+  assert.ok(Array.isArray(st.world?.players), `world harus berisi pemain, dapat ${JSON.stringify(st.world)}`);
+  const ids = st.world.players.map((p) => p.id);
+  assert.ok(ids.includes(wa.id) && ids.includes(wb.id), `dua kursi harus duduk di dunia: ${ids.join(', ')}`);
+  assert.equal(st.world.phase, 'WAITING');
+  assert.equal(st.master, wa.id, 'master adalah yang pertama duduk, sama seperti dihitung pintunya');
+  a.ws.terminate(); b.ws.terminate();
+});
+
+test('start di game nyata hanya untuk master dan sisanya lewat pintu', async () => {
+  const { a, b, wa, wb } = await slapTable('G2');
+  await a.recvState((s) => s.phase === 'lobby');
+  b.ws.send(JSON.stringify({ t: 'start' }));
+  assert.equal((await b.recv('error')).reason, 'unknown_player', 'bukan master tidak boleh mulai');
+
+  a.ws.send(JSON.stringify({ t: 'start' }));
+  const st = await a.recvState((s) => s.world?.phase !== 'WAITING');
+  assert.ok(['COUNTDOWN', 'BATTLE'].includes(st.world.phase), `fase harus bergerak dari WAITING, dapat ${st.world.phase}`);
+  assert.equal(st.phase, 'playing', 'fase DO ikut game berpintu');
+  a.ws.terminate(); b.ws.terminate();
+});
+
+test('input gerakan nyata masuk ke dunia dan applied mengikutinya', async () => {
+  const { a, b, wa } = await slapTable('G3');
+  a.ws.send(JSON.stringify({ t: 'start' }));
+  await a.recvState((s) => s.phase === 'playing');
+  a.ws.send(JSON.stringify(moveInput(1, 1, 0)));
+  const st = await a.recvState((s) => (s.applied?.[wa.seat] ?? 0) >= 1);
+  assert.equal(st.applied[wa.seat], 1);
+  const me = st.world.players.find((p) => p.id === wa.id);
+  assert.ok(me, `dunia harus mengenal kursi saya: ${JSON.stringify(st.world.players.map((p) => p.id))}`);
+
+  await new Promise((r) => setTimeout(r, 2500));
+  const later = await a.recvState((s) => s.world?.phase === 'BATTLE', 12000);
+  assert.ok(later.world.players.length === 2, 'dua brawlers harus masih berdiri di arena');
+  a.ws.terminate(); b.ws.terminate();
+});
+
+test('payload jahat ditolak pintu dan tidak menyentuh dunia', async () => {
+  const { a, b, wa } = await slapTable('G4');
+  a.ws.send(JSON.stringify({ t: 'start' }));
+  await a.recvState((s) => s.phase === 'playing');
+  a.ws.send(JSON.stringify(moveInput(1, 1, 0)));
+  await a.recvState((s) => (s.applied?.[wa.seat] ?? 0) >= 1);
+
+  a.ws.send(JSON.stringify(moveInput(2, 5, 0)));
+  assert.equal((await a.recv('error')).reason, 'bad_payload', 'x di luar rentang harus tertahan di pintu');
+  const st = await a.recvState(() => true);
+  assert.equal(st.applied[wa.seat], 1, 'aksi yang ditolak tidak boleh menaikkan applied');
+
+  a.ws.send(JSON.stringify(moveInput(1, 0, 0)));
+  assert.equal((await a.recv('error')).reason, 'duplicate_seq');
   a.ws.terminate(); b.ws.terminate();
 });
