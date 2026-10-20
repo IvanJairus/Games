@@ -8,6 +8,31 @@ terpisah saat kamu menerbitkan rilis.
 Entri dimulai dari 14 Oktober 2026. Perubahan sebelum tanggal itu ada pada riwayat git dan daftar
 pull request, karena tidak dicatat saat terjadi.
 
+## 2026-10-19 - Pintu klien untuk Worker: `VITE_TRANSPORT` dan `ArenaServerNet`
+
+Saklar transport yang direncanakan di `docs/cloudflare-migration.md` bagian 5 akhirnya punya bentuk
+kode. Dua berkas baru, belum dipakai halaman mana pun:
+
+- `src/lib/transport.ts`: `activeTransport()` membaca `VITE_TRANSPORT` dengan default `supabase`,
+  `mintRoomTicket()` meminta kursi ke Worker, `socketUrl()` mengubah http/https ke ws/wss.
+- `src/games/slap-arena/engine/serverNet.ts`: `ArenaServerNet`, satu WebSocket per kamar. Kelas itu
+  tidak menerima `RealtimeChannel` dan tidak punya peran host; dunia diterima, niat dikirim.
+
+Satu keputusan dipaksa oleh aturan yang sudah ada, bukan dipilih: `gameApi.ts` menolak `seq` yang tidak
+maju, sementara konvensi `ArenaNet` menaikkan `seq` hanya saat aksi dan menahan flag di antaranya. Kalau
+pintu klien meniru konvensi itu, perubahan arah di tengah tick ikut ditolak dan pemain membeku. Jadi
+`ArenaServerNet` menaikkan `seq` setiap tick dan memotong `slap`/`dash` ke satu tick per tekanan.
+
+Terukur (`npx vitest run tests/unit/slap-arena-servernet.test.ts`, n = 1 rangkaian): 9 lulus dari 9.
+Dua penjaga dibuktikan bisa gagal dengan merusak modulnya lebih dulu: `seq` dipaku konstan memberi
+`expected [1,1,1,1,1,1] to deeply equal [1,2,3,4,5,6]`, dan flag `slap` yang diteruskan terus-menerus
+membuat tes "slap dan dash hanya sekali per tekanan" merah. Keduanya hijau lagi setelah modul
+dikembalikan (md5 `396f39dfa47edbbb2c5da9ec214b36e1`, sama seperti sebelum eksperimen).
+
+Belum: halaman `SlapArenaMatch.tsx` masih sepenuhnya jalur Broadcast, dan belum ada satu pun
+verifikasi di browser nyata. Env `VITE_CF_ROOMS_URL` juga belum dipasang di Vercel; kalau kode ini
+dipakai tanpa env itu, multiplayer mati sunyi seperti dua insiden sebelumnya.
+
 ## 2026-10-17 - WallGo: kursi ke-5 dan ke-6 akhirnya berangkat dari jarak yang sama
 
 `docs/wallgame-rules.md:23` sudah menuntutnya: semua pemain berangkat dengan jarak tempuh yang
