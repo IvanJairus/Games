@@ -98,40 +98,48 @@ export const Hud: React.FC<HudProps> = ({
   const countLabel =
     hud.countdown > 0 ? String(Math.min(3, Math.ceil(hud.countdown))) : 'GAS!';
 
-  const [copied, setCopied] = useState(false);
+  const [copyState, setCopyState] = useState<'idle' | 'done' | 'failed'>('idle');
   useEffect(() => {
-    if (!copied) return;
-    const t = window.setTimeout(() => setCopied(false), 1600);
+    if (copyState === 'idle') return;
+    const t = window.setTimeout(() => setCopyState('idle'), 1600);
     return () => clearTimeout(t);
-  }, [copied]);
+  }, [copyState]);
 
   /** The whole invite in one tap: the URL already carries the room code. */
   const copyInvite = () => {
     if (!hud.roomCode) return;
     const url = `${window.location.origin}/slap-arena/m/${hud.roomCode}`;
-    const done = () => setCopied(true);
-    try {
-      if (navigator.clipboard?.writeText) {
-        void navigator.clipboard.writeText(url).then(done, done);
-        return;
-      }
-    } catch {
-      /* fall through to the legacy path */
-    }
-    try {
+    const legacy = (): boolean => {
       const el = document.createElement('textarea');
       el.value = url;
       el.setAttribute('readonly', '');
       el.style.position = 'fixed';
       el.style.opacity = '0';
       document.body.appendChild(el);
-      el.select();
-      document.execCommand('copy');
-      document.body.removeChild(el);
-      done();
-    } catch {
-      /* nothing else to try */
+      try {
+        el.select();
+        return document.execCommand('copy');
+      } catch {
+        return false;
+      } finally {
+        el.remove();
+      }
+    };
+    // `writeText` rejects on an insecure origin and on a denied permission. Reporting the
+    // success label from the rejection handler too would tell the player to paste an
+    // invite that is not on the clipboard.
+    if (navigator.clipboard?.writeText) {
+      try {
+        void navigator.clipboard.writeText(url).then(
+          () => setCopyState('done'),
+          () => setCopyState(legacy() ? 'done' : 'failed')
+        );
+        return;
+      } catch {
+        /* a browser that throws instead of rejecting still gets the legacy path */
+      }
     }
+    setCopyState(legacy() ? 'done' : 'failed');
   };
 
   return (
@@ -157,7 +165,7 @@ export const Hud: React.FC<HudProps> = ({
                 aria-label="Salin tautan undangan ke papan klip"
                 onClick={copyInvite}
               >
-                {copied ? 'TAUTAN TERSALIN' : 'SALIN TAUTAN'}
+                {copyState === 'done' ? 'TAUTAN TERSALIN' : copyState === 'failed' ? 'GAGAL SALIN' : 'SALIN TAUTAN'}
               </button>
             )}
             <button

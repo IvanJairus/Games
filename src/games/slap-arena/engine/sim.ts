@@ -16,13 +16,20 @@ import { botInputToState, computeBotAi } from './botAi';
 
 const FIXED_DT = 1 / 120;
 /** One Worker tick. A replayed input is worth exactly this much simulated time. */
-const REPLAY_STEP = 0.05;
-/** Three seconds at 20 Hz; past that the ack has stalled and replaying is guessing. */
-const MAX_PENDING = 60;
+const REPLAY_STEP = 1 / 30;
+/** Three seconds at 30 Hz; past that the ack has stalled and replaying is guessing. */
+const MAX_PENDING = 90;
 /** A jump bigger than this is a respawn or a KO, not drift: snap it, do not smear it. */
 const MAX_CORRECTION = 4;
 export const GRACE_SECONDS = 2.5;
 const MAX_STEP_SECONDS = 0.25;
+/**
+ * How far back a slap may be judged. Longer than the largest rewind the door accepts, so
+ * a request is never answered with a frame that has already been dropped.
+ */
+export const HISTORY_SECONDS = 0.5;
+/** Sampled at 60 Hz: half a frame of error at full sprint is six centimetres. */
+const HISTORY_STEP = 1 / 60;
 
 export interface SimOptions {
   localId: string;
@@ -62,6 +69,16 @@ export class SlapSim {
   private accumulator = 0;
   private clock = 0;
   private roundElapsed = 0;
+  /** Simulated seconds since the world was created. Wall time never enters the history. */
+  private simTime = 0;
+  private historyT = Number.NEGATIVE_INFINITY;
+  /**
+   * Where every brawler stood, going back `HISTORY_SECONDS`. A slap arrives carrying the
+   * latency its attacker saw the world through; judging it against the live positions
+   * instead is what makes a brawler who is visibly in range swing at air, and a brawler
+   * who is visibly out of range land a hit.
+   */
+  private history: { t: number; pos: Record<string, { x: number; z: number }> }[] = [];
   private koEmitted = new Set<string>();
   /** Local-only view of remote brawlers, filled by applySnapshot on clients. */
   private remoteTargets = new Map<string, PlayerSnapshot>();
@@ -152,6 +169,11 @@ export class SlapSim {
     spawnPlayersInCircle(this.state.players);
     this.koEmitted.clear();
     this.roundElapsed = 0;
+    // The history belongs to the round that just ended. A rewind across the respawn would
+    // answer with the old ring of positions and let the first slap of a round land on a
+    // brawler who is no longer there.
+    this.history.length = 0;
+    this.historyT = Number.NEGATIVE_INFINITY;
     this.state.phase = 'BATTLE';
     this.state.winnerId = null;
     // The queue belongs to the round that just ended; replaying it would push a body
@@ -191,6 +213,7 @@ export class SlapSim {
 
   private fixedStep(dt: number): void {
     const { state } = this;
+    this.simTime += dt;
 
     if (state.phase === 'COUNTDOWN') {
       state.countdown -= dt;
@@ -217,7 +240,34 @@ export class SlapSim {
     }
 
     resolvePlayerCollisions(list);
+    this.recordHistory(list);
     this.checkRoundEnd(list);
+  }
+
+  private recordHistory(list: PlayerState[]): void {
+    if (this.simTime - this.historyT < HISTORY_STEP) return;
+    this.historyT = this.simTime;
+    const pos: Record<string, { x: number; z: number }> = {};
+    for (const p of list) pos[p.id] = { x: p.x, z: p.z };
+    this.history.push({ t: this.simTime, pos });
+    const oldest = this.simTime - HISTORY_SECONDS;
+    // Keep one frame older than the window: a rewind that lands between two samples still
+    // has something on its left.
+    while (this.history.length > 2 && this.history[0].t < oldest) this.history.shift();
+  }
+
+  /**
+   * Where the world was `secondsAgo`. Used as the hit-test pose for a slap that crossed a
+   * network: the attacker aimed at what was on their screen, and their screen was already
+   * this far behind the truth when they pressed the button.
+   */
+  positionsAt(secondsAgo: number): Record<string, { x: number; z: number }> | null {
+    if (!Number.isFinite(secondsAgo) || secondsAgo <= 0 || !this.history.length) return null;
+    const target = this.simTime - Math.min(secondsAgo, HISTORY_SECONDS);
+    for (let i = this.history.length - 1; i >= 0; i--) {
+      if (this.history[i].t <= target) return this.history[i].pos;
+    }
+    return this.history[0].pos;
   }
 
   private consumeAction(p: PlayerState, list: PlayerState[], input: InputState, knockScale: number): void {
@@ -227,7 +277,11 @@ export class SlapSim {
       // A refused swing announces nothing at all, so it cannot print a MISS the player
       // never swung. Returning here would also swallow a dash in the same frame.
       if (canSlap(p)) {
-        const hits = executeSlap(p, list, knockScale, charge);
+        // A slap from a remote seat carries the latency that seat saw the world through.
+        // Only the hit test is rewound; the knockback still lands on the live body.
+        const rewind = input.rewind;
+        const ghosts = typeof rewind === 'number' && rewind > 0 ? this.positionsAt(rewind) : null;
+        const hits = executeSlap(p, list, knockScale, charge, ghosts ?? undefined);
         this.onEvent({ kind: 'slap', playerId: p.id, x: p.x, z: p.z, angle: p.angle, charge, hitCount: hits.length });
         for (const h of hits) {
           const victim = this.state.players[h.victimId];
@@ -276,6 +330,17 @@ export class SlapSim {
 
   /** Clients only simulate their own brawler so movement feels immediate. */
   private stepLocalPrediction(dt: number): void {
+    // The renderer raises `bump` on whoever a hit event names, and only
+    // `updatePlayerMovement` ever lowers it. A client never steps its opponents, so an
+    // opponent that took one slap kept bump = 1 for the rest of the round and the rig
+    // stayed squashed, trembling at 40 rad/s, with nothing left to stop it. The flag is
+    // a visual clock, so the client has to run that clock for the bodies it does not own.
+    for (const id of Object.keys(this.state.players)) {
+      if (id === this.localId) continue;
+      const remote = this.state.players[id];
+      if (remote.bump > 0) remote.bump = Math.max(0, remote.bump - dt * 4);
+    }
+
     const me = this.local;
     if (!me || this.state.phase !== 'BATTLE') return;
     const input = this.inputs.get(this.localId) ?? NO_INPUT;
@@ -364,7 +429,7 @@ export class SlapSim {
       local.slapCooldown = p.slapCooldown;
       local.dashCooldown = p.dashCooldown;
       // The renderer reads player.x/z, so the authoritative pose has to land there.
-      // renderX/renderZ in Arena3D smooths the gap between 20 Hz snapshots.
+      // renderX/renderZ in Arena3D smooths the gap between 30 Hz snapshots.
       local.x = p.x;
       local.z = p.z;
       local.vx = p.vx;

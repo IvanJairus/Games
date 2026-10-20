@@ -1,11 +1,19 @@
 /**
  * Snapshot interpolation for remote brawlers.
  *
- * The host speaks at 20 Hz and the screen draws at 60. Extrapolating forward from the last
+ * The host speaks at 30 Hz and the screen draws at 60. Extrapolating forward from the last
  * report guesses, and a guess overshoots on a charged knockback and then snaps back when the
- * next report lands. Drawing ~100 ms in the past instead interpolates between two states that
- * are already known, so a fast body bends instead of jumping.
+ * next report lands. Drawing a tick or so in the past instead interpolates between two
+ * states that are already known, so a fast body bends instead of jumping.
  */
+
+/**
+ * How far behind real time a remote brawler is drawn. One and a half host ticks: enough
+ * that a packet delayed by a few tens of milliseconds still lands before the playhead
+ * reaches it. It is also the second half of the lag-compensation window, because this is
+ * the delay the attacker was looking through when they pressed the button.
+ */
+export const REMOTE_DELAY_SECONDS = 0.05;
 
 export interface SnapshotSample {
   /** Local receive time, seconds. */
@@ -25,13 +33,7 @@ export class SnapshotBuffer {
   private samples: SnapshotSample[] = [];
 
   constructor(
-    /**
-     * How far behind real time to draw. A little over one host tick (50 ms), so a packet
-     * delayed by a few tens of milliseconds still lands before the playhead reaches it.
-     * Raising this smooths jitter but widens the gap between what a slap looks like and
-     * where the host thinks the bodies are, which reads as "hit from nowhere".
-     */
-    private readonly delay = 0.08,
+    private readonly delay = REMOTE_DELAY_SECONDS,
     /** Older than the render window is dead weight. */
     private readonly max = 16
   ) {}

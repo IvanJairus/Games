@@ -4,7 +4,13 @@ import type { InputState, SimEvent, WorldSnapshot } from './types';
 export const EV_INPUT = 'sa_in';
 export const EV_SNAPSHOT = 'sa_snap';
 export const EV_FX = 'sa_fx';
-export const TICK_MS = 50;
+/**
+ * 30 Hz. The host used to speak 20 times a second, which left a remote brawler drawn from
+ * a pose up to 50 ms old no matter how good the connection was; at 33 ms the interpolation
+ * window halves and a slap reads where the eye expects it. The cost is a third more
+ * snapshots per second, which for a room of six is still a rounding error.
+ */
+export const TICK_MS = 33;
 
 export interface InputMessage {
   id: string;
@@ -54,7 +60,7 @@ export function isFxBatch(payload: unknown): payload is SimEvent[] {
  * Builds the host-side rule for "is this message an action, or a sender repeating itself".
  *
  * A sender that numbers its actions fires only when the number moves, which is what lets
- * it keep the flags up between 50 ms ticks without firing twice. A sender with no number
+ * it keep the flags up between 33 ms ticks without firing twice. A sender with no number
  * is a client from before the charge, whose flags were the whole signal, so those are
  * taken at face value.
  */

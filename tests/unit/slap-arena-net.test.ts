@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { ArenaNet, EV_FX, EV_INPUT, EV_SNAPSHOT, makeActionEdge } from '../../src/games/slap-arena/engine/net';
+import { ArenaNet, EV_FX, EV_INPUT, EV_SNAPSHOT, TICK_MS, makeActionEdge } from '../../src/games/slap-arena/engine/net';
 import { ARENA_RADIUS } from '../../src/games/slap-arena/engine/physics';
 import { SlapSim } from '../../src/games/slap-arena/engine/sim';
 import type { InputState, SimEvent, WorldSnapshot } from '../../src/games/slap-arena/engine/types';
@@ -390,8 +390,11 @@ describe('Slap Arena host-authoritative link', () => {
     await vi.advanceTimersByTimeAsync(1000);
     net.stop();
 
-    expect(net.stats.sent).toBe(20);
-    expect(net.stats.drop).toBe(20);
+    // One broadcast per host tick, and the count has to follow the tick rather than a
+    // hardcoded 20: a rate change is not a protocol regression.
+    const ticks = Math.floor(1000 / TICK_MS);
+    expect(net.stats.sent).toBe(ticks);
+    expect(net.stats.drop).toBe(ticks);
   });
 
   it('keeps event names single-sourced', () => {

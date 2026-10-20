@@ -65,4 +65,33 @@ describe('Slap Arena waiting room HUD', () => {
     expect(writeText.mock.calls[0][0]).toContain('/slap-arena/m/ABC123');
     expect(await screen.findByText('TAUTAN TERSALIN')).toBeTruthy();
   });
+
+  it('does not claim the invite was copied when the clipboard refuses', async () => {
+    // writeText rejects on an insecure origin and on a denied permission. Reporting
+    // success from the rejection handler tells the player to paste something that is not
+    // there, which is worse than telling them it failed.
+    const writeText = vi.fn().mockRejectedValue(new Error('denied'));
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    Object.defineProperty(document, 'execCommand', { value: () => false, configurable: true });
+
+    render(<Hud {...base} hud={hud()} canStart={false} onStart={() => {}} />);
+    fireEvent.click(screen.getByTestId('slap-copy-invite'));
+
+    expect(await screen.findByText('GAGAL SALIN')).toBeTruthy();
+    expect(screen.queryByText('TAUTAN TERSALIN')).toBeNull();
+  });
+
+  it('falls back to execCommand when the async clipboard is missing', async () => {
+    Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true });
+    const exec = vi.fn().mockReturnValue(true);
+    Object.defineProperty(document, 'execCommand', { value: exec, configurable: true });
+
+    render(<Hud {...base} hud={hud()} canStart={false} onStart={() => {}} />);
+    fireEvent.click(screen.getByTestId('slap-copy-invite'));
+
+    expect(exec).toHaveBeenCalledWith('copy');
+    expect(await screen.findByText('TAUTAN TERSALIN')).toBeTruthy();
+    // The scratch textarea must not survive the copy.
+    expect(document.querySelector('textarea')).toBeNull();
+  });
 });

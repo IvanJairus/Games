@@ -106,7 +106,7 @@ export const SlapArenaMatch: React.FC = () => {
   const inputRef = useRef<InputState>({ x: 0, z: 0, slap: false, dash: false });
   /**
    * The wire reads this instead of `inputRef`. A keypress lives one frame, but the
-   * sender only wakes every 50 ms, and sharing one object meant a released slap was
+   * sender only wakes every 33 ms, and sharing one object meant a released slap was
    * usually eaten before it could be broadcast. `seq` is the edge: the host acts when it
    * moves and ignores the flags it carries in between.
    */
@@ -440,7 +440,7 @@ export const SlapArenaMatch: React.FC = () => {
         }),
         onActionsRead: () => {
           // Pintu server menghitung tepi dari bendera ini. Loop render tidak boleh
-          // melipatnya (tick jaringan 50 ms bisa lewat setelah frame), jadi yang
+          // melipatnya (tick jaringan 33 ms bisa lewat setelah frame), jadi yang
           // melipat adalah tick yang sudah membacanya. Tanpa ini hanya slap pertama
           // dalam satu muat halaman yang pernah terkirim.
           wireRef.current.slap = false;

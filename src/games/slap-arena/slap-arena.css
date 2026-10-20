@@ -191,6 +191,8 @@
   color: var(--sa-ink);
 }
 .sa-pill--copy:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--sa-ink); }
+/* It is a button, so it has to look like one to a keyboard too. */
+.sa-pill--copy:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
 
 /* Waiting room: only the master can start, so the button has to be unmissable. */
 .sa-start {
@@ -210,7 +212,17 @@
 }
 .sa-start:active { transform: translateY(5px); box-shadow: 0 1px 0 var(--sa-ink); }
 
-.sa-topmeta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* `.sa-hud` is pointer-events:none so the canvas keeps every tap it does not need, and
+   pointer-events inherits. This row holds the copy pill and the FX chip, and it never
+   re-enabled itself: both buttons were painted, focusable by keyboard, and impossible to
+   click or tap. Only the right-hand icon group had the override. */
+.sa-topmeta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  pointer-events: auto;
+}
 
 .sa-topactions {
   display: flex;
