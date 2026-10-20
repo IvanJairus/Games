@@ -1,12 +1,51 @@
-# Changelog
+## 2026-10-19 - Halaman Slap Arena bisa dialihkan ke Worker, lewat flag build
 
-Catatan perubahan untuk [ivanjairus.xyz/games](https://www.ivanjairus.xyz/games/).
-Entri disusun per tanggal, mengikuti gaya [Keep a Changelog](https://keepachangelog.com/id/1.1.0/)
-untuk nama seksinya. Versi di `package.json` sengaja tidak ikut dinaikkan di sini; itu keputusan
-terpisah saat kamu menerbitkan rilis.
+Sambungan terakhir langkah 6. `SlapArenaMatch.tsx` sekarang punya dua jalur:
 
-Entri dimulai dari 14 Oktober 2026. Perubahan sebelum tanggal itu ada pada riwayat git dan daftar
-pull request, karena tidak dicatat saat terjadi.
+- `doorMode` (`VITE_TRANSPORT=cloudflare` dan kamar nyata, bukan solo): kursi diambil dari Worker
+  dengan id 128 bit yang disimpan di localStorage, `sim.authoritative` selalu false, dunia masuk lewat
+  `applySnapshot`, efek dirender dari array `fx` server, dan `start` / ronde berikutnya dikirim sebagai
+  aksi ke pintu. Jalur Broadcast lama tidak dihapus dan tetap default.
+- Efek lokal tidak dirender lagi saat pintu aktif, karena server sudah mengirim kejadian yang sama:
+  keduanya akan menampilkan percikan dua kali untuk satu pukulan.
+
+Sisi Worker ikut berubah (PR #85): `POST /room/<kode>/ticket?player=` sekarang menerima id usulan asal
+bentuk 32 heks, jadi klien tahu id kursinya sebelum socket dibuka dan `sim` tidak perlu dibuat dua kali.
+Id pendek ditolak `bad_player`, dan ruang tebakan 128 bit itu yang membuat ini aman; id sesi lama
+hanya 32 bit dan Worker memakai id kursi untuk klaim ulang, jadi memakainya akan membuka lagi celah
+perebutan kursi yang ditutup di #82.
+
+Terukur lokal: `npx tsc -b` exit 0, `npx vitest run tests/unit tests/ui` 373 lulus / 375 dengan 2 skipped
+(dua tes live yang butuh `RUN_LIVE_WS=1`), `npm run guard:check` bersih. Suite cloudflare 28 lulus dari 28
+setelah perubahan id usulan, dan penjaganya merah lebih dulu (50 ms) terhadap Worker tanpa fitur itu.
+
+**Belum diverifikasi di browser.** Halaman ini belum pernah dibuka dengan flag menyala. Yang saya klaim
+sampai di sini hanya: kompilasi bersih, jalur default tidak mengubah 373 tes yang ada, dan protokol di
+sisinya lulus 28 + 2 tes live.
+## 2026-10-19 - Pintu klien untuk Worker: `VITE_TRANSPORT` dan `ArenaServerNet`
+
+Saklar transport yang direncanakan di `docs/cloudflare-migration.md` bagian 5 akhirnya punya bentuk
+kode. Dua berkas baru, belum dipakai halaman mana pun:
+
+- `src/lib/transport.ts`: `activeTransport()` membaca `VITE_TRANSPORT` dengan default `supabase`,
+  `mintRoomTicket()` meminta kursi ke Worker, `socketUrl()` mengubah http/https ke ws/wss.
+- `src/games/slap-arena/engine/serverNet.ts`: `ArenaServerNet`, satu WebSocket per kamar. Kelas itu
+  tidak menerima `RealtimeChannel` dan tidak punya peran host; dunia diterima, niat dikirim.
+
+Satu keputusan dipaksa oleh aturan yang sudah ada, bukan dipilih: `gameApi.ts` menolak `seq` yang tidak
+maju, sementara konvensi `ArenaNet` menaikkan `seq` hanya saat aksi dan menahan flag di antaranya. Kalau
+pintu klien meniru konvensi itu, perubahan arah di tengah tick ikut ditolak dan pemain membeku. Jadi
+`ArenaServerNet` menaikkan `seq` setiap tick dan memotong `slap`/`dash` ke satu tick per tekanan.
+
+Terukur (`npx vitest run tests/unit/slap-arena-servernet.test.ts`, n = 1 rangkaian): 9 lulus dari 9.
+Dua penjaga dibuktikan bisa gagal dengan merusak modulnya lebih dulu: `seq` dipaku konstan memberi
+`expected [1,1,1,1,1,1] to deeply equal [1,2,3,4,5,6]`, dan flag `slap` yang diteruskan terus-menerus
+membuat tes "slap dan dash hanya sekali per tekanan" merah. Keduanya hijau lagi setelah modul
+dikembalikan (md5 `396f39dfa47edbbb2c5da9ec214b36e1`, sama seperti sebelum eksperimen).
+
+Belum: halaman `SlapArenaMatch.tsx` masih sepenuhnya jalur Broadcast, dan belum ada satu pun
+verifikasi di browser nyata. Env `VITE_CF_ROOMS_URL` juga belum dipasang di Vercel; kalau kode ini
+dipakai tanpa env itu, multiplayer mati sunyi seperti dua insiden sebelumnya.
 
 ## 2026-10-19 - Slap Arena: aturan main dibungkus API murni, fisika tidak disentuh
 

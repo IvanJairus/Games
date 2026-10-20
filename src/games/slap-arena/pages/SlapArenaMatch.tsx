@@ -21,6 +21,8 @@ import {
   unlockAudio,
 } from '../../common/audio';
 import { getSupabase, getPlayerSessionId, getStoredPlayerName } from '../../../lib/supabase';
+import { activeTransport, getOrCreateDoorId, mintRoomTicket, roomsBaseUrl, socketUrl } from '../../../lib/transport';
+import { ArenaServerNet } from '../engine/serverNet';
 import {
   finishOnlineMatch,
   joinOnlineRoom,
@@ -76,6 +78,11 @@ export const SlapArenaMatch: React.FC = () => {
   const isSolo = roomCode === null;
 
   const localId = useRef(getPlayerSessionId()).current;
+  /** Kursi di Worker: id 128 bit, dan halaman ini tidak pernah memegang dunia. */
+  const doorMode = useRef(activeTransport() === 'cloudflare' && !isSolo).current;
+  const doorId = useRef(doorMode ? getOrCreateDoorId() : '').current;
+  const seatKey = doorMode ? doorId : localId;
+  const doorRef = useRef<ArenaServerNet | null>(null);
   const playerName = useRef(getStoredPlayerName() || 'Brawler').current;
   const playerColor = useRef(readColor()).current;
   const reducedMotion = useRef(
@@ -115,13 +122,15 @@ export const SlapArenaMatch: React.FC = () => {
   const netStatsRef = useRef<ArenaNet | null>(null);
 
   const sim = useMemo(() => {
-    const s = new SlapSim({ localId, authoritative: isSolo, scoreToWin: 3 });
+    const s = new SlapSim({ localId: seatKey, authoritative: isSolo, scoreToWin: 3 });
     s.onEvent = (event) => {
       if (s.authoritative) fxQueue.current.push(event);
-      handleSimEvent(event, s, arenaRef.current);
+      // Di jalur Worker efek datang dari siaran server; merender yang lokal juga akan
+      // menampilkan percikan dua kali untuk satu kejadian.
+      if (!doorMode) handleSimEvent(event, s, arenaRef.current);
     };
     return s;
-  }, [localId, isSolo]);
+  }, [seatKey, doorMode, isSolo]);
 
   // ---- solo setup ---------------------------------------------------------
   useEffect(() => {
@@ -277,8 +286,12 @@ export const SlapArenaMatch: React.FC = () => {
       setHud((prev) => ({ ...prev, peers: roster, needed: 2 }));
 
       if (host && roster >= 2 && sim.state.phase === 'WAITING') {
-        void startOnlineMatch(sync.match.id).catch((err) => console.warn('[slap-arena] gagal memulai match', err));
-        sim.startCountdown(0.6);
+        if (doorMode) {
+          doorRef.current?.sendStart();
+        } else {
+          void startOnlineMatch(sync.match.id).catch((err) => console.warn('[slap-arena] gagal memulai match', err));
+          sim.startCountdown(0.6);
+        }
       }
       if (roster < 2 && sim.state.phase !== 'WAITING') {
         setDisconnected('Menunggu brawler lain kembali ke pulau.');
@@ -329,6 +342,7 @@ export const SlapArenaMatch: React.FC = () => {
             if (cancelled) return;
             const channel = sub?.channel;
             if (status === 'SUBSCRIBED' && channel) {
+              if (doorMode) return;
               void channel.track({ id: localId, name: playerName });
               net = new ArenaNet({
                 channel,
@@ -391,6 +405,58 @@ export const SlapArenaMatch: React.FC = () => {
       sub?.unsubscribe();
     };
   }, [isSolo, roomCode, playerName, playerColor, localId, sim]);
+
+  // ---- worker door --------------------------------------------------------
+  useEffect(() => {
+    if (!doorMode || !roomCode) return;
+    let cancelled = false;
+    const base = roomsBaseUrl();
+    if (!base) {
+      setFatal('VITE_CF_ROOMS_URL belum diisi, jadi kamar Worker tidak bisa dihubungi.');
+      return;
+    }
+    void (async () => {
+      const ticket = await mintRoomTicket(roomCode, 'slap-arena', playerName);
+      if (cancelled) return;
+      const net = new ArenaServerNet({
+        wsUrl: socketUrl(base, roomCode, ticket.ticket),
+        getInput: () => ({
+          x: inputRef.current.x,
+          z: inputRef.current.z,
+          held: wireRef.current.held,
+          charge: wireRef.current.charge,
+          slap: wireRef.current.slap,
+          dash: wireRef.current.dash,
+        }),
+        onWelcome: (info) => {
+          if (info.seat !== undefined && ticket.seat !== info.seat) {
+            console.warn('[slap-arena] kursi Worker berbeda dari tiket', ticket.seat, info.seat);
+          }
+        },
+        onWorld: (snap) => {
+          if (!sim.players[seatKey]) sim.addPlayer({ id: seatKey, name: playerName, color: playerColor });
+          sim.applySnapshot(snap);
+          setHud((prev) => ({ ...prev, peers: snap.players.length }));
+        },
+        onFx: (events) => events.forEach((ev) => handleSimEvent(ev, sim, arenaRef.current)),
+        onLink: (state, detail) => {
+          if (state === 'up') return;
+          setDisconnected(`Kamar terputus (${detail ?? 'tanpa alasan'}). Muat ulang untuk masuk lagi.`);
+        },
+      });
+      doorRef.current = net;
+      net.start();
+    })().catch((err: unknown) => {
+      if (cancelled) return;
+      console.warn('[slap-arena] pintu Worker gagal', err);
+      setDisconnected(err instanceof Error ? err.message : 'Tidak bisa masuk kamar Worker.');
+    });
+    return () => {
+      cancelled = true;
+      doorRef.current?.stop();
+      doorRef.current = null;
+    };
+  }, [doorMode, roomCode, seatKey, playerName, playerColor, sim]);
 
   // ---- simulation loop ----------------------------------------------------
   useEffect(() => {
@@ -481,7 +547,8 @@ export const SlapArenaMatch: React.FC = () => {
 
   // ---- round flow ---------------------------------------------------------
   const advance = useCallback(() => {
-    if (sim.authoritative) sim.nextRound();
+    if (doorMode) doorRef.current?.sendNextRound();
+    else if (sim.authoritative) sim.nextRound();
   }, [sim]);
 
   useEffect(() => {
