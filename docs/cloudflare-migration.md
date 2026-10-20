@@ -376,3 +376,21 @@ Klien nyata membutuhkan dua hal lagi setelah adapter masuk.
    membeku. Sembilan unit test lulus, dan dua di antaranya dibuktikan bisa gagal: seq konstan membuat
    tes pertama merah (`expected [1,1,1,1,1,1] to deeply equal [1,2,3,4,5,6]`), dan flag slap yang
    dikirim terus membuat tes keduanya merah.
+
+
+## 13. Status tayang dan apa yang masih menunggu (20 Oktober)
+
+Sudah masuk `main` dan tayang: tiket HMAC, tick 20 Hz oleh timer, `applied`/`held`/`fx`, adapter
+Slap Arena, pintu klien, dan saklar `VITE_TRANSPORT`. Rilis ditandai `v1.2.0` lalu `v1.2.1`.
+
+Terverifikasi di browser nyata (dua konteks Chrome, `n = 1`): 11 lulus dari 11 terhadap Worker tayang,
+termasuk tab tamu menerima 47 frame `state` tanpa mengirim aksi dan fase dunia bergerak ke `COUNTDOWN`.
+
+Belum aktif: produksi `ivanjairus.xyz` masih jalur Broadcast. Percobaan pertama menaruh env di level
+team (Shared) tidak masuk ke build, terbukti chunk `SlapArenaMatch-*.js` produksi tidak memuat string
+`workers.dev` dan tidak ada satu pun request ke Worker dari browser. Setelah env dipasang di project
+`ij-games`, deploy berikutnya harus diuji ulang dengan probe yang sama: mint 200, WebSocket terbuka,
+id kursi Worker terbentuk, fase dunia bergerak.
+
+Cara rollback kalau Worker bermasalah: hapus `VITE_TRANSPORT` dari environment Production lalu redeploy.
+Ini env build-time, bukan saklar runtime.
