@@ -26,6 +26,8 @@ async function mint(code, opts = {}) {
   if (opts.name) q.set('name', opts.name);
   if (opts.player) q.set('player', opts.player);
   if (opts.ttl) q.set('ttl', String(opts.ttl));
+  if (opts.seats) q.set('seats', String(opts.seats));
+  if (opts.size) q.set('size', opts.size);
   const res = await fetch(`${BASE}/room/${code}/ticket?${q}`, {
     method: 'POST',
     headers: { origin: ORIGIN },
@@ -588,4 +590,166 @@ test('jawaban HTTP membawa header CORS untuk origin yang diizinkan', async () =>
   const pre = await fetch(`${BASE}/room/${code}/ticket`, { method: 'OPTIONS', headers: { origin: ORIGIN, 'access-control-request-method': 'POST' } });
   assert.equal(pre.status, 204);
   assert.match(pre.headers.get('access-control-allow-methods') ?? '', /POST/);
+});
+
+/* ------------------------------------------------------------------ */
+/* Bomberman on the same door                                          */
+/* ------------------------------------------------------------------ */
+
+const BOMBER = 'bomberman';
+
+/** Two seats on a real Bomberman room, with the board settings the lobby would send. */
+async function bomberTable(tag, opts = {}) {
+  const code = room(tag);
+  const a = await connect(code, { name: 'BomA', game: BOMBER, ...opts });
+  await a.open();
+  const wa = await a.recv('welcome');
+  const b = await connect(code, { name: 'BomB', game: BOMBER, ...opts });
+  await b.open();
+  const wb = await b.recv('welcome');
+  return { code, a, b, wa, wb };
+}
+
+test('kamar bomberman membawa pengaturan papan dari mint pertama', async () => {
+  const { a, b, wa } = await bomberTable('H1', { seats: 2, size: 'besar' });
+  assert.deepEqual(wa.config, { seats: 2, size: 'besar' }, `welcome harus membawa config papan: ${JSON.stringify(wa.config)}`);
+  const lobby = await a.recvState((s) => s.phase === 'lobby');
+  assert.equal(lobby.world, null, 'lorong bomberman belum punya dunia');
+  assert.equal(lobby.players.length, 2);
+  assert.ok(lobby.players.every((p) => typeof p.seat === 'number'), 'state harus membawa kursi tiap pemain');
+  assert.equal(lobby.master, wa.id, 'master adalah yang pertama duduk');
+  a.ws.terminate(); b.ws.terminate();
+});
+
+test('kapasitas bomberman mengikuti papan, bukan enam kursi transport', async () => {
+  const two = room('H2');
+  assert.equal((await mint(two, { game: BOMBER, seats: 2, name: 'A' })).status, 200);
+  assert.equal((await mint(two, { game: BOMBER, seats: 2, name: 'B' })).status, 200);
+  const third = await mint(two, { game: BOMBER, seats: 2, name: 'C' });
+  assert.equal(third.status, 409, `kursi ketiga di papan dua harus ditolak: ${JSON.stringify(third.body)}`);
+  assert.equal(third.body.error, 'room_full');
+
+  const four = room('H3');
+  for (let i = 0; i < 4; i += 1) {
+    assert.equal((await mint(four, { game: BOMBER, seats: 4, name: `P${i}` })).status, 200);
+  }
+  const fifth = await mint(four, { game: BOMBER, seats: 4, name: 'P4' });
+  assert.equal(fifth.status, 409);
+  assert.equal(fifth.body.error, 'room_full');
+});
+
+test('pengaturan papan yang berbeda di kamar yang sama ditolak', async () => {
+  const code = room('H4');
+  assert.equal((await mint(code, { game: BOMBER, seats: 2, size: 'kecil', name: 'A' })).status, 200);
+  const changed = await mint(code, { game: BOMBER, seats: 4, size: 'besar', name: 'B' });
+  assert.equal(changed.status, 409);
+  assert.equal(changed.body.error, 'options_conflict');
+});
+
+test('hanya master yang boleh memulai, dan dunia bomberman lahir di server', async () => {
+  const { a, b, wa } = await bomberTable('H5', { seats: 2 });
+  await a.recvState((s) => s.phase === 'lobby');
+
+  b.ws.send(JSON.stringify({ t: 'start', fillBots: false }));
+  assert.equal((await b.recv('error')).reason, 'not_master', 'bukan master tidak boleh mulai');
+
+  a.ws.send(JSON.stringify({ t: 'start', fillBots: false }));
+  const started = await a.recvState((s) => s.phase === 'playing');
+  assert.ok(started.world, `state harus membawa dunia setelah mulai: ${JSON.stringify(started.world)}`);
+  assert.equal(started.world.phase, 'countdown');
+  assert.deepEqual(started.world.players.map((p) => p.seat), [0, 1]);
+  assert.equal(started.world.players.find((p) => p.seat === wa.seat)?.name, 'BomA');
+
+  // The countdown is owned by the server clock; nobody sends anything after start.
+  const battle = await a.recvState((s) => s.world?.phase === 'battle', 9000);
+  assert.equal(battle.phase, 'playing');
+  a.ws.terminate(); b.ws.terminate();
+});
+
+test('input bomberman bergerak dan applied menandai aksi yang dieksekusi', async () => {
+  const { a, b, wa } = await bomberTable('H6', { seats: 2 });
+  a.ws.send(JSON.stringify({ t: 'start', fillBots: false }));
+  await a.recvState((s) => s.phase === 'playing');
+
+  a.ws.send(JSON.stringify({ t: 'input', seq: 1, dir: 'right', bomb: false }));
+  const applied = await a.recvState((s) => (s.applied?.[wa.seat] ?? 0) >= 1);
+  assert.equal(applied.applied[wa.seat], 1);
+
+  const moved = await a.recvState(
+    (s) => s.world?.phase === 'battle' && (s.world.players.find((p) => p.seat === wa.seat)?.x ?? 1) > 1,
+    9000,
+  );
+  assert.equal(moved.world.players.find((p) => p.seat === wa.seat)?.facing, 'right');
+  a.ws.terminate(); b.ws.terminate();
+});
+
+test('payload bomberman yang jahat tertahan di pintu dan tidak menggeser applied', async () => {
+  const { a, b, wa } = await bomberTable('H7', { seats: 2 });
+  a.ws.send(JSON.stringify({ t: 'start', fillBots: false }));
+  await a.recvState((s) => s.phase === 'playing');
+  a.ws.send(JSON.stringify({ t: 'input', seq: 1, dir: 'left', bomb: false }));
+  await a.recvState((s) => (s.applied?.[wa.seat] ?? 0) >= 1);
+
+  a.ws.send(JSON.stringify({ t: 'input', seq: 2, dir: 'sideways', bomb: false }));
+  assert.equal((await a.recv('error')).reason, 'bad_payload');
+  a.ws.send(JSON.stringify({ t: 'input', seq: 1, dir: 'right', bomb: false }));
+  assert.equal((await a.recv('error')).reason, 'duplicate_seq');
+
+  await new Promise((r) => setTimeout(r, 150));
+  const after = await a.recvState(() => true);
+  assert.equal(after.applied[wa.seat], 1, 'aksi yang ditolak tidak boleh menandai seq sebagai diterapkan');
+  a.ws.terminate(); b.ws.terminate();
+});
+
+test('kursi kosong diisi bot di server, bukan oleh tab master', async () => {
+  const code = room('H8');
+  const a = await connect(code, { name: 'Solo', game: BOMBER, seats: 2 });
+  await a.open();
+  await a.recv('welcome');
+  a.ws.send(JSON.stringify({ t: 'start', fillBots: true }));
+  const started = await a.recvState((s) => s.phase === 'playing');
+  assert.equal(started.world.players.length, 2);
+  const bot = started.world.players.find((p) => p.seat === 1);
+  assert.equal(bot.bot, true, `kursi kedua harus bot: ${JSON.stringify(started.world.players)}`);
+  assert.equal(bot.name, 'Bot 2');
+  a.ws.terminate();
+});
+
+test('klaim karakter dari lorong masuk ke dunia yang dibuat server', async () => {
+  const { a, b, wa, wb } = await bomberTable('H9', { seats: 2 });
+  a.ws.send(JSON.stringify({ t: 'char', charId: 'radar' }));
+  b.ws.send(JSON.stringify({ t: 'char', charId: 'lampu' }));
+  // Both claims are on the wire before this start; WebSocket order is preserved per socket,
+  // and the small pause covers the two sockets racing each other.
+  await new Promise((r) => setTimeout(r, 120));
+  a.ws.send(JSON.stringify({ t: 'start', fillBots: false }));
+  const started = await a.recvState((s) => s.phase === 'playing');
+  assert.equal(started.world.players.find((p) => p.seat === wa.seat)?.charId, 'radar');
+  assert.equal(started.world.players.find((p) => p.seat === wb.seat)?.charId, 'lampu');
+  a.ws.terminate(); b.ws.terminate();
+});
+
+test('pemain yang menyambung ulang memakai kursi yang sama dan mengambil alih botnya', async () => {
+  const { code, a, b, wb } = await bomberTable('HA', { seats: 2 });
+  a.ws.send(JSON.stringify({ t: 'start', fillBots: false }));
+  await a.recvState((s) => s.phase === 'playing');
+
+  b.ws.terminate();
+  await new Promise((r) => setTimeout(r, 450));
+  // The seat row survives a mid-match close, so a reconnect mints the same seat rather than
+  // a second one next to a bot.
+  const again = await mint(code, { game: BOMBER, seats: 2, player: wb.id, name: 'BomB' });
+  assert.equal(again.status, 200, `mint ulang harus dapat kursi: ${JSON.stringify(again.body)}`);
+  assert.equal(again.body.seat, wb.seat, 'reconnect harus memakai kursi yang sama');
+
+  const b2 = dial(code, { ticket: again.body.ticket });
+  await b2.open();
+  await b2.recv('welcome');
+  const taken = await b2.recvState((s) => s.world?.players.find((p) => p.seat === wb.seat)?.bot === false, 6000);
+  assert.equal(taken.world.players.find((p) => p.seat === wb.seat)?.name, 'BomB');
+
+  b2.ws.send(JSON.stringify({ t: 'input', seq: 1, dir: 'left', bomb: false }));
+  const applied = await b2.recvState((s) => (s.applied?.[wb.seat] ?? 0) >= 1);
+  assert.equal(applied.applied[wb.seat], 1, 'kursi yang diambil alih harus menerima input lagi');
+  a.ws.terminate(); b2.ws.terminate();
 });

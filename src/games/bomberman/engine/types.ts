@@ -7,6 +7,12 @@
 
 export type CellKind = 'empty' | 'hard' | 'soft';
 export type Facing = 'up' | 'down' | 'left' | 'right';
+/**
+ * The cast, as data. The renderer's `CHARACTERS` table and the server's roster validation
+ * both read this list, so a seat cannot claim a character the other side does not know.
+ */
+export const CHARACTER_IDS = ['robo', 'tupai', 'radar', 'biskuit', 'lampu', 'sekrup'] as const;
+export type CharacterId = (typeof CHARACTER_IDS)[number];
 export type PowerKind = 'flame' | 'speed' | 'count' | 'shield';
 export type Phase = 'waiting' | 'countdown' | 'battle' | 'roundOver' | 'finished';
 export type FloorKind = 'grass' | 'sand' | 'stone';

@@ -4,6 +4,8 @@ import path from 'path';
 export default defineConfig({
   test: {
     environment: 'jsdom',
+    // The Worker suite is node:test and needs a running wrangler; vitest must not collect it.
+    exclude: ['**/node_modules/**', '**/dist/**', 'cloudflare/**'],
     setupFiles: ['./tests/setup.ts'],
     coverage: {
       provider: 'v8',

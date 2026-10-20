@@ -34,15 +34,17 @@ export type ServerMessage =
       seat: number;
       name: string;
       master: string | null;
-      players: { id: string; name: string }[];
+      players: { id: string; name: string; seat: number }[];
       exp: number;
+      /** Board/room settings chosen at the first ticket mint. Bomberman reads seats and size. */
+      config?: unknown;
     }
   | {
       t: 'state';
       phase: string;
       master: string | null;
       tick: number;
-      players: { id: string; name: string }[];
+      players: { id: string; name: string; seat: number }[];
       world: unknown;
       /** seat -> seq terakhir yang benar-benar sudah dieksekusi. */
       applied: Record<number, number>;
@@ -66,7 +68,7 @@ export interface GameAdapter {
    */
   door?: boolean;
   /** Hanya untuk game berpintu: kursi yang naik ke panggung saat koneksinya diterima. */
-  join?(playerId: string, name: string): { ok: true } | { ok: false; reason: string };
+  join?(playerId: string, name: string, seat?: number): { ok: true } | { ok: false; reason: string };
   /** Hanya untuk game berpintu: fase dalam bahasa DO, supaya gerbang transport tetap satu bentuk. */
   phase?(): 'lobby' | 'playing' | 'finished';
   /**

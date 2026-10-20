@@ -9,7 +9,7 @@ import {
   TICK_SECONDS,
 } from './types';
 import { MAX_TICKET_TTL_SECONDS, TICKET_TTL_SECONDS, signTicket, verifyTicket } from './ticket';
-import { createAdapter } from './games/registry';
+import { createAdapter, parseRoomOptions, roomCapacity } from './games/registry';
 
 interface RoomRow {
   phase: string;
@@ -27,6 +27,10 @@ interface Seat {
   playerId: string;
   seat: number;
   name: string;
+}
+
+interface ConfigRow {
+  data: string;
 }
 
 const ROOM_PATH = /^\/room\/([A-Za-z0-9]{4,12})\/(ws|ticket)$/;
@@ -70,6 +74,9 @@ export class GameRoom extends DurableObject<Env> {
   private msgWindow = new Map<string, { at: number; count: number }>();
   /** Urutan duduk di game berpintu; DO menyalip master dari sini supaya sama dengan pintunya. */
   private joinedOrder: string[] = [];
+  /** Board/room settings negotiated at the first mint, cached so ticks never touch SQL. */
+  private configData: unknown = null;
+  private configLoaded = false;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -96,6 +103,12 @@ export class GameRoom extends DurableObject<Env> {
          player_id TEXT PRIMARY KEY,
          seat INTEGER NOT NULL UNIQUE,
          name TEXT NOT NULL
+       )`,
+    );
+    this.ctx.storage.sql.exec(
+      `CREATE TABLE IF NOT EXISTS room_config (
+         id INTEGER PRIMARY KEY CHECK (id = 1),
+         data TEXT NOT NULL
        )`,
     );
   }
@@ -147,6 +160,12 @@ export class GameRoom extends DurableObject<Env> {
       this.info = info;
     }
 
+    const negotiated = this.ensureRoomConfig(info, url);
+    if (!negotiated.ok) {
+      return json({ error: negotiated.reason }, negotiated.reason === 'options_conflict' ? 409 : 400);
+    }
+    const capacity = roomCapacity(info.game, negotiated.data);
+
     const proposed = url.searchParams.get('player') ?? '';
     let seat = this.seatOf(proposed);
     if (!seat) {
@@ -156,7 +175,9 @@ export class GameRoom extends DurableObject<Env> {
       const taken = new Set(this.seats().map((s) => s.seat));
       let index = 0;
       while (taken.has(index)) index += 1;
-      if (index >= MAX_PLAYERS) return json({ error: 'room_full' }, 409);
+      // For Bomberman the cap is the board, not the six-seat transport limit: a 2-seat room
+      // must refuse the third ticket here, before a socket ever exists.
+      if (index >= Math.min(capacity, MAX_PLAYERS)) return json({ error: 'room_full' }, 409);
       // Id usulan diterima hanya kalau 128 bit heks penuh: ruang tebakan cukup besar untuk tidak
       // bisa dipakai merebut kursi orang lain, dan klien jadi tahu id-nya sebelum socket dibuka.
       seat = { playerId: proposed || newPlayerId(), seat: index, name: cleanName(url.searchParams.get('name')) };
@@ -175,6 +196,41 @@ export class GameRoom extends DurableObject<Env> {
     const exp = Math.floor(Date.now() / 1000) + ttl;
     const ticket = await signTicket(secret, { code: info.code, playerId: seat.playerId, game: info.game, exp });
     return json({ ticket, playerId: seat.playerId, seat: seat.seat, name: seat.name, game: info.game, exp });
+  }
+
+  /**
+   * Board settings are tied to the room at the first mint. A guest may omit them; the stored
+   * value is used. A guest may repeat them (an invite URL carries the same query); a value
+   * that disagrees is rejected rather than silently ignored, because two tabs would otherwise
+   * believe different boards are in play.
+   */
+  private ensureRoomConfig(
+    info: RoomInfo,
+    url: URL,
+  ): { ok: true; data: unknown } | { ok: false; reason: 'bad_room_options' | 'options_conflict' } {
+    const parsed = parseRoomOptions(info.game, (name) => url.searchParams.get(name));
+    if (!parsed.ok) return parsed;
+    const row = this.ctx.storage.sql.exec('SELECT data FROM room_config WHERE id = 1').toArray()[0] as unknown as ConfigRow | undefined;
+    if (!row) {
+      this.ctx.storage.sql.exec('INSERT INTO room_config (id, data) VALUES (1, ?)', JSON.stringify(parsed.data));
+      this.configData = parsed.data;
+      this.configLoaded = true;
+      return { ok: true, data: parsed.data };
+    }
+    if (parsed.provided && JSON.stringify(parsed.data) !== row.data) {
+      return { ok: false, reason: 'options_conflict' };
+    }
+    this.configData = safeParse(row.data) ?? parsed.data;
+    this.configLoaded = true;
+    return { ok: true, data: this.configData };
+  }
+
+  private readConfig(): unknown {
+    if (this.configLoaded) return this.configData;
+    const row = this.ctx.storage.sql.exec('SELECT data FROM room_config WHERE id = 1').toArray()[0] as unknown as ConfigRow | undefined;
+    this.configLoaded = true;
+    this.configData = row ? safeParse(row.data) : null;
+    return this.configData;
   }
 
   private async openSocket(request: Request, url: URL, code: string, info: RoomInfo | null): Promise<Response> {
@@ -218,7 +274,7 @@ export class GameRoom extends DurableObject<Env> {
     this.ctx.acceptWebSocket(server);
 
     if (this.game?.join) {
-      if (this.game.join(seat.playerId, seat.name).ok && !this.joinedOrder.includes(seat.playerId)) {
+      if (this.game.join(seat.playerId, seat.name, seat.seat).ok && !this.joinedOrder.includes(seat.playerId)) {
         this.joinedOrder.push(seat.playerId);
       }
       this.syncMaster();
@@ -233,6 +289,7 @@ export class GameRoom extends DurableObject<Env> {
       master: this.currentMaster(),
       players: this.playerList(),
       exp: check.claim.exp,
+      config: this.readConfig(),
     } satisfies ServerMessage));
     await this.broadcast();
     // DO bisa dibekukan setelah pemain terakhir keluar; siapa yang masuk duluan menyalakan lagi.
@@ -366,10 +423,12 @@ export class GameRoom extends DurableObject<Env> {
     this.heldMs.delete(session.id);
     this.pendingSeq.delete(session.id);
     this.msgWindow.delete(session.id);
-    // Kursi yang ditinggalkan tanpa socket hidup dilepas, jadi muat ulang halaman atau ganti
-    // perangkat tidak menumpuk pemain hantu sampai kamar "penuh". Kursi pemain yang masih
-    // tersambung (kamar dengan dua socket untuk reconnect) tetap dipertahankan.
-    this.ctx.storage.sql.exec('DELETE FROM room_seats WHERE player_id = ?', session.id);
+    // A Bomberman seat is kept while its match is running: the leaver's body is still on the
+    // board (now a bot), and a page reload must reclaim that same seat instead of minting a
+    // second one next to it. Lobby seats, and every other game's seats, are released at once.
+    // `releaseGhostSeats()` deletes the ones nobody reclaimed when the match ends.
+    const keepSeat = this.info?.game === 'bomberman' && this.phase === 'playing';
+    if (!keepSeat) this.ctx.storage.sql.exec('DELETE FROM room_seats WHERE player_id = ?', session.id);
     if (this.game?.door) this.syncMaster();
     else if (this.master === session.id) this.master = this.sessions()[0]?.session.id ?? null;
     if (!this.sessions().length) this.stopTicker();
@@ -443,6 +502,9 @@ export class GameRoom extends DurableObject<Env> {
     if (this.game.finished()) {
       this.phase = 'finished';
       this.stopTicker();
+      // Seats kept for reconnect have done their job once the match is over. Freeing them
+      // here is what lets a rematch seat someone new instead of a room that looks full.
+      this.releaseGhostSeats();
       await this.persist(true);
     } else if (now - this.lastSnapshotMs > SNAPSHOT_MIN_INTERVAL_SECONDS * 1000) {
       await this.persist(false);
@@ -508,7 +570,7 @@ export class GameRoom extends DurableObject<Env> {
     // step, or the room ends up with two game objects and duplicated players.
     await this.ctx.blockConcurrencyWhile(async () => {
       if (this.game || !this.info?.game) return;
-      const adapter = createAdapter(this.info.game, this.env);
+      const adapter = createAdapter(this.info.game, this.env, this.readConfig() ?? undefined);
       if (!adapter) return;
       this.game = adapter;
 
@@ -532,7 +594,7 @@ export class GameRoom extends DurableObject<Env> {
     if (!this.game?.join) return;
     for (const s of this.sessions().sort((a, b) => a.session.seat - b.session.seat)) {
       if (this.joinedOrder.includes(s.session.id)) continue;
-      if (this.game.join(s.session.id, s.session.name).ok) this.joinedOrder.push(s.session.id);
+      if (this.game.join(s.session.id, s.session.name, s.session.seat).ok) this.joinedOrder.push(s.session.id);
     }
   }
 
@@ -575,8 +637,16 @@ export class GameRoom extends DurableObject<Env> {
     return (ws.deserializeAttachment() as Session | null) ?? null;
   }
 
-  private playerList(): { id: string; name: string }[] {
-    return this.sessions().map((s) => ({ id: s.session.id, name: s.session.name }));
+  private playerList(): { id: string; name: string; seat: number }[] {
+    return this.sessions().map((s) => ({ id: s.session.id, name: s.session.name, seat: s.session.seat }));
+  }
+
+  /** Drop seat rows that outlived their socket, used when a match ends. */
+  private releaseGhostSeats(): void {
+    const live = new Set(this.sessions().map((s) => s.session.id));
+    for (const seat of this.seats()) {
+      if (!live.has(seat.playerId)) this.ctx.storage.sql.exec('DELETE FROM room_seats WHERE player_id = ?', seat.playerId);
+    }
   }
 
   private async loadInfo(): Promise<RoomInfo | null> {
@@ -621,6 +691,15 @@ export class GameRoom extends DurableObject<Env> {
 
 function cleanName(raw: string | null): string {
   return (raw ?? '').replace(/[<>&]/g, '').trim().slice(0, 12) || 'Pemain';
+}
+
+/** Stored JSON is ours, but a half-written row must not take the room down. */
+function safeParse(raw: string): unknown {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
 }
 
 /** Hanya dipakai saat TEST_MODE=1, supaya tes bisa membuat tiket yang benar-benar kedaluwarsa. */

@@ -1,3 +1,55 @@
+## 2026-10-21 - Bomberman: dunia pindah ke Durable Object, lorong tetap di Supabase
+
+Branch baru `feat/bomberman-cloudflare-door`, dibuat dari `origin/main` (`d6333cb`) supaya seluruh
+pekerjaan Slap Arena yang sudah tayang ikut sebagai dasar. Jalur Broadcast lama tidak dihapus dan
+masih default; `VITE_TRANSPORT=cloudflare` memindahkan Bomberman ke Worker.
+
+Bentuk arsitekturnya mengikuti pintu Slap Arena, dengan satu perbedaan yang dipaksa bentuk permainan:
+lorong Bomberman bukan dunia, jadi `BombermanSim` baru lahir saat master menekan mulai.
+
+- `src/games/bomberman/engine/gameApi.ts` (baru): aturan murni `createGame`, `applyAction`,
+  `removePlayer`, `loadWorld`, `snapshotOf`, `parseRoomConfig`. Tanpa DOM, jaringan, atau Supabase.
+  Bot dijalankan di dalam aksi `tick`, jadi tidak ada tab pemain yang menjadi host.
+- `cloudflare/src/games/bomberman.ts` (baru): adapter tipis. Seed dan lantai dibuat server, bukan
+  dikirim klien. Registry sekarang menerima opsi kamar dan kapasitas per game.
+- `cloudflare/src/room.ts`: tabel `room_config`, opsi papan dinegosiasikan pada mint pertama
+  (`seats=2|4`, `size=kecil|besar`), kapasitas Bomberman mengikuti papan (2 atau 4) sehingga tiket
+  ketiga di papan dua ditolak 409 sebelum socket lahir. Papan yang berbeda di kamar yang sama ditolak
+  `options_conflict`. `welcome` membawa `config`; `players` membawa `seat`.
+- `src/games/bomberman/engine/serverNet.ts` (baru): `BombermanServerNet`. Arah dikirim hanya saat
+  berubah, bom saat ditekan, `seq` tetap naik pada setiap pesan. Reconnect meminta tiket baru dengan
+  id pemain yang sama; DO mempertahankan kursi selama match berjalan dan mengubah badan yang
+  ditinggal menjadi bot. Saat match selesai, `releaseGhostSeats()` membuang kursi yang tidak kembali.
+- `src/games/bomberman/pages/BombermanMatch.tsx`: cabang `doorMode` yang tidak pernah menyimulasikan
+  dunia di klien, hanya `smooth()` dan menggambar. Tombol mulai/rematch menjadi aksi ke pintu. Baris
+  `matches` Supabase tetap dipindahkan `waiting -> playing` secara best-effort supaya hasil laga bisa
+  ditulis; tanpa Supabase, match tetap berjalan tetapi riwayat tidak tercatat.
+- `src/games/bomberman/pages/BombermanLobby.tsx`: room code membawa `?seats=&size=` supaya mint
+  pertama bisa mengunci papan. Tamu yang hanya tahu kode memakai config yang tersimpan di DO.
+- `src/games/bomberman/engine/types.ts` + `sprites.ts`: daftar karakter menjadi satu sumber data
+  (`CHARACTER_IDS`), dipakai renderer dan validasi klaim karakter di server.
+
+Bukti:
+
+| Tahap | Hasil |
+| --- | --- |
+| `npx tsc -b` dan `cloudflare npx tsc --noEmit` | exit 0 |
+| `tests/unit/bomberman-api.test.ts` | 25 lulus |
+| `tests/unit/bomberman-servernet.test.ts` | 11 lulus |
+| Suite vitest penuh | 460 lulus, 2 skipped, 37 berkas |
+| Suite Worker lokal | 41 lulus dari 41, termasuk 10 tes Bomberman |
+| Browser nyata dua konteks Chrome | 12 lulus dari 12: mint 200, WebSocket terbuka, `battle`, gerak x 1 -> 5, bom terlihat, tamu menerima 114 state, 0 pageerror |
+| `guard:check` + `csp:check` | bersih |
+| Build `VITE_TRANSPORT=cloudflare` | sukses; `BombermanMatch` 21,46 kB (gzip 7,99 kB) |
+| Bundle Worker dry-run | 93,59 KiB / gzip 25,83 KiB |
+
+Payload snapshot: 1.475 B (2 kursi kecil), 2.174 B (2 kursi besar), 2.444 B (4 kursi kecil), 3.552 B
+(4 kursi besar). Pada 20 Hz papan terbesar sekitar 71 kB/detik per kursi.
+
+Belum: deploy (Worker produksi masih versi Slap Arena), client-side prediction untuk kursi sendiri,
+pembuatan room code tanpa Supabase, dan pengukuran CPU per tick di runtime nyata. Detail dan batasnya
+ada di `docs/cloudflare-migration.md` bagian 14.
+
 ## 2026-10-19 - Halaman Slap Arena bisa dialihkan ke Worker, lewat flag build
 
 Sambungan terakhir langkah 6. `SlapArenaMatch.tsx` sekarang punya dua jalur:

@@ -60,7 +60,9 @@ export function BombermanLobby() {
         hostName: host,
         initialState: { gameType: 'bomberman', seats: board.seats, size },
       });
-      navigate(`/bomberman/m/${roomCode}`);
+      // The Worker mints the first ticket from this URL. Board settings are part of the
+      // room, so the Durable Object can cap seats before a second player connects.
+      navigate(`/bomberman/m/${roomCode}?seats=${board.seats}&size=${size}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Room gagal dibuat.');
     } finally {

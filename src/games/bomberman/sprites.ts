@@ -7,11 +7,13 @@
  * Cuteness comes from proportion and expression. No pink, no hearts, no lashes.
  */
 
+import { CHARACTER_IDS, type CharacterId } from './engine/types';
+
 export type SpritePose = 'idle' | 'walk' | 'place' | 'panic' | 'ko' | 'win';
 export type SpriteFacing = 'up' | 'down' | 'left' | 'right';
 
 export interface CharacterSpec {
-  id: string;
+  id: CharacterId;
   label: string;
   blurb: string;
   main: string;
@@ -51,7 +53,7 @@ export const CHARACTERS: CharacterSpec[] = [
   },
 ];
 
-export const CHAR_IDS = CHARACTERS.map((c) => c.id);
+export const CHAR_IDS: string[] = [...CHARACTER_IDS];
 
 export const characterById = (id: string): CharacterSpec =>
   CHARACTERS.find((c) => c.id === id) ?? CHARACTERS[0];

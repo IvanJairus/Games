@@ -21,6 +21,13 @@ export interface RoomTicket {
   exp: number;
 }
 
+export interface RoomMintOptions {
+  /** Bomberman board seats. The Worker caps the room at this number from the first mint. */
+  seats?: 2 | 4;
+  /** Bomberman board size. Stored with the room, so later joins do not need to repeat it. */
+  size?: 'kecil' | 'besar';
+}
+
 /**
  * Kursi selalu dialokasikan Worker, tidak pernah dipilih klien. `playerId` adalah id kursi yang
  * disimpan klien: tanpa dia, Worker mencetak kursi baru setiap kali halaman dimuat ulang dan
@@ -33,11 +40,15 @@ export async function mintRoomTicket(
   name: string,
   playerId?: string,
   fetchImpl: typeof fetch = fetch,
+  options?: RoomMintOptions,
 ): Promise<RoomTicket> {
   const base = roomsBaseUrl();
   if (!base) throw new Error('VITE_CF_ROOMS_URL belum diisi');
-  const player = playerId && /^[0-9a-f]{32}$/.test(playerId) ? `&player=${playerId}` : '';
-  const url = `${base}/room/${encodeURIComponent(code)}/ticket?game=${encodeURIComponent(game)}&name=${encodeURIComponent(name)}${player}`;
+  const query = new URLSearchParams({ game, name });
+  if (playerId && /^[0-9a-f]{32}$/.test(playerId)) query.set('player', playerId);
+  if (options?.seats) query.set('seats', String(options.seats));
+  if (options?.size) query.set('size', options.size);
+  const url = `${base}/room/${encodeURIComponent(code)}/ticket?${query}`;
   const res = await fetchImpl(url, { method: 'POST' });
   if (!res.ok) {
     const detail = await res.text().catch(() => '');
