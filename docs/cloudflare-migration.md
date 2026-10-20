@@ -394,3 +394,5 @@ id kursi Worker terbentuk, fase dunia bergerak.
 
 Cara rollback kalau Worker bermasalah: hapus `VITE_TRANSPORT` dari environment Production lalu redeploy.
 Ini env build-time, bukan saklar runtime.
+
+Catatan operasional: env VITE_TRANSPORT dan VITE_CF_ROOMS_URL harus ada di tab Project untuk\lenvironment Production (bukan hanya Shared). CI menarik env dengan vercel pull --environment=production,\ljadi variabel yang tidak tertaut ke project tidak akan pernah masuk ke build.
