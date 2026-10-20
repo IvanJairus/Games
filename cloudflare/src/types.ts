@@ -2,6 +2,8 @@ export interface Env {
   ROOM: DurableObjectNamespace<GameRoom>;
   ALLOWED_ORIGINS: string;
   TEST_MODE: string;
+  /** Secret di `wrangler secret put`, tidak pernah masuk wrangler.toml. */
+  TICKET_SECRET: string;
 }
 
 export const MAX_PLAYERS = 6;
@@ -11,14 +13,25 @@ export const TICK_SECONDS = 0.05;
 export const MAX_STEP_SECONDS = 0.25;
 export const SNAPSHOT_MIN_INTERVAL_SECONDS = 15;
 
+/** Kursi yang direbut dari tiket bertanda tangan, bukan dari query string klien. */
 export interface Session {
   id: string;
-  token: string;
+  seat: number;
   name: string;
+  /** epoch detik, saat koneksi harus ditutup lagi. */
+  exp: number;
 }
 
 export type ServerMessage =
-  | { t: 'welcome'; id: string; token: string; master: string | null; players: { id: string; name: string }[] }
+  | {
+      t: 'welcome';
+      id: string;
+      seat: number;
+      name: string;
+      master: string | null;
+      players: { id: string; name: string }[];
+      exp: number;
+    }
   | { t: 'state'; phase: string; master: string | null; tick: number; players: { id: string; name: string }[]; world: unknown }
   | { t: 'error'; reason: string };
 

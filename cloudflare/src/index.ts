@@ -25,7 +25,7 @@ export default {
       return Promise.resolve(Response.json({ ok: true, service: 'ij-game-rooms' }));
     }
 
-    const match = url.pathname.match(/^\/room\/([A-Za-z0-9]{4,12})\/ws$/);
+    const match = url.pathname.match(/^\/room\/([A-Za-z0-9]{4,12})\/(ws|ticket)$/);
     if (!match) return Promise.resolve(new Response('not found', { status: 404 }));
 
     const code = match[1].toUpperCase();
@@ -35,7 +35,11 @@ export default {
       return Promise.resolve(new Response('forbidden origin', { status: 403 }));
     }
 
-    if (request.headers.get('Upgrade') !== 'websocket') {
+    if (
+      match[2] === 'ws' &&
+      request.headers.get('Upgrade') !== 'websocket' &&
+      url.searchParams.get('probe') !== '1'
+    ) {
       return Promise.resolve(new Response('expected websocket', { status: 426 }));
     }
 

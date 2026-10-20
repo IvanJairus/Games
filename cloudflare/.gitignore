@@ -1,3 +1,6 @@
 node_modules/
 .wrangler/
 *.log
+
+# Secret lokal untuk wrangler dev. Jangan pernah di-commit.
+.dev.vars

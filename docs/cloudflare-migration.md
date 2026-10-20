@@ -172,3 +172,35 @@ maju yang besar diterima tanpa assertion. Bukti lengkap di komentar PR #75.
 
 Satu koreksi yang dibawa PR #75 ke worker: batas pesan harus dihitung dalam byte UTF-8, bukan jumlah
 karakter. `cloudflare/src/types.ts` masih memakai `MAX_MESSAGE_CHARS`; itu masuk langkah berikutnya.
+
+## 8. Hasil langkah 2 urutan audit: tiket sebagai pintu masuk (19 Oktober)
+
+Keputusan user yang dipakai: tiket bertanda tangan yang diverifikasi lokal di DO, tanpa panggilan keluar
+saat connect. Konsekuensinya tidak ada tabel atau function baru di Supabase untuk langkah ini.
+
+Bentuknya:
+
+- `POST /room/<kode>/ticket?game=&name=&player=` mengalokasikan kursi di dalam DO dan mengembalikan
+  tiket `v1:<KODE>:<id 32 heks>:<game>:<exp detik>.<hex hmac-sha256>`.
+- Handshake `GET /room/<kode>/ws?ticket=` diverifikasi sebelum `acceptWebSocket`; gagal berarti 401
+  tanpa sesi: `missing_ticket`, `malformed_ticket`, `bad_signature`, `wrong_room`, `expired`.
+  Tanda tangan diperiksa lebih dulu daripada kode kamar dan jam, jadi penolakan tidak membocorkan bagian
+  mana yang salah.
+- Tiket kedaluwarsa di tengah sesi: DO mengirim `error` lalu menutup dengan 4001 pada pesan berikutnya.
+- Kursi 0 = pembuat kamar = master, jadi master tidak lagi ditentukan oleh siapa yang duluan nyambung.
+- Nama hanya diterima lewat mint; `?name=` di query koneksi tidak dibaca lagi.
+- Game dikunci pada mint pertama (`game_conflict` 409). Ini sekaligus menutup temuan kecil
+  "`gameCode` diambil dari query koneksi terakhir".
+
+Bukti merah-lalu-hijau, n = 1 rangkaian per baris, semuanya pada `wrangler dev --local`:
+
+| Tahap | Hasil |
+| --- | --- |
+| Suite 16 tes baru terhadap worker commit `0491d84` | 3 lulus, 13 gagal. Kalimat merahnya: `tiket palsu seharusnya ditolak, dapat: terbuka`; probe tangan terpisah mencetak `koneksi tanpa tiket DITERIMA, kursi langsung diberikan` dengan welcome berisi id 8 karakter dan UUID |
+| Suite yang sama terhadap kode tiket | 16 lulus dari 16, `npx tsc --noEmit` exit 0, `guard:check` bersih |
+
+Yang dengan sengaja TIDAK diklaim tertutup: produk ini tidak punya akun (`src/lib/supabase.ts` hanya
+memakai anon key dan id pemain adalah string acak localStorage), jadi tiket tidak menahan orang yang
+tahu kode kamar; dia tetap bisa mint kursinya sendiri. Yang ditutup: pemalsuan tiket, perebutan kursi
+lewat token yang ditebak, replay tiket antar kamar, dan koneksi tanpa melewati mint. Rate limit per
+koneksi dan batas byte pesan masih terbuka, dan tick tetap didorong pesan masuk (temuan 2 dan 3 audit).
