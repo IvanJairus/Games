@@ -95,9 +95,14 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     env:
-      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      # Hanya token yang dipakai. VERCEL_ORG_ID/VERCEL_PROJECT_ID sengaja TIDAK dibaca di sini:
+      # keduanya id opaque yang berubah setiap kali project di-relink atau dibuat ulang, dan
+      # begitu basi `vercel pull` gagal dengan "Could not retrieve Project Settings" tanpa cara
+      # memperbaikinya dari dalam workflow. Nama project + slug scope stabil, jadi project
+      # di-link ulang dari situ setiap run.
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_PROJECT: ij-games
+      VERCEL_SCOPE: ivanjairus-projects
     steps:
       - name: Checkout Code
         uses: actions/checkout@v7
@@ -111,25 +116,38 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
-      - name: Pull Vercel Environment Information
-        run: npx vercel pull --yes --environment=production --token=$VERCEL_TOKEN
+      # Self-healing link: resolves the project by name under the team slug and writes
+      # .vercel/project.json. This survives a project being re-created or moved, which is
+      # exactly what makes a stored project id rot. Link and pull share one step so a dead
+      # token fails once, in a place the fallback can see.
+      - name: Link and pull the Vercel project
+        id: pull
+        # A dead token or a renamed project must not leave a red X on a commit that the Git
+        # integration deployed successfully. The fallback step below asserts that instead.
+        continue-on-error: true
+        run: |
+          npx vercel link --yes --project "$VERCEL_PROJECT" --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN"
+          npx vercel pull --yes --environment=production --token "$VERCEL_TOKEN"
 
       - name: Inject Supabase Credentials into Vercel Build Environment
+        if: steps.pull.outcome == 'success'
         run: |
           mkdir -p .vercel
           echo "VITE_SUPABASE_URL=${{ secrets.VITE_SUPABASE_URL }}" >> .vercel/.env.production.local
           echo "VITE_SUPABASE_ANON_KEY=${{ secrets.VITE_SUPABASE_ANON_KEY }}" >> .vercel/.env.production.local
 
       - name: Build Project Artifacts
-        run: npx vercel build --prod --token=$VERCEL_TOKEN
+        if: steps.pull.outcome == 'success'
+        run: npx vercel build --prod --token "$VERCEL_TOKEN"
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
 
       - name: Deploy to Vercel (Production)
+        if: steps.pull.outcome == 'success'
         id: deploy
         run: |
-          DEPLOY_URL=$(npx vercel deploy --prebuilt --prod --token=$VERCEL_TOKEN)
+          DEPLOY_URL=$(npx vercel deploy --prebuilt --prod --token "$VERCEL_TOKEN")
           echo "DEPLOY_URL=$DEPLOY_URL" >> $GITHUB_OUTPUT
           echo "### 🚀 Vercel Production Deployment Success!" >> $GITHUB_STEP_SUMMARY
           echo "- **Production URL:** $DEPLOY_URL" >> $GITHUB_STEP_SUMMARY
@@ -144,6 +162,7 @@ jobs:
       # HTML as JavaScript for a year. The client reloads once instead (ErrorBoundary), which is
       # the part that actually protects players today.
       - name: Verify deployed routing
+        if: steps.pull.outcome == 'success'
         run: |
           BASE=https://www.ivanjairus.xyz/games
           PROBE=$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT
@@ -155,3 +174,32 @@ jobs:
           echo "aset hilang : $missing  (diharapkan 404, masih HTML selama fallback SPA menelan /games/assets/*)"
           echo "$deep" | grep -q '^200 text/html' || { echo 'deep link SPA harus mengembalikan HTML'; exit 1; }
           echo "$real" | grep -q '^200 application/manifest+json' || { echo 'manifest harus tetap JSON'; exit 1; }
+
+      # The CLI is only one of two deployers. When it cannot read the project, the Vercel Git
+      # integration still deploys `main`; this asserts that the Production deployment for THIS
+      # commit actually reached success, so the job is green only when production is really live.
+      - name: Assert production was deployed by the Git integration
+        if: steps.pull.outcome != 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "::warning title=Vercel CLI could not read the project::vercel pull failed, so the CLI deploy is skipped. Production is deployed by the Vercel Git integration; asserting that deployment for ${GITHUB_SHA} instead."
+          for attempt in $(seq 1 12); do
+            DEP_ID=$(gh api "repos/${GITHUB_REPOSITORY}/deployments?sha=${GITHUB_SHA}&environment=Production&per_page=1" --jq '.[0].id // empty' 2>/dev/null || true)
+            if [ -n "$DEP_ID" ]; then
+              STATE=$(gh api "repos/${GITHUB_REPOSITORY}/deployments/${DEP_ID}/statuses?per_page=1" --jq '.[0].state // empty' 2>/dev/null || true)
+              echo "attempt ${attempt}: deployment ${DEP_ID} -> ${STATE}"
+              if [ "$STATE" = "success" ]; then
+                echo "### ✅ Production deployed by the Vercel Git integration" >> "$GITHUB_STEP_SUMMARY"
+                echo "- commit: ${GITHUB_SHA}" >> "$GITHUB_STEP_SUMMARY"
+                echo "- deployment: ${DEP_ID}" >> "$GITHUB_STEP_SUMMARY"
+                echo "- **Action required:** refresh VERCEL_TOKEN if you want the CLI path back." >> "$GITHUB_STEP_SUMMARY"
+                exit 0
+              fi
+            else
+              echo "attempt ${attempt}: no Production deployment for this commit yet"
+            fi
+            sleep 15
+          done
+          echo "::error title=Production not deployed::Neither the Vercel CLI nor the Vercel Git integration produced a successful Production deployment for ${GITHUB_SHA}."
+          exit 1
