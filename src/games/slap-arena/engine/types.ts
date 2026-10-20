@@ -127,6 +127,15 @@ export interface PlayerSnapshot {
   /** Airborne height and wind-up. Absent from an older host, so readers default them. */
   y?: number;
   chargeT?: number;
+  /**
+   * Stun and vertical speed are decided by the host when a slap lands. A client that does
+   * not learn them keeps pushing its own body with movement input while the host holds it
+   * still, and reconciliation then yanks the body back: the "hit once and I fly to the rim"
+   * rubber-band. Optional so an older host still parses.
+   */
+  isHit?: boolean;
+  hitTimer?: number;
+  vy?: number;
 }
 
 export interface WorldSnapshot {

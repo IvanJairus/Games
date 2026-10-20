@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import type { ArenaPhase } from '../engine/types';
 import type { FxLevel, FxMode } from '../engine/fxMode';
 import { unlockAudio } from '../../common/audio';
@@ -39,6 +39,9 @@ interface HudProps {
   fxMode: FxMode;
   fxLevel: FxLevel;
   onCycleFx: () => void;
+  /** True when this seat is the room master and enough brawlers are seated. */
+  canStart: boolean;
+  onStart: () => void;
 }
 
 /** Short enough to survive a 375 px header, which is where this gets decided. */
@@ -85,6 +88,8 @@ export const Hud: React.FC<HudProps> = ({
   fxMode,
   fxLevel,
   onCycleFx,
+  canStart,
+  onStart,
 }) => {
   const leader = hud.players.reduce<HudPlayer | null>(
     (best, p) => (!p.out && (!best || p.score > best.score) ? p : best),
@@ -92,6 +97,42 @@ export const Hud: React.FC<HudProps> = ({
   );
   const countLabel =
     hud.countdown > 0 ? String(Math.min(3, Math.ceil(hud.countdown))) : 'GAS!';
+
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const t = window.setTimeout(() => setCopied(false), 1600);
+    return () => clearTimeout(t);
+  }, [copied]);
+
+  /** The whole invite in one tap: the URL already carries the room code. */
+  const copyInvite = () => {
+    if (!hud.roomCode) return;
+    const url = `${window.location.origin}/slap-arena/m/${hud.roomCode}`;
+    const done = () => setCopied(true);
+    try {
+      if (navigator.clipboard?.writeText) {
+        void navigator.clipboard.writeText(url).then(done, done);
+        return;
+      }
+    } catch {
+      /* fall through to the legacy path */
+    }
+    try {
+      const el = document.createElement('textarea');
+      el.value = url;
+      el.setAttribute('readonly', '');
+      el.style.position = 'fixed';
+      el.style.opacity = '0';
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand('copy');
+      document.body.removeChild(el);
+      done();
+    } catch {
+      /* nothing else to try */
+    }
+  };
 
   return (
     <div className="sa-hud">
@@ -107,6 +148,17 @@ export const Hud: React.FC<HudProps> = ({
               <span className="sa-pill sa-pill--room" data-testid="slap-room-code">
                 KODE {hud.roomCode}
               </span>
+            )}
+            {hud.roomCode && (
+              <button
+                type="button"
+                className="sa-pill sa-pill--copy"
+                data-testid="slap-copy-invite"
+                aria-label="Salin tautan undangan ke papan klip"
+                onClick={copyInvite}
+              >
+                {copied ? 'TAUTAN TERSALIN' : 'SALIN TAUTAN'}
+              </button>
             )}
             <button
               type="button"
@@ -182,8 +234,20 @@ export const Hud: React.FC<HudProps> = ({
         )}
         {hud.phase === 'WAITING' && hud.roomCode && hud.peers < hud.needed && (
           <div className="sa-hint" data-testid="slap-waiting">
-            Menunggu {hud.needed - hud.peers} brawler lagi. Bagikan kode {hud.roomCode} ke temanmu.
+            Menunggu {hud.needed - hud.peers} brawler lagi. Salin tautan undangan untuk mengajak teman.
           </div>
+        )}
+        {hud.phase === 'WAITING' && hud.roomCode && hud.peers >= hud.needed && (
+          <div className="sa-hint" data-testid="slap-ready">
+            {canStart
+              ? 'Semua brawler sudah masuk. Tekan Mulai saat kamu siap.'
+              : 'Menunggu tuan rumah menekan Mulai.'}
+          </div>
+        )}
+        {canStart && hud.phase === 'WAITING' && (
+          <button type="button" className="sa-start" data-testid="slap-start" onClick={onStart}>
+            MULAI
+          </button>
         )}
         {showKeys && (
           <div className="sa-keys" data-testid="slap-keys">

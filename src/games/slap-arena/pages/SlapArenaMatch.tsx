@@ -83,10 +83,6 @@ export const SlapArenaMatch: React.FC = () => {
   const doorId = useRef(doorMode ? getOrCreateDoorId() : '').current;
   const seatKey = doorMode ? doorId : localId;
   const doorRef = useRef<ArenaServerNet | null>(null);
-  /** Start boleh dipicu oleh event database sebelum tiket sempat siap; arsip ini menyimpannya. */
-  const startArmedRef = useRef(false);
-  /** Master Worker adalah kursi 0, dan hanya dia yang boleh memulai lewat pintu. */
-  const isDoorMasterRef = useRef(false);
   const playerName = useRef(getStoredPlayerName() || 'Brawler').current;
   const playerColor = useRef(readColor()).current;
   const reducedMotion = useRef(
@@ -103,7 +99,7 @@ export const SlapArenaMatch: React.FC = () => {
   const [isHost, setIsHost] = useState(isSolo);
   const [disconnected, setDisconnected] = useState<string | null>(null);
   const [linkDown, setLinkDown] = useState(false);
-  /** Mirrors isDoorMasterRef into state so a master change re-renders the round controls. */
+  /** Mirrors the Worker's master answer into state so the Start button re-renders. */
   const [isDoorMaster, setIsDoorMaster] = useState(false);
 
   const arenaRef = useRef<Arena3DHandle>(null);
@@ -127,12 +123,10 @@ export const SlapArenaMatch: React.FC = () => {
   const lastCount = useRef(0);
   const netStatsRef = useRef<ArenaNet | null>(null);
 
-  /** The Worker owns the master seat, so the ref and the rendered control move together. */
+  /** The Worker owns the master seat, so the rendered control follows its answer. */
   const applyDoorMaster = useCallback(
     (master: string | null) => {
-      const mine = !!master && master === seatKey;
-      isDoorMasterRef.current = mine;
-      setIsDoorMaster(mine);
+      setIsDoorMaster(!!master && master === seatKey);
     },
     [seatKey]
   );
@@ -304,13 +298,8 @@ export const SlapArenaMatch: React.FC = () => {
       setHud((prev) => ({ ...prev, peers: roster, needed: 2 }));
 
       if (host && roster >= 2 && sim.state.phase === 'WAITING') {
-        if (doorMode) {
-          startArmedRef.current = true;
-          doorRef.current?.sendStart();
-        } else {
-          void startOnlineMatch(sync.match.id).catch((err) => console.warn('[slap-arena] gagal memulai match', err));
-          sim.startCountdown(0.6);
-        }
+        void startOnlineMatch(sync.match.id).catch((err) => console.warn('[slap-arena] gagal memulai match', err));
+        sim.startCountdown(0.6);
       }
       if (roster < 2 && sim.state.phase !== 'WAITING') {
         setDisconnected('Menunggu brawler lain kembali ke pulau.');
@@ -460,7 +449,6 @@ export const SlapArenaMatch: React.FC = () => {
         },
         onWelcome: (info) => {
           applyDoorMaster(info.master);
-          if (startArmedRef.current || isDoorMasterRef.current) doorRef.current?.sendStart();
           if (info.seat !== undefined && ticket.seat !== info.seat) {
             console.warn('[slap-arena] kursi Worker berbeda dari tiket', ticket.seat, info.seat);
           }
@@ -474,11 +462,8 @@ export const SlapArenaMatch: React.FC = () => {
         onWorld: (snap, applied) => {
           if (!sim.players[seatKey]) sim.addPlayer({ id: seatKey, name: playerName, color: playerColor });
           sim.applySnapshot(snap, applied);
-          // Event database bisa mendahului state pertama, jadi master mencoba mulai lagi begitu
-          // dunia benar-benar berisi dua kursi. Pintu menolak duplikat start dengan wrong_phase.
-          if (isDoorMasterRef.current && snap.phase === 'WAITING' && snap.players.length >= 2) {
-            net.sendStart();
-          }
+          // Waiting room: the master decides when the round starts. Auto-starting the moment
+          // a second seat appeared meant one join launched the match before anyone was ready.
           setHud((prev) => ({ ...prev, peers: snap.players.length }));
         },
         onFx: (events) => events.forEach((ev) => handleSimEvent(ev, sim, arenaRef.current)),
@@ -609,6 +594,15 @@ export const SlapArenaMatch: React.FC = () => {
     else if (sim.authoritative) sim.nextRound();
   }, [sim]);
 
+  /** Waiting room: only the master starts, and only once enough seats are filled. */
+  const startMatch = useCallback(() => {
+    if (doorMode) doorRef.current?.sendStart();
+    else if (sim.authoritative) sim.startCountdown(0.6);
+  }, [doorMode, sim]);
+
+  const canStart =
+    !isSolo && hud.phase === 'WAITING' && hud.peers >= hud.needed && (doorMode ? isDoorMaster : isHost);
+
   useEffect(() => {
     if (hud.phase !== 'ROUND_OVER' || disconnected || fatal || !controlsRound) return;
     const t = window.setTimeout(advance, AUTO_NEXT_ROUND_MS);
@@ -709,6 +703,8 @@ export const SlapArenaMatch: React.FC = () => {
           fxMode={fxMode}
           fxLevel={fxLevel}
           onCycleFx={cycleFx}
+          canStart={canStart}
+          onStart={startMatch}
         />
       )}
 

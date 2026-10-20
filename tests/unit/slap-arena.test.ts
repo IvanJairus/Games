@@ -410,6 +410,24 @@ describe('Slap Arena reconciliation', () => {
     sim.applySnapshot(next, 0);
     expect(sim.players.me.x).toBe(0);
   });
+
+  it('adopts the host stun so prediction stops fighting a knockback', () => {
+    const sim = client();
+    const snap = snapshotAt(0.2);
+    snap.players[0].isHit = true;
+    snap.players[0].hitTimer = 0.3;
+    snap.players[0].vx = 20;
+    sim.applySnapshot(snap, 0);
+
+    expect(sim.players.me.isHit).toBe(true);
+    expect(sim.players.me.hitTimer).toBeCloseTo(0.3, 5);
+
+    // Pushing in the same direction the knockback already travels would accelerate a body
+    // that the host is holding still. While stunned, friction may only slow it down.
+    sim.setInput('me', { x: 1, z: 0, slap: false, dash: false });
+    sim.step(0.05);
+    expect(sim.players.me.vx).toBeLessThan(20);
+  });
 });
 
 describe('Slap Arena bot AI', () => {
