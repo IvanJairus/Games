@@ -22,9 +22,10 @@ cd cloudflare
 ROOM_BASE=http://localhost:8790 node --test --test-timeout=20000 tests/ws.test.mjs
 ```
 
-Dua puluh dua tes: enam belas tiket, dua timer, empat metrik protokol. Semuanya lulus pada
-`wrangler dev --local` (n = 1 rangkaian, 19 Oktober). Tiap kelompok tes dijalankan lebih dulu terhadap
-worker tanpa fitur yang dijaganya, dan gagal di sana, jadi penjaganya terbukti bisa merah.
+Dua puluh enam tes: enam belas tiket, dua timer, empat metrik protokol, empat Slap Arena nyata.
+Semuanya lulus pada `wrangler dev --local` dan 26 lulus dari 26 terhadap URL tayang (n = 1 rangkaian
+untuk setiap, 19 Oktober). Tiap kelompok tes dijalankan lebih dulu terhadap worker tanpa fitur yang
+dijaganya, dan gagal di sana, jadi penjaganya terbukti bisa merah.
 
 | Tes | Yang dijaga |
 | --- | --- |
@@ -50,6 +51,10 @@ worker tanpa fitur yang dijaganya, dan gagal di sana, jadi penjaganya terbukti b
 | aksi dieksekusi | `applied[seat]` naik ke seq-nya dan `held[seat]` di bawah satu tick |
 | seq lama datang telat | `applied` tidak pernah mundur |
 | aksi ditolak | `applied` tidak bergeser, jadi angka itu berarti "benar-benar dieksekusi" |
+| Slap Arena lorong | dua kursi duduk di dunia nyata, `world.players` berisi keduanya dan fase `WAITING` |
+| Slap Arena mulai | yang bukan master ditolak pintu (`unknown_player`), master memulai, fase DO ikut fase dunia |
+| Slap Arena bergerak | input `{t:'input', seq, input}` mengubah dunia dan `applied` mengikutinya sampai `BATTLE` |
+| Slap Arena payload jahat | `x` di luar rentang balas `bad_payload`, seq berulang balas `duplicate_seq`, dan `applied` tidak naik |
 
 ## Deploy
 
@@ -62,24 +67,27 @@ npx wrangler deploy
 ```
 
 Worker aktif di `https://ij-game-rooms.filemonivanjairus.workers.dev` dengan `TEST_MODE = "0"`.
-Versi tayang sekarang `7bbd4bf9-8e77-4270-8cb0-84f58203c858` (tiket + timer + metrik protokol).
-Frontend belum ada yang menunjuk ke sini: tidak ada satu pun berkas di `src/` yang memanggil URL ini,
-jadi jalur Supabase hari ini tidak berubah.
+Versi tayang sekarang `487b2c27-976a-43e2-8e98-66ca57ae9ccd` (tiket + timer + metrik + adapter
+Slap Arena). Frontend belum ada yang menunjuk ke sini: tidak ada satu pun berkas di `src/` yang
+memanggil URL ini, jadi jalur Supabase hari ini tidak berubah.
 
-Terukur dari laptop ini ke edge Cloudflare selama dua deploy uji (tiket, lalu timer). Baris suite dan
-laju siaran berasal dari deploy timer; baris mint dan handshake dari deploy tiket:
+Terukur dari laptop ini ke edge Cloudflare selama deploy uji berturut-turut. Baris suite dan laju siaran
+berasal dari deploy adapter; baris mint dan handshake dari deploy tiket:
 
 | Yang diukur | Hasil |
 | --- | --- |
-| Suite 22 tes dijalankan terhadap URL tayang (`TEST_MODE=1` sementara) | 22 lulus dari 22, n = 1 rangkaian |
+| Suite 26 tes dijalankan terhadap URL tayang (`TEST_MODE=1` sementara) | 26 lulus dari 26, n = 1 rangkaian |
 | Laju siaran saat klien diam total, lewat internet | 60 state dalam 3.003 ms = 20,0 per detik, 60 tick unik, 0 dobel; gap min 0,1 / median 49,7 / max 142,3 ms |
+| Slap Arena nyata, 4 kursi x 30 detik, lewat internet | loop p50 49,3 / p90 69,6 / max 146,6 ms (n=2.336), 0 tick hilang, 0 stall, 20,3 state per detik per kursi, 30,4 kB per detik diterima per kursi |
 | `POST /room/<kode>/ticket` | n = 8: min 28 ms, median 41 ms, max 546 ms |
 | Handshake WebSocket dengan tiket sah | n = 5: min 59 ms, median 61 ms, max 70 ms |
-| Konfigurasi produksi setelah revert | `/health` 200, mint 200, `?probe=1` menolak 426, koneksi bertiket 101 |
+| Bundle Worker | 47,25 KiB naik dari 17,37 KiB (gzip 13,45 KiB dari 5,38 KiB), startup 3 ms |
+| Konfigurasi produksi setelah revert | `/health` 200, mint 200, `?probe=1` menolak 426, koneksi bertiket 101, dua kursi Slap Arena sampai fase `COUNTDOWN` |
 
 Angka latensi ini satu sampel dari satu laptop, dan catatan `macos-environment` berlaku: jaringan
-kantor tidak layak untuk mengukur latensi. Interval dunia (`applied`/`held`) belum terukur karena
-protokolnya belum membawa keduanya.
+kantor tidak layak untuk mengukur latensi. `applied` dan `held` sudah terukur dari sisi klien, tapi
+belum ada satu baris kode frontend yang membacanya, jadi pembanding arm Supabase dengan harness yang
+sama masih belum ada.
 
 Setelah deploy nyata, `ALLOWED_ORIGINS` harus memuat domain Vercel produksi, dan frontend perlu env
 `VITE_TRANSPORT=cloudflare` plus URL Worker.
@@ -107,18 +115,20 @@ protokol sekarang membawa `applied` dan `held` (lihat bagian Mengukur di bawah).
 3. Hasil laga masih ditulis klien. Keputusan Anda: DO yang menulis lewat function saat `finished`.
    Yang belum Anda pilih: function itu dipanggil dengan anon key atau dengan `sb_secret_…` sebagai
    secret Worker.
-4. Perbandingan Cloudflare versus Supabase Broadcast belum sah. `tests/soak.mjs` mengukur dunia
-   `selftest`; angka 86,4 ms di netbench mengukur dunianya sendiri. Yang sama baru terbandingkan setelah
-   Slap Arena asli berjalan di kedua pintu.
+4. Perbandingan Cloudflare versus Supabase Broadcast belum sah. Harness sudah bisa memuat Slap Arena
+   asli (`--game slap-arena`), tapi sisi Supabase-nya belum: itu butuh jalur klien yang mengirim payload
+   yang sama lewat Broadcast, dan belum ada satu baris pun kode frontend yang membaca `applied`/`held`.
+5. Belum terukur: CPU per tick di runtime nyata (wrangler lokal tidak memakainya), dan `load()` dari
+   snapshot belum pernah diuji lewat eviksi DO sungguhan.
 
 ## Mengukur
 
 ```bash
 cd cloudflare
-node tests/soak.mjs --base http://localhost:8790 --seats 4 --seconds 30 --out /tmp/soak.csv
+node tests/soak.mjs --base http://localhost:8790 --game slap-arena --seats 4 --seconds 30 --out /tmp/soak.csv
 ```
 
-Butuh `TEST_MODE=1` karena game `selftest` hanya terdaftar saat flag itu aktif. Definisinya sama dengan
+`--game selftest` membutuhkan `TEST_MODE=1`; `--game slap-arena` adalah game nyata dan tidak butuh flag itu. Definisinya sama dengan
 netbench: loop latency dari satu jam (jam klien, `t0` saat aksi dengan `seq` dikirim, `t1` saat
 `applied[seat] >= seq` terlihat), dan `held` adalah tahan di dalam pemegang sim yang memisahkan antrean
 server dari perjalanan jaringan. CSV memakai bentuk `MetricRow` netbench (`seat,kind,t,v`).

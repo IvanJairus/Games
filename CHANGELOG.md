@@ -8,6 +8,37 @@ terpisah saat kamu menerbitkan rilis.
 Entri dimulai dari 14 Oktober 2026. Perubahan sebelum tanggal itu ada pada riwayat git dan daftar
 pull request, karena tidak dicatat saat terjadi.
 
+## 2026-10-19 - Slap Arena berjalan di dalam Durable Object, lewat satu pintu aturan
+
+Langkah 5 rencana migrasi. `cloudflare/src/games/slapArena.ts` membungkus `gameApi.ts` (PR #75)
+sebagai adapter: `join`, `start`, `nextRound`, `input`, `tick` diteruskan ke `applyAction`, dan DO tidak
+lagi menilai fase, jumlah pemain, atau siapa master untuk game berpintu. Tidak ada aturan game yang
+ditulis ulang di sisi Worker, jadi tidak ada dua aturan yang bisa berbeda jalan.
+
+Dua hal saya cek lebih dulu karena desainnya batal kalau salah: `SlapSim` tidak menyentuh API browser
+(`sim.ts` hanya mengimpor `./types`, `./physics`, `./botAi`; `tsc --noEmit` dengan `lib: ["ES2022"]`
+tanpa DOM lolos), dan `sim.ts:295` punya `applySnapshot`, jadi memuat dunia kembali bukan angan-angan.
+
+Merah dulu, n = 1 rangkaian per baris:
+
+| Tahap | Hasil |
+| --- | --- |
+| Empat tes Slap Arena terhadap kode tanpa adapter | 4 gagal: `world harus berisi pemain, dapat null`, `bukan master tidak boleh mulai`, dua timeout menunggu fase yang tidak pernah ada |
+| Suite penuh lokal setelah adapter | 26 lulus dari 26, `npx tsc --noEmit` exit 0 |
+| Suite penuh terhadap URL tayang | 26 lulus dari 26 |
+
+Terukur `tests/soak.mjs --game slap-arena`, 4 kursi x 30 detik: loop latency lokal p50 52,6 ms
+(n=2.320) dan tayang p50 49,3 ms (n=2.336), 0 tick hilang, 0 stall di atas 200 ms, semua aksi terbalas,
+29,3 kB per detik diterima per kursi di lokal dan 30,4 kB per detik lewat internet. Snapshot dunia dua
+kursi saat `COUNTDOWN` 580 byte. Bundle Worker naik 17,37 KiB ke 47,25 KiB (gzip 5,38 ke 13,45 KiB).
+
+Satu merah pertama saya betulkan dulu di harness, bukan di produk: `recvState` hanya melihat pesan yang
+datang setelah ia dipasang, padahal state pertama tiba bersama welcome, jadi tiga tes gagal timeout dan
+bukan assertion. Setelah helper membaca seluruh log, merah yang tersisa adalah assertion yang sebenarnya.
+
+Belum ada satu baris kode frontend yang memakai jalur ini; `TRANSPORT` dan klien Supabase hari ini tidak
+berubah.
+
 ## 2026-10-19 - Pesan server membawa `applied` dan `held`, dan kamar Cloudflare akhirnya terukur
 
 Temuan 4 audit: `ServerMessage.state` tidak membawa `applied` maupun `held`, jadi loop latency tidak bisa
