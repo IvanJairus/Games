@@ -50,3 +50,23 @@ export const socketUrl = (baseUrl: string, code: string, ticket: string): string
   url.search = `?ticket=${encodeURIComponent(ticket)}`;
   return url.toString();
 };
+
+const DOOR_ID_KEY = 'ij_door_player_id';
+
+/**
+ * Id kursi di Worker, 128 bit heks. Dibuat di sini dan disimpan supaya reconnect memakai kursi yang
+ * sama. Id sesi Supabase tidak dipakai: ruangnya hanya 32 bit, dan Worker memakai id kursi untuk
+ * klaim ulang, jadi id yang mudah ditebak membuka lagi celah merebut kursi orang lain.
+ */
+export const getOrCreateDoorId = (): string => {
+  const random = (): string => crypto.randomUUID().replace(/-/g, '');
+  try {
+    const stored = window.localStorage.getItem(DOOR_ID_KEY);
+    if (stored && /^[0-9a-f]{32}$/.test(stored)) return stored;
+    const fresh = random();
+    window.localStorage.setItem(DOOR_ID_KEY, fresh);
+    return fresh;
+  } catch {
+    return random();
+  }
+};
