@@ -182,8 +182,35 @@
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.06em;
 }
+/* A button that borrows the room pill so the code and the invite sit on one line. */
+.sa-pill--copy {
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--sa-ink);
+}
+.sa-pill--copy:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--sa-ink); }
 
-.sa-topmeta { display: flex; align-items: center; gap: 8px; }
+/* Waiting room: only the master can start, so the button has to be unmissable. */
+.sa-start {
+  pointer-events: auto;
+  margin-top: 10px;
+  padding: 12px 34px;
+  border: 3px solid var(--sa-ink);
+  border-radius: 16px;
+  background: #ff5d5d;
+  color: #fff6e5;
+  font: inherit;
+  font-weight: 800;
+  font-size: 18px;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  box-shadow: 0 6px 0 var(--sa-ink);
+}
+.sa-start:active { transform: translateY(5px); box-shadow: 0 1px 0 var(--sa-ink); }
+
+.sa-topmeta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
 .sa-topactions {
   display: flex;

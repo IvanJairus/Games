@@ -25,9 +25,13 @@ export class SnapshotBuffer {
   private samples: SnapshotSample[] = [];
 
   constructor(
-    /** How far behind real time to draw. A little over one host tick, so a late packet
-     *  still lands before the playhead reaches it. */
-    private readonly delay = 0.1,
+    /**
+     * How far behind real time to draw. A little over one host tick (50 ms), so a packet
+     * delayed by a few tens of milliseconds still lands before the playhead reaches it.
+     * Raising this smooths jitter but widens the gap between what a slap looks like and
+     * where the host thinks the bodies are, which reads as "hit from nowhere".
+     */
+    private readonly delay = 0.08,
     /** Older than the render window is dead weight. */
     private readonly max = 16
   ) {}

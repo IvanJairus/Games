@@ -47,6 +47,8 @@ const DASH_ANIM = 0.22;
 const FREEZE_RATE = 0.32;
 /** Rate at which a reconciliation offset is absorbed; ~50 ms half-life. */
 const CORRECTION_DECAY = 14;
+/** Knockback is a bigger jump, so it is allowed to read as a hit instead of a blink. */
+const CORRECTION_DECAY_HIT = 9;
 
 interface Entry {
   rig: BrawlerRig;
@@ -352,6 +354,7 @@ const Arena3D = forwardRef<Arena3DHandle, Arena3DProps>(function Arena3D(
 
     const clock = new THREE.Clock();
     let animId = 0;
+    let lastRound = sim.state.round;
     let frames = 0;
     let fpsTimer = 0;
     let fpsAvg = 0;
@@ -438,6 +441,17 @@ const Arena3D = forwardRef<Arena3DHandle, Arena3DProps>(function Arena3D(
       const dt = Math.min(clock.getDelta(), 0.05);
       const { state } = sim;
 
+      // A new round respawns everyone. The buffer still holds the old round's positions, so
+      // without this every remote brawler glides across the island to its spawn point.
+      if (state.round !== lastRound) {
+        lastRound = state.round;
+        for (const e of entries.values()) {
+          e.interp.reset();
+          e.fallT = 0;
+          e.prevY = 0;
+        }
+      }
+
       for (const id of entries.keys()) if (!state.players[id]) removeEntry(id);
 
       let danger = 0;
@@ -480,9 +494,12 @@ const Arena3D = forwardRef<Arena3DHandle, Arena3DProps>(function Arena3D(
         } else {
           // A reconciliation already moved the body to the host's answer; the offset holds
           // the old drawing position for a few frames so the correction reads as a slide.
+          // A knockback is a big jump and gets a longer slide than ordinary drift, or it
+          // still reads as a teleport.
           px = p.x + p.corrX;
           pz = p.z + p.corrZ;
-          const decay = Math.exp(-CORRECTION_DECAY * dt);
+          const corrMag = Math.hypot(p.corrX, p.corrZ);
+          const decay = Math.exp(-(corrMag > 0.8 ? CORRECTION_DECAY_HIT : CORRECTION_DECAY) * dt);
           p.corrX *= decay;
           p.corrZ *= decay;
           if (Math.abs(p.corrX) < 0.002) p.corrX = 0;

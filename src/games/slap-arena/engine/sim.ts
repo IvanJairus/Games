@@ -318,6 +318,9 @@ export class SlapSim {
         dashCooldown: round2(p.dashCooldown),
         y: round2(p.y),
         chargeT: p.chargeT < 0 ? -1 : round2(p.chargeT),
+        isHit: p.isHit,
+        hitTimer: round2(p.hitTimer),
+        vy: round2(p.vy),
       })),
     };
   }
@@ -369,6 +372,9 @@ export class SlapSim {
       local.angle = p.angle;
       local.y = p.y ?? 0;
       local.chargeT = p.chargeT ?? -1;
+      local.isHit = !!p.isHit;
+      local.hitTimer = p.hitTimer ?? 0;
+      local.vy = p.vy ?? 0;
     }
 
     for (const id of Object.keys(state.players)) {
@@ -404,6 +410,12 @@ export class SlapSim {
     me.vx = p.vx;
     me.vz = p.vz;
     me.y = p.y ?? 0;
+    // The stun is the host's decision, and the client cannot guess it. Without this the
+    // local body keeps accepting movement input while the host holds it, so every hit
+    // produced a correction large enough to look like being thrown across the island.
+    me.isHit = !!p.isHit;
+    me.hitTimer = p.hitTimer ?? 0;
+    me.vy = p.vy ?? me.vy;
     if (!me.isFalling) {
       for (const item of this.pendingInputs) {
         stepMovement(me, item.input.x, item.input.z, REPLAY_STEP);
