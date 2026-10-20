@@ -4,7 +4,7 @@ import type { SlapSim } from '../engine/sim';
 import type { PlayerState } from '../engine/types';
 import { ARENA_RADIUS, CHARGE_MAX_TIME, DASH_DURATION, SLAP_ANIM_TIME, chargeFromHold } from '../engine/physics';
 import { fxGates, levelAtMount, type FxLevel, type FxMode } from '../engine/fxMode';
-import { advanceReckon, type ReckonState } from '../engine/remoteMotion';
+import { SnapshotBuffer } from '../engine/interpolate';
 import { BrawlerRig, type Pose } from './three/brawler';
 import { ParticleField, createBackdrop, createGroundMarker, createIsland, createSky, type Island } from './three/world';
 
@@ -45,8 +45,8 @@ const SLAP_SWING = 0.3;
 const DASH_ANIM = 0.22;
 /** How long a held swing lingers, and how much of a frame it eats. */
 const FREEZE_RATE = 0.32;
-/** Lock-on rate toward the reckoned position. 1e-9 is a time constant of ~40 ms. */
-const RECKON_SNAP = 1e-9;
+/** Rate at which a reconciliation offset is absorbed; ~50 ms half-life. */
+const CORRECTION_DECAY = 14;
 
 interface Entry {
   rig: BrawlerRig;
@@ -68,8 +68,8 @@ interface Entry {
   /** Drives a client-side KO sink; `fallY` is not part of the snapshot. */
   fallT: number;
   prevY: number;
-  /** The last position the host actually reported, and how long ago that was. */
-  reckon: ReckonState;
+  /** Recent authoritative positions of a remote brawler, drawn a little in the past. */
+  interp: SnapshotBuffer;
   labelX: number;
   labelY: number;
 }
@@ -242,7 +242,7 @@ const Arena3D = forwardRef<Arena3DHandle, Arena3DProps>(function Arena3D(
         freezeT: 0,
         fallT: 0,
         prevY: 0,
-        reckon: { x: p0.x, z: p0.z, vx: p0.vx, vz: p0.vz, age: 0 },
+        interp: new SnapshotBuffer(),
         labelX: -999,
         labelY: -999,
       };
@@ -464,17 +464,29 @@ const Arena3D = forwardRef<Arena3DHandle, Arena3DProps>(function Arena3D(
 
         let px = p.x;
         let pz = p.z;
+        const nowSec = performance.now() / 1000;
         if (!own) {
-          // The host speaks 20 times a second and the screen draws 60, so between words
-          // the remote brawler is flown on the velocity the host reported with it.
-          const target = advanceReckon(e.reckon, p, dt, ARENA_RADIUS + 1.5);
-          e.reckon = target.state;
-          const k = 1 - Math.pow(RECKON_SNAP, dt);
-          e.renderX += (target.x - e.renderX) * k;
-          e.renderZ += (target.z - e.renderZ) * k;
-          px = e.renderX;
-          pz = e.renderZ;
+          // The host speaks 20 times a second and the screen draws 60. Drawing a little in
+          // the past interpolates between two reports that are already known; guessing
+          // forward overshoots on a knockback and snaps when the truth arrives.
+          e.interp.push(nowSec, p.x, p.z);
+          const at = e.interp.sample(nowSec);
+          if (at) {
+            px = at.x;
+            pz = at.z;
+          }
+          e.renderX = px;
+          e.renderZ = pz;
         } else {
+          // A reconciliation already moved the body to the host's answer; the offset holds
+          // the old drawing position for a few frames so the correction reads as a slide.
+          px = p.x + p.corrX;
+          pz = p.z + p.corrZ;
+          const decay = Math.exp(-CORRECTION_DECAY * dt);
+          p.corrX *= decay;
+          p.corrZ *= decay;
+          if (Math.abs(p.corrX) < 0.002) p.corrX = 0;
+          if (Math.abs(p.corrZ) < 0.002) p.corrZ = 0;
           e.renderX = px;
           e.renderZ = pz;
         }

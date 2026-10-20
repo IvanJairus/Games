@@ -32,6 +32,10 @@ interface Seat {
 const ROOM_PATH = /^\/room\/([A-Za-z0-9]{4,12})\/(ws|ticket)$/;
 const GAME_SHAPE = /^[a-z0-9-]{2,32}$/;
 const PLAYER_SHAPE = /^[0-9a-f]{32}$/;
+/** Input is 20 Hz; anything far above that is a script, not a hand. */
+const MAX_MESSAGES_PER_SECOND = 120;
+/** A gap this long means the timer was starved or the object was frozen mid-match. */
+const STALL_MS = 1000;
 
 const newPlayerId = (): string => crypto.randomUUID().replace(/-/g, '');
 
@@ -48,10 +52,14 @@ export class GameRoom extends DurableObject<Env> {
   private info: RoomInfo | null = null;
   private tickTimer: ReturnType<typeof setInterval> | null = null;
   private ticking = false;
+  /** Wall clock of the last tick, used to notice a starved timer. */
+  private lastTickAtMs = 0;
   /** playerId -> seq terakhir yang sudah dieksekusi dan sudah ikut terbit. */
   private appliedSeq = new Map<string, number>();
   private heldMs = new Map<string, number>();
   private pendingSeq = new Map<string, { seq: number; at: number }>();
+  /** playerId -> jendela hitung pesan, untuk menolak kiriman yang jauh di atas 20 Hz. */
+  private msgWindow = new Map<string, { at: number; count: number }>();
   /** Urutan duduk di game berpintu; DO menyalip master dari sini supaya sama dengan pintunya. */
   private joinedOrder: string[] = [];
 
@@ -214,7 +222,7 @@ export class GameRoom extends DurableObject<Env> {
       id: seat.playerId,
       seat: seat.seat,
       name: seat.name,
-      master: this.master,
+      master: this.currentMaster(),
       players: this.playerList(),
       exp: check.claim.exp,
     } satisfies ServerMessage));
@@ -228,6 +236,9 @@ export class GameRoom extends DurableObject<Env> {
     if (typeof data !== 'string' || data.length > MAX_MESSAGE_CHARS) return;
     const session = this.sessionOf(ws);
     if (!session) return;
+    // A hand sends 20 inputs a second. A script sends thousands; dropping the excess keeps
+    // one seat from burning the room's CPU budget.
+    if (!this.allowMessage(session.id)) return;
 
     // Tiket yang baru kedaluwarsa ketahuan di pesan berikutnya; tidak perlu timer khusus
     // sampai langkah tick masuk.
@@ -284,6 +295,21 @@ export class GameRoom extends DurableObject<Env> {
   }
 
   /**
+   * Sliding one-second budget per seat. Returns false for a message that should be dropped
+   * silently: answering a flood would only multiply the work.
+   */
+  private allowMessage(playerId: string): boolean {
+    const now = Date.now();
+    const window = this.msgWindow.get(playerId);
+    if (!window || now - window.at > 1000) {
+      this.msgWindow.set(playerId, { at: now, count: 1 });
+      return true;
+    }
+    window.count += 1;
+    return window.count <= MAX_MESSAGES_PER_SECOND;
+  }
+
+  /**
    * Dicatat saat aksi diterima, diterbitkan saat tick berikutnya. Selisih dua jam itu adalah `held`:
    * antrean di dalam pemegang sim, terpisah dari perjalanan jaringan yang hanya bisa diukur klien.
    */
@@ -331,6 +357,7 @@ export class GameRoom extends DurableObject<Env> {
     this.appliedSeq.delete(session.id);
     this.heldMs.delete(session.id);
     this.pendingSeq.delete(session.id);
+    this.msgWindow.delete(session.id);
     // Kursi yang ditinggalkan tanpa socket hidup dilepas, jadi muat ulang halaman atau ganti
     // perangkat tidak menumpuk pemain hantu sampai kamar "penuh". Kursi pemain yang masih
     // tersambung (kamar dengan dua socket untuk reconnect) tetap dipertahankan.
@@ -361,9 +388,22 @@ export class GameRoom extends DurableObject<Env> {
     this.tickTimer = null;
   }
 
+  private restartTicker(): void {
+    this.stopTicker();
+    this.startTicker();
+  }
+
   private async tickOnce(): Promise<void> {
     if (this.ticking) return;
     this.ticking = true;
+    const now = Date.now();
+    if (this.lastTickAtMs && now - this.lastTickAtMs > STALL_MS) {
+      // The interval was starved, or the object was frozen mid-match. Replaying the gap
+      // would teleport everyone; drop it and re-arm in case the timer itself died.
+      this.lastAdvanceMs = now;
+      this.restartTicker();
+    }
+    this.lastTickAtMs = now;
     try {
       await this.advanceClock();
       if (this.sessions().length) await this.broadcast();
@@ -400,7 +440,7 @@ export class GameRoom extends DurableObject<Env> {
     const text = JSON.stringify({
       t: 'state',
       phase: this.phase,
-      master: this.master,
+      master: this.currentMaster(),
       tick: this.tick,
       players: this.playerList(),
       world: this.game ? this.game.snapshot() : null,
@@ -449,22 +489,28 @@ export class GameRoom extends DurableObject<Env> {
    */
   private async ensureGame(): Promise<void> {
     if (this.game || !this.info?.game) return;
-    const adapter = createAdapter(this.info.game, this.env);
-    if (!adapter) return;
-    this.game = adapter;
+    // Cold start: two seats can connect in the same instant and both reach this point after
+    // the ticket await. Loading the world and re-seating the roster has to be one atomic
+    // step, or the room ends up with two game objects and duplicated players.
+    await this.ctx.blockConcurrencyWhile(async () => {
+      if (this.game || !this.info?.game) return;
+      const adapter = createAdapter(this.info.game, this.env);
+      if (!adapter) return;
+      this.game = adapter;
 
-    const row = this.ctx.storage.sql.exec(
-      'SELECT phase, master, tick, world FROM room_state WHERE id = 1',
-    ).toArray()[0] as unknown as RoomRow | undefined;
-    if (row?.world) {
-      adapter.load(JSON.parse(row.world));
-      this.tick = row.tick;
-      this.lastSnapshotMs = Date.now();
-    }
-    // Kursi 0 tetap tuan rumah untuk game tanpa pintu; game berpintu menghitung master sendiri.
-    if (!adapter.door && row?.master) this.master = row.master;
-    this.rejoin();
-    this.syncPhase();
+      const row = this.ctx.storage.sql.exec(
+        'SELECT phase, master, tick, world FROM room_state WHERE id = 1',
+      ).toArray()[0] as unknown as RoomRow | undefined;
+      if (row?.world) {
+        adapter.load(JSON.parse(row.world));
+        this.tick = row.tick;
+        this.lastSnapshotMs = Date.now();
+      }
+      // Kursi 0 tetap tuan rumah untuk game tanpa pintu; game berpintu menghitung master sendiri.
+      if (!adapter.door && row?.master) this.master = row.master;
+      this.rejoin();
+      this.syncPhase();
+    });
   }
 
   /** Game berpintu harus melihat urutan duduk yang sama dengan urutan kursi, itu sumber master. */
@@ -476,7 +522,19 @@ export class GameRoom extends DurableObject<Env> {
     }
   }
 
+  /**
+   * Game berpintu menjawab sendiri siapa master-nya. Menyalin jawaban itu ke field DO adalah
+   * sumber kebenaran kedua yang bisa berbeda setelah satu kursi keluar, jadi pintu yang ditanya.
+   */
+  private currentMaster(): string | null {
+    return this.game?.master ? this.game.master() : this.master;
+  }
+
   private syncMaster(): void {
+    if (this.game?.master) {
+      this.master = this.game.master();
+      return;
+    }
     this.master = this.joinedOrder[0] ?? null;
   }
 

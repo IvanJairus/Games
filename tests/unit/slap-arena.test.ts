@@ -23,10 +23,9 @@ import {
   spawnPlayersInCircle,
   updatePlayerMovement,
 } from '../../src/games/slap-arena/engine/physics';
-import { advanceReckon, MAX_RECKON } from '../../src/games/slap-arena/engine/remoteMotion';
 import { computeBotAi } from '../../src/games/slap-arena/engine/botAi';
 import { SlapSim } from '../../src/games/slap-arena/engine/sim';
-import type { PlayerState } from '../../src/games/slap-arena/engine/types';
+import type { PlayerState, WorldSnapshot } from '../../src/games/slap-arena/engine/types';
 import { EV_FX, EV_INPUT, EV_SNAPSHOT, isFxBatch, isInputMessage, isSnapshot } from '../../src/games/slap-arena/engine/net';
 
 function mockPlayer(id: string, x = 0, z = 0, angle = 0): PlayerState {
@@ -332,39 +331,84 @@ describe('Slap Arena charge', () => {
   });
 });
 
-describe('Slap Arena remote motion', () => {
-  const R = 8.7;
-  const start = { x: 0, z: 0, vx: 0, vz: 0, age: 0 };
-
-  it('flies a remote brawler on the velocity the host reported', () => {
-    const fed = advanceReckon(start, { x: 1, z: 0, vx: 10, vz: 0 }, 1 / 60, R);
-    expect(fed.state.age).toBe(0);
-    expect(fed.x).toBeCloseTo(1, 5);
-    // Same report again: the body keeps travelling instead of waiting for the next one.
-    const next = advanceReckon(fed.state, { x: 1, z: 0, vx: 10, vz: 0 }, 1 / 60, R);
-    expect(next.x).toBeCloseTo(1 + 10 / 60, 4);
-    expect(next.state.age).toBeCloseTo(1 / 60, 5);
+describe('Slap Arena reconciliation', () => {
+  const snapshotAt = (x: number): WorldSnapshot => ({
+    round: 1,
+    phase: 'BATTLE',
+    countdown: 0,
+    scoreToWin: 3,
+    winnerId: null,
+    matchWinnerId: null,
+    t: 0,
+    players: [
+      {
+        id: 'me',
+        name: 'Me',
+        color: '#4dabf7',
+        isBot: false,
+        x,
+        z: 0,
+        vx: 0,
+        vz: 0,
+        angle: 0,
+        score: 0,
+        isFalling: false,
+        eliminated: false,
+        slapCooldown: 0,
+        dashCooldown: 0,
+        y: 0,
+        chargeT: -1,
+      },
+    ],
   });
 
-  it('stops guessing once the reckoning horizon passes', () => {
-    let s = { ...start, x: 0, z: 0, vx: 20, vz: 0, age: MAX_RECKON };
-    const a = advanceReckon(s, { x: 0, z: 0, vx: 20, vz: 0 }, 1 / 60, 20);
-    s = a.state;
-    const b = advanceReckon(s, { x: 0, z: 0, vx: 20, vz: 0 }, 1 / 60, 20);
-    expect(b.state.age).toBeCloseTo(MAX_RECKON, 5);
-    expect(b.x).toBeCloseTo(a.x, 6);
+  const client = () => {
+    const sim = new SlapSim({ localId: 'me', authoritative: false });
+    sim.addPlayer({ id: 'me' });
+    sim.state.phase = 'BATTLE';
+    return sim;
+  };
+
+  it('replays an input the host has not acknowledged yet', () => {
+    const sim = client();
+    sim.setInput('me', { x: 1, z: 0, slap: false, dash: false });
+    sim.step(0.05);
+    expect(sim.players.me.x).toBeGreaterThan(0);
+
+    sim.noteSentInput(1, { x: 1, z: 0, slap: false, dash: false });
+    // The host has simulated nothing yet: rewind, then re-run the pending tick.
+    sim.applySnapshot(snapshotAt(0.2), 0);
+    expect(sim.players.me.x).toBeGreaterThan(0.2);
   });
 
-  it('never draws a reckoned body outside the island', () => {
-    const far = advanceReckon({ ...start, x: 8, z: 0, vx: 20, vz: 0 }, { x: 8, z: 0, vx: 20, vz: 0 }, MAX_RECKON, R);
-    expect(Math.hypot(far.x, far.z)).toBeLessThanOrEqual(R + 1e-6);
-    expect(far.x).toBeGreaterThan(8);
+  it('drops an acknowledged input and adopts the host position', () => {
+    const sim = client();
+    sim.setInput('me', { x: 1, z: 0, slap: false, dash: false });
+    sim.step(0.05);
+    sim.noteSentInput(1, { x: 1, z: 0, slap: false, dash: false });
+
+    sim.applySnapshot(snapshotAt(0.2), 1);
+    expect(sim.players.me.x).toBeCloseTo(0.2, 6);
   });
 
-  it('a stationary remote does not drift', () => {
-    const r = advanceReckon({ ...start, x: 2, z: 3 }, { x: 2, z: 3, vx: 0, vz: 0 }, 1 / 60, R);
-    expect(r.x).toBeCloseTo(2, 6);
-    expect(r.z).toBeCloseTo(3, 6);
+  it('absorbs a correction visually, but snaps a real teleport', () => {
+    const sim = client();
+    sim.players.me.x = 3;
+    sim.applySnapshot(snapshotAt(2), 0);
+    expect(Math.abs(sim.players.me.corrX)).toBeGreaterThan(0);
+
+    sim.applySnapshot(snapshotAt(50), 0);
+    expect(sim.players.me.corrX).toBe(0);
+    expect(sim.players.me.x).toBe(50);
+  });
+
+  it('clears the queue when a new round starts', () => {
+    const sim = client();
+    sim.noteSentInput(1, { x: 1, z: 0, slap: false, dash: false });
+    const next = snapshotAt(0);
+    next.round = 2;
+    sim.applySnapshot(next, 0);
+    expect(sim.players.me.x).toBe(0);
   });
 });
 

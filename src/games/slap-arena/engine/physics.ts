@@ -72,6 +72,8 @@ export function createPlayer(partial: Partial<PlayerState> & { id: string }): Pl
     eliminated: false,
     slapAnimT: -1,
     bump: 0,
+    corrX: 0,
+    corrZ: 0,
     ...partial,
   };
 }
@@ -161,6 +163,16 @@ export function updatePlayerMovement(
 
   // A charged knockback lifts the victim off the grass. Kept out of the x/z path on
   // purpose: being airborne must not quietly make a brawler travel further.
+  stepMovement(player, inputX, inputZ, dt);
+}
+
+/**
+ * Position and velocity only: no cooldowns, no animation clocks, no timers.
+ * Replay-safe, which is what client-side reconciliation needs: it re-runs the inputs the
+ * host has not acknowledged yet without double-decrementing anything the local frame loop
+ * has already advanced.
+ */
+export function stepMovement(player: PlayerState, inputX: number, inputZ: number, dt: number): void {
   if (player.y > 0 || player.vy > 0) {
     player.vy -= AIR_GRAVITY * dt;
     player.y += player.vy * dt;

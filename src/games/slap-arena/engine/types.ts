@@ -30,6 +30,13 @@ export interface PlayerState {
   slapAnimT: number;
   /** 1 on impact, decayed by the sim for actors it owns and by the renderer for the rest. */
   bump: number;
+  /**
+   * Visual-only offset that absorbs a reconciliation snap. The sim has already put the
+   * body at the authoritative position; the renderer draws it at `x + corrX` and decays
+   * this to zero, so a correction reads as a slide instead of a teleport. Never on the wire.
+   */
+  corrX: number;
+  corrZ: number;
 }
 
 export interface InputState {

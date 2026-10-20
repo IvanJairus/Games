@@ -45,6 +45,15 @@ function rulesOf(state: SlapSim): RoomRules {
   return rules;
 }
 
+/**
+ * Who the rule book currently calls master. The Durable Object reads this instead of keeping
+ * its own copy, so authorisation and the value shown to clients cannot drift apart after a
+ * seat leaves.
+ */
+export function masterOf(state: SlapSim): string | null {
+  return rulesOf(state).master;
+}
+
 export function createGame(): SlapSim {
   const sim = new SlapSim({ localId: SERVER_ID, authoritative: true });
   ROOMS.set(sim, { master: null, seq: new Map<string, number>() });

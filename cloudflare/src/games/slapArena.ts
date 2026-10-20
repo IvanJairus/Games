@@ -1,6 +1,7 @@
 import {
   applyAction,
   createGame,
+  masterOf,
   removePlayer,
   type Action,
 } from '../../../src/games/slap-arena/engine/gameApi';
@@ -43,6 +44,9 @@ export function slapArenaGame(): GameAdapter {
     },
     snapshot: () => sim.snapshot(),
     phase: () => ROOM_PHASE[sim.state.phase] ?? 'lobby',
+    // The rules door already decides who may start and advance; the DO reads that answer
+    // instead of keeping a second copy of it.
+    master: () => masterOf(sim),
     drainFx: () => queue.splice(0, queue.length),
     removePlayer: (playerId) => {
       removePlayer(sim, playerId);

@@ -64,6 +64,11 @@ export interface GameAdapter {
   join?(playerId: string, name: string): { ok: true } | { ok: false; reason: string };
   /** Hanya untuk game berpintu: fase dalam bahasa DO, supaya gerbang transport tetap satu bentuk. */
   phase?(): 'lobby' | 'playing' | 'finished';
+  /**
+   * Hanya untuk game berpintu: siapa yang berhak memulai/melanjutkan ronde. DO tidak menyimpan
+   * salinannya sendiri, karena dua sumber kebenaran bisa berbeda setelah satu kursi keluar.
+   */
+  master?(): string | null;
   /** Efek yang lahir sejak tick terakhir. Game tanpa efek tidak perlu memasang ini. */
   drainFx?(): unknown[];
 }

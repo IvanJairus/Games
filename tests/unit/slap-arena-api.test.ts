@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { SlapSim } from '../../src/games/slap-arena/engine/sim';
-import { MAX_MESSAGE_BYTES, MAX_PLAYERS, applyAction, createGame, removePlayer } from '../../src/games/slap-arena/engine/gameApi';
+import { MAX_MESSAGE_BYTES, MAX_PLAYERS, applyAction, createGame, masterOf, removePlayer } from '../../src/games/slap-arena/engine/gameApi';
 import type { InputState } from '../../src/games/slap-arena/engine/types';
 
 const join = (id: string, name: string, color?: string) => ({ t: 'join' as const, id, name, ...(color ? { color } : {}) });
@@ -20,6 +20,24 @@ function started() {
   expect(applyAction(sim, 'p1', { t: 'start' })).toEqual({ ok: true });
   return sim;
 }
+
+describe('gameApi master', () => {
+  it('names the first seat master and promotes the next when it leaves', () => {
+    const sim = lobby();
+    expect(masterOf(sim)).toBe('p1');
+    removePlayer(sim, 'p1');
+    expect(masterOf(sim)).toBe('p2');
+  });
+
+  it('is the same answer authorisation uses, so display cannot drift from the rule', () => {
+    const sim = lobby();
+    removePlayer(sim, 'p1');
+    expect(masterOf(sim)).toBe('p2');
+    // p1 is gone, so p2 is the only seat allowed to advance the round.
+    expect(applyAction(sim, 'p1', { t: 'nextRound' })).toEqual({ ok: false, reason: 'unknown_player' });
+    expect(applyAction(sim, 'p2', { t: 'nextRound' })).toEqual({ ok: false, reason: 'not_your_turn' });
+  });
+});
 
 describe('gameApi join rules', () => {
   it('accepts the first players and refuses the seventh', () => {
