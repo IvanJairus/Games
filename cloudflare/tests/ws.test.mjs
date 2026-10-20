@@ -481,3 +481,20 @@ test('payload jahat ditolak pintu dan tidak menyentuh dunia', async () => {
   assert.equal((await a.recv('error')).reason, 'duplicate_seq');
   a.ws.terminate(); b.ws.terminate();
 });
+
+test('efek lahir di server dan ikut terbit lewat fx', async () => {
+  const { a, b } = await slapTable('G5');
+  const lobby = await a.recvState((s) => s.phase === 'lobby');
+  assert.ok(Array.isArray(lobby.fx), `state harus punya array fx, dapat ${JSON.stringify(lobby.fx)}`);
+  assert.equal(lobby.fx.length, 0, 'lorong belum menghasilkan efek apa pun');
+
+  a.ws.send(JSON.stringify({ t: 'start' }));
+  const started = await a.recvState((s) => s.fx.some((e) => e.kind === 'roundStart'), 12000);
+  const round = started.fx.find((e) => e.kind === 'roundStart');
+  assert.equal(typeof round.round, 'number', `event ronde harus membawa nomornya: ${JSON.stringify(round)}`);
+  // State berikutnya, bukan state yang sama: recvState mengambil yang terbaru dan itu masih
+  // membawa event yang baru saja terbit.
+  const after = await a.recvState((s) => s.tick > started.tick, 4000);
+  assert.deepEqual(after.fx, [], 'event yang sudah terbit tidak boleh ikut siaran tick berikutnya');
+  a.ws.terminate(); b.ws.terminate();
+});

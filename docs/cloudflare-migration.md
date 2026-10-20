@@ -357,3 +357,22 @@ Yang belum terukur dan belum dibuat: `applied`/`held` sudah ada tapi belum dibac
 frontend pun; belum ada koneksi ke Supabase untuk arm pembanding dengan harness yang sama; CPU per
 tick belum diukur (wrangler lokal tidak memakinya); dan `load()` baru teruji lewat tes unit `gameApi`,
 belum lewat eviksi DO sungguhan.
+
+## 12. Susulan hari yang sama: `fx` di pesan state, dan pintu klien Slap Arena
+
+Klien nyata membutuhkan dua hal lagi setelah adapter masuk.
+
+1. `state` sekarang membawa `fx`, efek yang lahir di sim server. `SlapSim.onEvent` adalah kolom publik
+   (`src/games/slap-arena/engine/sim.ts:52`) jadi adapter memungutnya tanpa menyentuh `gameApi.ts`.
+   Penjaga barunya merah dalam 76 ms pada `state harus punya array fx, dapat undefined`, suite menjadi
+   27 lulus dari 27 lokal. Satu assertion saya perbaiki karena tes saya sendiri keliru: `recvState`
+   mengambil state terbaru sehingga event yang sama terbaca dua kali, jadi penjaganya sekarang
+   membandingkan nomor tick.
+2. `src/lib/transport.ts` dan `src/games/slap-arena/engine/serverNet.ts` adalah pintu klien:
+   `VITE_TRANSPORT` (default `supabase`) dan `VITE_CF_ROOMS_URL`, tiket dimint lewat POST, lalu satu
+   WebSocket per kamar. Kelas itu mengirim `seq` yang naik setiap tick dan memotong `slap`/`dash`
+   ke satu tick per tekanan. Itu bukan pilihan gaya: `gameApi.ts` menolak seq yang tidak maju, jadi
+   pengirim yang meniru konvensi `ArenaNet` (seq hanya naik saat aksi) akan membuat gerak pemain
+   membeku. Sembilan unit test lulus, dan dua di antaranya dibuktikan bisa gagal: seq konstan membuat
+   tes pertama merah (`expected [1,1,1,1,1,1] to deeply equal [1,2,3,4,5,6]`), dan flag slap yang
+   dikirim terus membuat tes keduanya merah.

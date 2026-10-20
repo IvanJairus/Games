@@ -8,6 +8,20 @@ terpisah saat kamu menerbitkan rilis.
 Entri dimulai dari 14 Oktober 2026. Perubahan sebelum tanggal itu ada pada riwayat git dan daftar
 pull request, karena tidak dicatat saat terjadi.
 
+## 2026-10-19 - Efek lahir di server dan ikut terbit di dalam `fx`
+
+Halaman Slap Arena merender percikan pukulan, slap, dan KO dari callback `onEvent` milik `SlapSim`.
+Klien yang dunianya dihitung server tidak punya apa-apa untuk dirender kalau pesan `state` tidak
+membawa efek itu. Kolom `onEvent` terbuka (`sim.ts:52`), jadi adapter memungutnya tanpa menyentuh
+`gameApi.ts` dan tanpa menciptakan aturan kedua.
+
+`fx` dituang sekali per siaran, jadi event yang sudah terbit tidak muncul lagi di tick berikutnya.
+
+Merah dulu: tes `efek lahir di server dan ikut terbit lewat fx` terhadap kode tanpa fitur ini gagal
+dalam 76 ms pada assertion `state harus punya array fx, dapat undefined`. Hijau: 27 lulus dari 27.
+Satu assertion saya perbaiki di jalan, dan itu kesalahan tes saya sendiri: `recvState` mengambil state
+terbaru, jadi event yang sama terbaca dua kali; penjaganya sekarang membandingkan nomor tick.
+
 ## 2026-10-19 - Slap Arena berjalan di dalam Durable Object, lewat satu pintu aturan
 
 Langkah 5 rencana migrasi. `cloudflare/src/games/slapArena.ts` membungkus `gameApi.ts` (PR #75)

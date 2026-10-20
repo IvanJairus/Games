@@ -393,6 +393,7 @@ export class GameRoom extends DurableObject<Env> {
       world: this.game ? this.game.snapshot() : null,
       applied: this.mapBySeat(this.appliedSeq),
       held: this.mapBySeat(this.heldMs),
+      fx: this.game?.drainFx ? this.game.drainFx() : [],
     } satisfies ServerMessage);
     for (const ws of this.ctx.getWebSockets()) {
       try {

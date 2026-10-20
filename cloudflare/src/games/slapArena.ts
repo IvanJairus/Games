@@ -5,7 +5,7 @@ import {
   type Action,
 } from '../../../src/games/slap-arena/engine/gameApi';
 import type { SlapSim } from '../../../src/games/slap-arena/engine/sim';
-import type { WorldSnapshot } from '../../../src/games/slap-arena/engine/types';
+import type { SimEvent, WorldSnapshot } from '../../../src/games/slap-arena/engine/types';
 import type { GameAdapter } from '../types';
 
 /** Id yang dicadangkan `gameApi.ts` untuk pemegang sim, jadi tidak ada kursi yang menirunya. */
@@ -26,6 +26,12 @@ const ROOM_PHASE: Record<string, 'lobby' | 'playing' | 'finished'> = {
  */
 export function slapArenaGame(): GameAdapter {
   const sim: SlapSim = createGame();
+  const queue: SimEvent[] = [];
+  // SlapSim mengeluarkan efek lewat callback, dan kolomnya terbuka (sim.ts:52), jadi DO bisa
+  // memungutnya tanpa menyentuh gameApi.ts atau menyalin aturan ke sini.
+  sim.onEvent = (event) => {
+    queue.push(event);
+  };
   const run = (playerId: string, action: Action) => applyAction(sim, playerId, action);
 
   return {
@@ -37,6 +43,7 @@ export function slapArenaGame(): GameAdapter {
     },
     snapshot: () => sim.snapshot(),
     phase: () => ROOM_PHASE[sim.state.phase] ?? 'lobby',
+    drainFx: () => queue.splice(0, queue.length),
     removePlayer: (playerId) => {
       removePlayer(sim, playerId);
     },
