@@ -69,8 +69,8 @@ const waitFor = async (pred: () => boolean, ms = 15000, label = 'kondisi', diagn
 describe.skipIf(!live)('pintu klien terhadap Worker tayang', () => {
   it('tiket, handshake, dunia, dan efek benar-benar lewat', async () => {
     vi.stubEnv('VITE_CF_ROOMS_URL', BASE);
-    const a = await mintRoomTicket(code, 'slap-arena', 'Ama', originFetch);
-    const b = await mintRoomTicket(code, 'slap-arena', 'Bla', originFetch);
+    const a = await mintRoomTicket(code, 'slap-arena', 'Ama', undefined, originFetch);
+    const b = await mintRoomTicket(code, 'slap-arena', 'Bla', undefined, originFetch);
     expect([a.seat, b.seat]).toEqual([0, 1]);
     expect(a.playerId).toMatch(/^[0-9a-f]{32}$/);
 

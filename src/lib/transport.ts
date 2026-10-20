@@ -22,18 +22,22 @@ export interface RoomTicket {
 }
 
 /**
- * Kursi selalu dialokasikan Worker, tidak pernah dipilih klien. Kegagalan di sini berarti kamar
- * belum siap dipakai: tanpa tiket, handshake WebSocket akan ditolak 401.
+ * Kursi selalu dialokasikan Worker, tidak pernah dipilih klien. `playerId` adalah id kursi yang
+ * disimpan klien: tanpa dia, Worker mencetak kursi baru setiap kali halaman dimuat ulang dan
+ * pemain lama tertinggal sebagai hantu. Kegagalan di sini berarti kamar belum siap dipakai:
+ * tanpa tiket, handshake WebSocket akan ditolak 401.
  */
 export async function mintRoomTicket(
   code: string,
   game: string,
   name: string,
+  playerId?: string,
   fetchImpl: typeof fetch = fetch,
 ): Promise<RoomTicket> {
   const base = roomsBaseUrl();
   if (!base) throw new Error('VITE_CF_ROOMS_URL belum diisi');
-  const url = `${base}/room/${encodeURIComponent(code)}/ticket?game=${encodeURIComponent(game)}&name=${encodeURIComponent(name)}`;
+  const player = playerId && /^[0-9a-f]{32}$/.test(playerId) ? `&player=${playerId}` : '';
+  const url = `${base}/room/${encodeURIComponent(code)}/ticket?game=${encodeURIComponent(game)}&name=${encodeURIComponent(name)}${player}`;
   const res = await fetchImpl(url, { method: 'POST' });
   if (!res.ok) {
     const detail = await res.text().catch(() => '');

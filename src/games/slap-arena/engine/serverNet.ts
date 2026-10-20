@@ -32,6 +32,12 @@ export interface ServerNetOptions {
   onFx: (events: SimEvent[]) => void;
   /** 'up' saat socket siap, 'down' saat tertutup atau ditolak. */
   onLink: (state: 'up' | 'down', detail?: string) => void;
+  /**
+   * Dipanggil setelah tick membaca input dan menghitung tepi slap/dash. Pengirim memakai ini
+   * untuk melipat bendera aksinya; tanpa ini bendera yang tidak pernah turun membuat tepi
+   * berikutnya dianggap replay dan hanya slap pertama yang pernah sampai ke server.
+   */
+  onActionsRead?: () => void;
   socket?: typeof WebSocket;
 }
 
@@ -103,6 +109,7 @@ export class ArenaServerNet {
     const dashPressed = !!input.dash && !this.firedDash;
     this.firedSlap = !!input.slap;
     this.firedDash = !!input.dash;
+    this.opts.onActionsRead?.();
     this.raw({
       t: 'input',
       seq: this.seq,
