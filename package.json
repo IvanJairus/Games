@@ -14,11 +14,12 @@
     "test:coverage": "vitest run --coverage",
     "release:check": "node scripts/release-audit.mjs",
     "db:verify": "node scripts/verify-sql.mjs",
-    "guard:check": "node scripts/guard-check.mjs",
+    "guard:check": "node scripts/guard-check.mjs && node scripts/csp-guard.mjs",
     "gameplay:check": "node scripts/gameplay-check.mjs",
     "floors:build": "node scripts/build-floors.mjs",
     "icons:build": "node scripts/build-icons.mjs",
-    "gameplay:online": "node scripts/gameplay-online.mjs"
+    "gameplay:online": "node scripts/gameplay-online.mjs",
+    "csp:check": "node scripts/csp-guard.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.3",
