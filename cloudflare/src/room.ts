@@ -131,16 +131,19 @@ export class GameRoom extends DurableObject<Env> {
       this.info = info;
     }
 
-    let seat = this.seatOf(url.searchParams.get('player') ?? '');
+    const proposed = url.searchParams.get('player') ?? '';
+    let seat = this.seatOf(proposed);
     if (!seat) {
-      if (url.searchParams.has('player') && !PLAYER_SHAPE.test(url.searchParams.get('player') ?? '')) {
+      if (proposed && !PLAYER_SHAPE.test(proposed)) {
         return json({ error: 'bad_player' }, 400);
       }
       const taken = new Set(this.seats().map((s) => s.seat));
       let index = 0;
       while (taken.has(index)) index += 1;
       if (index >= MAX_PLAYERS) return json({ error: 'room_full' }, 409);
-      seat = { playerId: newPlayerId(), seat: index, name: cleanName(url.searchParams.get('name')) };
+      // Id usulan diterima hanya kalau 128 bit heks penuh: ruang tebakan cukup besar untuk tidak
+      // bisa dipakai merebut kursi orang lain, dan klien jadi tahu id-nya sebelum socket dibuka.
+      seat = { playerId: proposed || newPlayerId(), seat: index, name: cleanName(url.searchParams.get('name')) };
       this.ctx.storage.sql.exec(
         'INSERT INTO room_seats (player_id, seat, name) VALUES (?, ?, ?)',
         seat.playerId,

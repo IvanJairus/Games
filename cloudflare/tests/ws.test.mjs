@@ -498,3 +498,19 @@ test('efek lahir di server dan ikut terbit lewat fx', async () => {
   assert.deepEqual(after.fx, [], 'event yang sudah terbit tidak boleh ikut siaran tick berikutnya');
   a.ws.terminate(); b.ws.terminate();
 });
+
+test('mint menerima id usulan 128 bit dan menolak id yang pendek', async () => {
+  const code = room('P1');
+  const mine = 'a'.repeat(32);
+  const proposed = await mint(code, { name: 'Prop', player: mine });
+  assert.equal(proposed.status, 200);
+  assert.equal(proposed.body.playerId, mine, 'id usulan yang sah harus dipakai apa adanya');
+  const short = await mint(code, { name: 'Pendek', player: 'abc123' });
+  assert.equal(short.status, 400);
+  assert.equal(short.body.error, 'bad_player');
+  const c = dial(code, { ticket: proposed.body.ticket });
+  await c.open();
+  const w = await c.recv('welcome');
+  assert.equal(w.id, mine, 'welcome harus membawa id yang sama dengan yang diusulkan');
+  c.ws.terminate();
+});
