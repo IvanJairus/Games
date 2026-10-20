@@ -24,10 +24,16 @@ const WSBASE = BASE.replace(/^http/, 'ws');
 const SEATS = Math.min(6, Math.max(2, Number(arg('seats', 2))));
 const SECONDS = Math.min(900, Math.max(1, Number(arg('seconds', 20))));
 const OUT = arg('out', `/tmp/soak-${Date.now()}.csv`);
+const GAME = arg('game', 'selftest');
 const ORIGIN = 'http://localhost:5199';
 const SEND_MS = 50;
 const TICK_MS = 50;
 const code = `SOAK${Date.now().toString(36).slice(-6).toUpperCase()}`;
+
+/** Payload harus bentuk yang diterima pintu aturan game itu, bukan bentuk generik. */
+const action = GAME === 'slap-arena'
+  ? (seq) => ({ t: 'input', seq, input: { x: seq % 2 ? 1 : -1, z: seq % 3 === 0 ? 1 : 0, slap: false, dash: false } })
+  : (seq) => ({ t: 'setvx', vx: seq % 2 ? 6 : -6, seq });
 
 const now = () => performance.now();
 const rows = [];
@@ -35,7 +41,7 @@ const push = (seat, kind, t, v) => rows.push({ seat, kind, t: Math.round((t - t0
 let t00 = 0;
 
 const mint = async (name) => {
-  const res = await fetch(`${BASE}/room/${code}/ticket?game=selftest&name=${encodeURIComponent(name)}`, {
+  const res = await fetch(`${BASE}/room/${code}/ticket?game=${GAME}&name=${encodeURIComponent(name)}`, {
     method: 'POST',
     headers: { origin: ORIGIN },
   });
@@ -58,7 +64,7 @@ const stats = (name, values) => {
   return `${name.padEnd(22)} n=${String(s.length).padStart(4)}  p50=${p(0.5).toFixed(1)}  p90=${p(0.9).toFixed(1)}  max=${s.at(-1).toFixed(1)}  mean=${mean.toFixed(1)}`;
 };
 
-console.log(`kamar ${code}: ${SEATS} kursi x ${SECONDS} s, kirim tiap ${SEND_MS} ms, target 20 Hz`);
+console.log(`kamar ${code} (${GAME}): ${SEATS} kursi x ${SECONDS} s, kirim tiap ${SEND_MS} ms, target 20 Hz`);
 
 const seats = [];
 for (let i = 0; i < SEATS; i += 1) {
@@ -109,7 +115,7 @@ const timer = setInterval(() => {
   const at = now();
   for (const s of seats) {
     s.seq += 1;
-    const payload = JSON.stringify({ t: 'setvx', vx: s.seq % 2 ? 6 : -6, seq: s.seq });
+    const payload = JSON.stringify(action(s.seq));
     s.bytesOut += Buffer.byteLength(payload);
     s.sentAt.set(s.seq, at);
     s.ws.send(payload);

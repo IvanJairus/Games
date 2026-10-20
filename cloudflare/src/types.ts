@@ -43,6 +43,8 @@ export type ServerMessage =
       applied: Record<number, number>;
       /** seat -> milidetik aksi tertahan di pemegang sim sebelum ikut terbit. */
       held: Record<number, number>;
+      /** Efek yang lahir di tick terakhir. Kosong untuk game yang tidak memproduksinya. */
+      fx: unknown[];
     }
   | { t: 'error'; reason: string };
 
@@ -53,6 +55,17 @@ export interface GameAdapter {
   removePlayer(playerId: string): void;
   load(world: unknown): void;
   finished(): boolean;
+  /**
+   * Game yang punya pintu aturan sendiri (Slap Arena lewat `gameApi.ts`). DO tidak boleh menilai
+   * fase, jumlah pemain, atau siapa master: semua sudah diputus pintu itu.
+   */
+  door?: boolean;
+  /** Hanya untuk game berpintu: kursi yang naik ke panggung saat koneksinya diterima. */
+  join?(playerId: string, name: string): { ok: true } | { ok: false; reason: string };
+  /** Hanya untuk game berpintu: fase dalam bahasa DO, supaya gerbang transport tetap satu bentuk. */
+  phase?(): 'lobby' | 'playing' | 'finished';
+  /** Efek yang lahir sejak tick terakhir. Game tanpa efek tidak perlu memasang ini. */
+  drainFx?(): unknown[];
 }
 
 import type { GameRoom } from './room';

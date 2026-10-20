@@ -289,3 +289,90 @@ Cara menjalankan: `node tests/soak.mjs --base <url> --seats 4 --seconds 30 --out
 `TEST_MODE=1` karena game `selftest` hanya terdaftar saat flag itu aktif. CSV-nya memakai bentuk
 `MetricRow` netbench (`seat,kind,t,v` dengan kind `loop`, `interval`, `queue`, `stall`, `loss`, `bytes`)
 supaya alat analisa netbench bisa dibaca ulang nanti.
+
+## 11. Hasil langkah 5 urutan audit: Slap Arena berjalan di dalam DO (19 Oktober)
+
+`cloudflare/src/games/slapArena.ts` adalah adapter tipis di atas `gameApi.ts` (PR #75). Tidak ada aturan
+game yang ditulis ulang di sisi Worker: `join`, `start`, `nextRound`, `input`, dan `tick` semuanya
+diteruskan ke `applyAction`, dan penolakannya (`unknown_player`, `wrong_phase`, `bad_payload`,
+`duplicate_seq`, `room_full`, `not_your_turn`, `name_rejected`) adalah alasan yang sudah dipakai di
+sisi klien.
+
+Dua hal yang saya cek dulu sebelum menulis apa pun, karena keduanya membatalkan desain kalau salah:
+
+1. `SlapSim` bersih dari API browser. `sim.ts` hanya mengimpor `./types`, `./physics`, `./botAi`, dan
+   `grep window|document|performance|localStorage|Audio|navigator` di keempatnya nol hasil. Buktinya
+   ikut kuat karena `cloudflare/tsconfig.json` memakai `lib: ["ES2022"]` tanpa DOM dan `tsc --noEmit`
+   lolos dengan engine di dalam graf impor.
+2. Dunia bisa dimuat ulang: `sim.ts:295` punya `applySnapshot(snap)`, jadi `load()` DO bukan angan-angan.
+
+Cara DO dan pintu bekerja sama:
+
+- Game dibuat begitu nama kamar terkunci (`ensureGame()`), bukan saat master menekan start, supaya
+  pemain bisa duduk di lorong. `join()` DO panggil saat koneksi diterima, dan saat DO bangun dari
+  pembekuan semua kursi hidup didudukkan ulang dalam urutan kursi.
+- Untuk game berpintu, DO tidak lagi menilai fase, jumlah pemain minimum, atau siapa master. Fase DO
+  dipetakan dari fase dunia (`WAITING` ke `lobby`, `COUNTDOWN`/`BATTLE`/`ROUND_OVER` ke `playing`,
+  `MATCH_OVER` ke `finished`), dan master diambil dari urutan duduk, aturan yang sama dipakai
+  `gameApi.ts`. Itu bukan dua aturan: hanya ada satu pintu, DO tinggal membaca hasilnya.
+- `msg.t === 'next'` dari protokol transport dipetakan ke `{ t: 'nextRound' }`.
+
+Bukti merah-lalu-hijau, n = 1 rangkaian per baris:
+
+| Tahap | Hasil |
+| --- | --- |
+| Empat tes Slap Arena terhadap kode tanpa adapter | 4 gagal dari 4: `world harus berisi pemain, dapat null` (73 ms), `bukan master tidak boleh mulai` (30 ms, DO menjawab `not_master` karena belum ada pintu), dan dua timeout menunggu fase yang tidak pernah ada |
+| Suite penuh setelah adapter masuk, lokal | 26 lulus dari 26, `npx tsc --noEmit` exit 0 |
+| Suite penuh terhadap URL tayang | 26 lulus dari 26, n = 1 rangkaian |
+
+Satu perbaikan harness saya tulis jujur karena merah yang pertama bukan merah yang benar: `recvState`
+awalnya hanya melihat pesan yang datang setelah ia dipasang, padahal state pertama biasanya sudah tiba
+bersama welcome, jadi tiga tes gagal karena timeout, bukan karena assertion. Setelah helper itu membaca
+seluruh log, merah yang tersisa adalah assertion yang sebenarnya.
+
+Terukur dengan `tests/soak.mjs --game slap-arena`, 4 kursi x 30 detik, satu aksi per kursi per 50 ms:
+
+| | Lokal | Tayang |
+| --- | --- | --- |
+| loop latency | n=2.320: p50 52,6 / p90 53,6 / max 81,3 ms | n=2.336: p50 49,3 / p90 69,6 / max 146,6 ms |
+| interval state | p50 51,9 / max 81,4 ms | p50 49,9 / max 122,3 ms |
+| held di server | p50 50,0 / max 69,0 ms | p50 24,0 / p90 43,0 / max 50,0 ms |
+| stall di atas 200 ms | 0 | 0 |
+| tick hilang | 0 | 0 |
+| aksi terbalas | 2.320 dari 2.320 | 2.336 dari 2.336 |
+| state per detik per kursi | 19,6 | 20,3 |
+| byte per detik per kursi | terima 29.331, kirim 1.379 | terima 30.404, kirim 1.388 |
+
+Payload dunianya sendiri: snapshot `slap-arena` dengan dua kursi saat `COUNTDOWN` adalah 580 byte
+(diukur `JSON.stringify(world).length` pada satu sampel tayang). Bundle Worker naik dari 17,37 KiB
+(5,38 KiB gzip) menjadi 47,25 KiB (13,45 KiB gzip) karena engine ikut ter-bundle; startup time 3 ms.
+
+Deploy yang dipakai: `f3a55552-4b28-4418-a603-2ba67f5aa3d4` dengan `TEST_MODE=1` sementara untuk suite
+dan soak live, lalu `487b2c27-976a-43e2-8e98-66ca57ae9ccd` dengan `TEST_MODE=0` yang aktif sekarang.
+Pada versi produksi itu Slap Arena tetap berjalan (`game=slap-arena` tidak memerlukan flag uji): dua
+kursi duduk, master mengirim start, fase DO `playing`, fase dunia `COUNTDOWN`, snapshot 580 byte, dan
+`?probe=1` tetap menolak 426.
+
+Yang belum terukur dan belum dibuat: `applied`/`held` sudah ada tapi belum dibaca satu baris kode
+frontend pun; belum ada koneksi ke Supabase untuk arm pembanding dengan harness yang sama; CPU per
+tick belum diukur (wrangler lokal tidak memakinya); dan `load()` baru teruji lewat tes unit `gameApi`,
+belum lewat eviksi DO sungguhan.
+
+## 12. Susulan hari yang sama: `fx` di pesan state, dan pintu klien Slap Arena
+
+Klien nyata membutuhkan dua hal lagi setelah adapter masuk.
+
+1. `state` sekarang membawa `fx`, efek yang lahir di sim server. `SlapSim.onEvent` adalah kolom publik
+   (`src/games/slap-arena/engine/sim.ts:52`) jadi adapter memungutnya tanpa menyentuh `gameApi.ts`.
+   Penjaga barunya merah dalam 76 ms pada `state harus punya array fx, dapat undefined`, suite menjadi
+   27 lulus dari 27 lokal. Satu assertion saya perbaiki karena tes saya sendiri keliru: `recvState`
+   mengambil state terbaru sehingga event yang sama terbaca dua kali, jadi penjaganya sekarang
+   membandingkan nomor tick.
+2. `src/lib/transport.ts` dan `src/games/slap-arena/engine/serverNet.ts` adalah pintu klien:
+   `VITE_TRANSPORT` (default `supabase`) dan `VITE_CF_ROOMS_URL`, tiket dimint lewat POST, lalu satu
+   WebSocket per kamar. Kelas itu mengirim `seq` yang naik setiap tick dan memotong `slap`/`dash`
+   ke satu tick per tekanan. Itu bukan pilihan gaya: `gameApi.ts` menolak seq yang tidak maju, jadi
+   pengirim yang meniru konvensi `ArenaNet` (seq hanya naik saat aksi) akan membuat gerak pemain
+   membeku. Sembilan unit test lulus, dan dua di antaranya dibuktikan bisa gagal: seq konstan membuat
+   tes pertama merah (`expected [1,1,1,1,1,1] to deeply equal [1,2,3,4,5,6]`), dan flag slap yang
+   dikirim terus membuat tes keduanya merah.

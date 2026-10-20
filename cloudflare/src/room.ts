@@ -52,6 +52,8 @@ export class GameRoom extends DurableObject<Env> {
   private appliedSeq = new Map<string, number>();
   private heldMs = new Map<string, number>();
   private pendingSeq = new Map<string, { seq: number; at: number }>();
+  /** Urutan duduk di game berpintu; DO menyalip master dari sini supaya sama dengan pintunya. */
+  private joinedOrder: string[] = [];
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -129,16 +131,19 @@ export class GameRoom extends DurableObject<Env> {
       this.info = info;
     }
 
-    let seat = this.seatOf(url.searchParams.get('player') ?? '');
+    const proposed = url.searchParams.get('player') ?? '';
+    let seat = this.seatOf(proposed);
     if (!seat) {
-      if (url.searchParams.has('player') && !PLAYER_SHAPE.test(url.searchParams.get('player') ?? '')) {
+      if (proposed && !PLAYER_SHAPE.test(proposed)) {
         return json({ error: 'bad_player' }, 400);
       }
       const taken = new Set(this.seats().map((s) => s.seat));
       let index = 0;
       while (taken.has(index)) index += 1;
       if (index >= MAX_PLAYERS) return json({ error: 'room_full' }, 409);
-      seat = { playerId: newPlayerId(), seat: index, name: cleanName(url.searchParams.get('name')) };
+      // Id usulan diterima hanya kalau 128 bit heks penuh: ruang tebakan cukup besar untuk tidak
+      // bisa dipakai merebut kursi orang lain, dan klien jadi tahu id-nya sebelum socket dibuka.
+      seat = { playerId: proposed || newPlayerId(), seat: index, name: cleanName(url.searchParams.get('name')) };
       this.ctx.storage.sql.exec(
         'INSERT INTO room_seats (player_id, seat, name) VALUES (?, ?, ?)',
         seat.playerId,
@@ -173,7 +178,7 @@ export class GameRoom extends DurableObject<Env> {
     if (!seat) return new Response('unknown_seat', { status: 401 });
     if (check.claim.game !== info.game) return new Response('wrong_game', { status: 401 });
 
-    await this.restore();
+    await this.ensureGame();
 
     // Satu kursi hanya boleh punya satu socket: yang lama diusir, bukan ditumpuk.
     for (const live of this.ctx.getWebSockets()) {
@@ -196,7 +201,14 @@ export class GameRoom extends DurableObject<Env> {
     } satisfies Session);
     this.ctx.acceptWebSocket(server);
 
-    if (!this.master) this.master = this.hostId() ?? seat.playerId;
+    if (this.game?.join) {
+      if (this.game.join(seat.playerId, seat.name).ok && !this.joinedOrder.includes(seat.playerId)) {
+        this.joinedOrder.push(seat.playerId);
+      }
+      this.syncMaster();
+    } else if (!this.master) {
+      this.master = this.hostId() ?? seat.playerId;
+    }
     server.send(JSON.stringify({
       t: 'welcome',
       id: seat.playerId,
@@ -237,6 +249,17 @@ export class GameRoom extends DurableObject<Env> {
     }
 
     if (msg.t === 'ping') return this.send(ws, { t: 'pong', ts: msg.ts });
+
+    // Game berpintu: DO tidak menilai fase, jumlah pemain, atau siapa master. Semuanya lewat
+    // pintu yang sama yang sudah dipakai klien dan sudah punya 19 unit test.
+    if (this.game?.door) {
+      const action = msg.t === 'next' ? { t: 'nextRound' } : msg;
+      const result = this.game.apply(session.id, action);
+      if (!result.ok) return this.send(ws, { t: 'error', reason: result.reason });
+      this.noteInput(session.id, msg.seq);
+      this.syncPhase();
+      return;
+    }
 
     if (msg.t === 'start' || msg.t === 'next') {
       if (session.id !== this.master) return this.send(ws, { t: 'error', reason: 'not_master' });
@@ -298,10 +321,12 @@ export class GameRoom extends DurableObject<Env> {
     }
     if (!session) return;
     if (this.game) this.game.removePlayer(session.id);
+    this.joinedOrder = this.joinedOrder.filter((id) => id !== session.id);
     this.appliedSeq.delete(session.id);
     this.heldMs.delete(session.id);
     this.pendingSeq.delete(session.id);
-    if (this.master === session.id) this.master = this.sessions()[0]?.session.id ?? null;
+    if (this.game?.door) this.syncMaster();
+    else if (this.master === session.id) this.master = this.sessions()[0]?.session.id ?? null;
     if (!this.sessions().length) this.stopTicker();
     await this.persist(true);
     await this.broadcast();
@@ -371,6 +396,7 @@ export class GameRoom extends DurableObject<Env> {
       world: this.game ? this.game.snapshot() : null,
       applied: this.mapBySeat(this.appliedSeq),
       held: this.mapBySeat(this.heldMs),
+      fx: this.game?.drainFx ? this.game.drainFx() : [],
     } satisfies ServerMessage);
     for (const ws of this.ctx.getWebSockets()) {
       try {
@@ -406,23 +432,52 @@ export class GameRoom extends DurableObject<Env> {
     );
   }
 
-  private async restore(): Promise<void> {
-    if (!this.info?.game || this.game) return;
+  /**
+   * Game dibuat begitu namanya diketahui, bukan saat master menekan start: Slap Arena harus bisa
+   * menampung pemain yang masih duduk di lorong. Kalau ada dunia tersimpan, dunia itu dimuat lebih
+   * dulu, lalu kursi yang masih hidup didudukkan ulang dalam urutan kursi.
+   */
+  private async ensureGame(): Promise<void> {
+    if (this.game || !this.info?.game) return;
+    const adapter = createAdapter(this.info.game, this.env);
+    if (!adapter) return;
+    this.game = adapter;
+
     const row = this.ctx.storage.sql.exec(
       'SELECT phase, master, tick, world FROM room_state WHERE id = 1',
     ).toArray()[0] as unknown as RoomRow | undefined;
-    if (!row) return;
-    this.phase = row.phase as typeof this.phase;
-    this.master = row.master;
-    this.tick = row.tick;
-    if (row.world) {
-      const adapter = createAdapter(this.info.game, this.env);
-      if (adapter) {
-        adapter.load(JSON.parse(row.world));
-        this.game = adapter;
-        this.lastSnapshotMs = Date.now();
-      }
+    if (row?.world) {
+      adapter.load(JSON.parse(row.world));
+      this.tick = row.tick;
+      this.lastSnapshotMs = Date.now();
     }
+    // Kursi 0 tetap tuan rumah untuk game tanpa pintu; game berpintu menghitung master sendiri.
+    if (!adapter.door && row?.master) this.master = row.master;
+    this.rejoin();
+    this.syncPhase();
+  }
+
+  /** Game berpintu harus melihat urutan duduk yang sama dengan urutan kursi, itu sumber master. */
+  private rejoin(): void {
+    if (!this.game?.join) return;
+    for (const s of this.sessions().sort((a, b) => a.session.seat - b.session.seat)) {
+      if (this.joinedOrder.includes(s.session.id)) continue;
+      if (this.game.join(s.session.id, s.session.name).ok) this.joinedOrder.push(s.session.id);
+    }
+  }
+
+  private syncMaster(): void {
+    this.master = this.joinedOrder[0] ?? null;
+  }
+
+  /** Untuk game berpintu fase milik game, dan timer ikut menyala mati bersamanya. */
+  private syncPhase(): void {
+    if (!this.game?.phase) return;
+    const next = this.game.phase();
+    if (next === this.phase) return;
+    this.phase = next;
+    if (next === 'playing') this.startTicker();
+    if (next === 'finished') this.stopTicker();
   }
 
   private sessions(): { ws: WebSocket; session: Session }[] {

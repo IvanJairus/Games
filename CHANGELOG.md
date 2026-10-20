@@ -123,6 +123,51 @@ exit 1, sebelum file implementasinya ada.
 `npx tsc -b` lulus. `test:unit` 268/268 lulus (16 file). `test:ui` 114/114 lulus (14 file).
 `release:check` 5/5 tahap lulus. `guard:check` bersih, tiga cek lolos.
 
+## 2026-10-19 - Efek lahir di server dan ikut terbit di dalam `fx`
+
+Halaman Slap Arena merender percikan pukulan, slap, dan KO dari callback `onEvent` milik `SlapSim`.
+Klien yang dunianya dihitung server tidak punya apa-apa untuk dirender kalau pesan `state` tidak
+membawa efek itu. Kolom `onEvent` terbuka (`sim.ts:52`), jadi adapter memungutnya tanpa menyentuh
+`gameApi.ts` dan tanpa menciptakan aturan kedua.
+
+`fx` dituang sekali per siaran, jadi event yang sudah terbit tidak muncul lagi di tick berikutnya.
+
+Merah dulu: tes `efek lahir di server dan ikut terbit lewat fx` terhadap kode tanpa fitur ini gagal
+dalam 76 ms pada assertion `state harus punya array fx, dapat undefined`. Hijau: 27 lulus dari 27.
+Satu assertion saya perbaiki di jalan, dan itu kesalahan tes saya sendiri: `recvState` mengambil state
+terbaru, jadi event yang sama terbaca dua kali; penjaganya sekarang membandingkan nomor tick.
+
+## 2026-10-19 - Slap Arena berjalan di dalam Durable Object, lewat satu pintu aturan
+
+Langkah 5 rencana migrasi. `cloudflare/src/games/slapArena.ts` membungkus `gameApi.ts` (PR #75)
+sebagai adapter: `join`, `start`, `nextRound`, `input`, `tick` diteruskan ke `applyAction`, dan DO tidak
+lagi menilai fase, jumlah pemain, atau siapa master untuk game berpintu. Tidak ada aturan game yang
+ditulis ulang di sisi Worker, jadi tidak ada dua aturan yang bisa berbeda jalan.
+
+Dua hal saya cek lebih dulu karena desainnya batal kalau salah: `SlapSim` tidak menyentuh API browser
+(`sim.ts` hanya mengimpor `./types`, `./physics`, `./botAi`; `tsc --noEmit` dengan `lib: ["ES2022"]`
+tanpa DOM lolos), dan `sim.ts:295` punya `applySnapshot`, jadi memuat dunia kembali bukan angan-angan.
+
+Merah dulu, n = 1 rangkaian per baris:
+
+| Tahap | Hasil |
+| --- | --- |
+| Empat tes Slap Arena terhadap kode tanpa adapter | 4 gagal: `world harus berisi pemain, dapat null`, `bukan master tidak boleh mulai`, dua timeout menunggu fase yang tidak pernah ada |
+| Suite penuh lokal setelah adapter | 26 lulus dari 26, `npx tsc --noEmit` exit 0 |
+| Suite penuh terhadap URL tayang | 26 lulus dari 26 |
+
+Terukur `tests/soak.mjs --game slap-arena`, 4 kursi x 30 detik: loop latency lokal p50 52,6 ms
+(n=2.320) dan tayang p50 49,3 ms (n=2.336), 0 tick hilang, 0 stall di atas 200 ms, semua aksi terbalas,
+29,3 kB per detik diterima per kursi di lokal dan 30,4 kB per detik lewat internet. Snapshot dunia dua
+kursi saat `COUNTDOWN` 580 byte. Bundle Worker naik 17,37 KiB ke 47,25 KiB (gzip 5,38 ke 13,45 KiB).
+
+Satu merah pertama saya betulkan dulu di harness, bukan di produk: `recvState` hanya melihat pesan yang
+datang setelah ia dipasang, padahal state pertama tiba bersama welcome, jadi tiga tes gagal timeout dan
+bukan assertion. Setelah helper membaca seluruh log, merah yang tersisa adalah assertion yang sebenarnya.
+
+Belum ada satu baris kode frontend yang memakai jalur ini; `TRANSPORT` dan klien Supabase hari ini tidak
+berubah.
+
 ## 2026-10-19 - Pesan server membawa `applied` dan `held`, dan kamar Cloudflare akhirnya terukur
 
 Temuan 4 audit: `ServerMessage.state` tidak membawa `applied` maupun `held`, jadi loop latency tidak bisa
@@ -194,6 +239,82 @@ Belum tertutup, dan tidak pura-pura tertutup: produk ini tidak punya akun sama s
 tiket tidak menghalangi orang yang tahu kode kamar; dia tetap bisa mint kursinya sendiri. Yang ditutup
 adalah pemalsuan tiket, pengambilan kursi orang lain lewat token tebak-tebakan, dan replay tiket ke
 kamar lain.
+
+## 2026-10-19 - Slap Arena: aturan main dibungkus API murni, fisika tidak disentuh
+
+Langkah 2 dari rencana migrasi lapisan realtime ke Cloudflare Durable Objects
+(`docs/cloudflare-migration.md`, bagian 6b dan 7, ditulis di branch `feat/cloudflare-transport`).
+Yang dicari server nanti adalah satu pintu validasi, jadi `SlapSim` yang tetap bermutasi hanya
+**dibungkus**: argumen `state` adalah instance `SlapSim` dan tiap aksi memanggil metode yang sudah ada.
+
+### Ditambahkan
+
+- `src/games/slap-arena/engine/gameApi.ts`: `createGame()`, `applyAction(state, playerId, action)`,
+  `removePlayer(state, playerId)`, `MAX_PLAYERS` 6, `MAX_MESSAGE_BYTES` 512, tujuh `RejectReason`.
+  File ini hanya mengimpor `./sim` dan `./types`, jadi ia lolos cek kemurnian engine yang baru.
+- Master dan hitungan `seq` per pemain hidup di `WeakMap` milik modul. Tidak ada properti baru yang
+  ditempel ke objek game.
+- `tests/unit/slap-arena-api.test.ts`, 19 test: satu per alasan penolakan (ketujuh `RejectReason`
+  muncul minimal sekali), aturan nama, aturan kursi, aturan fase, aturan `seq`, aturan `dt`, batas
+  ukuran pesan, dan satu golden trace.
+
+### Dua keputusan bentuk yang tidak tertulis di kartu
+
+- `name_rejected`: kartu menuntut alasan itu muncul di test, tapi di saat yang sama meminta nama kosong
+  **dipulihkan** ke `Pemain`, bukan ditolak. Yang saya pegang: nama kosong setelah sanitasi memakai
+  `Pemain` (`ok:true`), sedangkan `name_rejected` dipakai untuk `name` yang bukan string sama sekali,
+  karena itu tidak bisa disanitasi. Kalau coordinator ingin `name_rejected` tak pernah terpakai, itu
+  satu baris untuk diubah.
+- `not_your_turn`: kartu menamai alasannya tanpa menaruh aturannya. Saya isi di `nextRound` saat fase
+  bukan `ROUND_OVER` atau `MATCH_OVER`. Ini bukan aturan baru: halaman sudah hanya memanggil
+  `nextRound()` dari `phase === 'ROUND_OVER'` (`SlapArenaMatch.tsx:485`).
+
+### Terukur, golden trace
+
+Satu skrip aksi yang sama persis dijalankan lewat dua pintu, lalu `JSON.stringify(sim.snapshot())`
+dibandingkan: pintu lama memanggil `SlapSim` langsung seperti `SlapArenaMatch.tsx` hari ini, pintu baru
+sepenuhnya lewat `applyAction`. 300 tick `dt = 0,05`, jadwal input tetap (pemain A dash di tick 10, slap
+di tick 40 dan 120, pemain B bergerak konstan).
+
+| | Lama | Baru |
+| --- | --- | --- |
+| panjang snapshot | 538 byte | 538 byte |
+| hasil perbandingan | identik byte per byte | sama |
+| fase akhir | `ROUND_OVER` | `ROUND_OVER` |
+| skor akhir | p1 1, p2 0 | sama |
+
+Angka ini dicetak `console.log` di dalam test, bukan saya salin ke dokumen terpisah.
+
+Gerbang ini dibuktikan bisa gagal, tiga eksperimen:
+
+| Eksperimen | Hasil |
+| --- | --- |
+| `setInput` dilewati dari API | baru 522 byte, `identical: false`, fase akhir `BATTLE`, test merah |
+| objek input di-clone sebelum masuk `setInput` | tetap 538 versus 538, **tidak terdeteksi** |
+| `byteLength` dihitung sebagai jumlah karakter, bukan byte UTF-8 | test nama multi-byte merah: `expected { ok: true } to deeply equal { ok: false, reason: 'bad_payload' }` |
+
+Eksperimen kedua adalah alasan tidak ada komentar di kode yang mengklaim bahwa meneruskan objek tanpa
+salinan itu penting: trace ini tidak bisa membedakannya.
+
+Test ditulis lebih dulu dan sempat merah: `Failed to resolve import "../../src/games/slap-arena/engine/gameApi"`,
+exit 1, sebelum file implementasinya ada.
+
+### Batas
+
+- `createGame()` tanpa argumen. Rencana bagian 7 menulis `createGame(players)`; kartu yang saya kerjakan
+  meminta tanpa argumen, dan saya ikut kartu. Perlu dinyatakan di rencana supaya langkah 3 tidak bingung.
+- `join` untuk id yang sudah duduk mengembalikan `ok:true` tanpa menambah kursi, mengikuti
+  `SlapArenaMatch.tsx:355` yang memakai `sim.players[msg.id] ?? sim.addPlayer(...)`.
+- Rentang input `x`/`z` di [-1, 1] dan `charge` di [0, 1] adalah pagar baru di lapisan ini. Fisika sudah
+  menormalisasi magnitudo sendiri (`physics.ts:171`), jadi nilai di luar rentang itu tidak pernah
+  dibandingkan dengan perjalanan UI lama.
+- Belum ada satu pun kode produksi yang memanggil `gameApi`. `net.ts`, `sim.ts`, dan halaman tidak
+  berubah, jadi jalur Supabase hari ini masih persis sama.
+
+### Gerbang lokal
+
+`npx tsc -b` lulus. `test:unit` 268/268 lulus (16 file). `test:ui` 114/114 lulus (14 file).
+`release:check` 5/5 tahap lulus. `guard:check` bersih, tiga cek lolos.
 
 ## 2026-10-17 - WallGo: kursi ke-5 dan ke-6 akhirnya berangkat dari jarak yang sama
 
