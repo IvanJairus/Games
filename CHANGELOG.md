@@ -123,6 +123,30 @@ exit 1, sebelum file implementasinya ada.
 `npx tsc -b` lulus. `test:unit` 268/268 lulus (16 file). `test:ui` 114/114 lulus (14 file).
 `release:check` 5/5 tahap lulus. `guard:check` bersih, tiga cek lolos.
 
+## 2026-10-19 - Pesan server membawa `applied` dan `held`, dan kamar Cloudflare akhirnya terukur
+
+Temuan 4 audit: `ServerMessage.state` tidak membawa `applied` maupun `held`, jadi loop latency tidak bisa
+dihitung dari protokol ini dan keunggulan yang dilaporkan netbench tidak bisa dibuktikan di game sendiri.
+
+Bentuknya diambil dari netbench (`netbench/src/shared/protocol.ts:54-71`): `applied[seat]` adalah seq
+terakhir yang benar-benar dieksekusi, `held[seat]` milidetik aksi tertahan di pemegang sim. Loop latency
+dihitung dari satu jam saja, jam klien, seperti `netbench/src/client/metrics.ts`. Di Worker pencatatannya
+ada di lapisan transport, jadi tidak menunggu adapter game; aksi yang ditolak tidak menggeser `applied`.
+
+Harness baru `cloudflare/tests/soak.mjs` memakainya. Terukur 4 kursi x 30 detik, satu aksi per 50 ms:
+
+| | Lokal | Tayang `workers.dev` |
+| --- | --- | --- |
+| loop latency | n=2.316 p50 52,7 / p90 53,4 / max 57,0 ms | n=2.332 p50 50,1 / p90 73,5 / max 298,9 ms |
+| held di server | p50 51,0 ms | p50 24,0 ms |
+| stall > 200 ms | 0 | 12 dari 2.442 (0,49%) |
+| tick hilang / aksi terbalas | 0 / 2.316 dari 2.316 | 0 / 2.332 dari 2.332 |
+| state per detik per kursi | 19,6 | 20,4 |
+
+Merah dulu: empat tes metrik terhadap kode tick tanpa metrik gagal 4 dari 4. Hijau: 22 dari 22 di suite
+penuh, `tsc --noEmit` exit 0, `guard:check` bersih. Angka ini belum membandingkan Cloudflare dengan
+Supabase; itu baru bisa setelah Slap Arena asli berjalan di kedua pintu dengan harness yang sama.
+
 ## 2026-10-19 - Kamar Cloudflare bergerak sendiri, siaran tidak lagi menempel pada input
 
 Dua temuan audit yang tersisa di `netbench/audits/do-slap-arena-2026-10-19.md` ditutup bersamaan.

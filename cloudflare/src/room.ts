@@ -48,6 +48,10 @@ export class GameRoom extends DurableObject<Env> {
   private info: RoomInfo | null = null;
   private tickTimer: ReturnType<typeof setInterval> | null = null;
   private ticking = false;
+  /** playerId -> seq terakhir yang sudah dieksekusi dan sudah ikut terbit. */
+  private appliedSeq = new Map<string, number>();
+  private heldMs = new Map<string, number>();
+  private pendingSeq = new Map<string, { seq: number; at: number }>();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -251,8 +255,30 @@ export class GameRoom extends DurableObject<Env> {
 
     const result = this.game.apply(session.id, msg);
     if (!result.ok) return this.send(ws, { t: 'error', reason: result.reason });
+    this.noteInput(session.id, msg.seq);
     // Sengaja tidak broadcast di sini. Yang menyiarkan dunia adalah timer, jadi tiga puluh input
     // dalam satu detik tidak berubah menjadi tiga puluh snapshot keluar.
+  }
+
+  /**
+   * Dicatat saat aksi diterima, diterbitkan saat tick berikutnya. Selisih dua jam itu adalah `held`:
+   * antrean di dalam pemegang sim, terpisah dari perjalanan jaringan yang hanya bisa diukur klien.
+   */
+  private noteInput(playerId: string, seq: unknown): void {
+    if (typeof seq !== 'number' || !Number.isFinite(seq)) return;
+    const next = Math.trunc(seq);
+    if (next <= (this.appliedSeq.get(playerId) ?? 0)) return;
+    this.pendingSeq.set(playerId, { seq: next, at: Date.now() });
+  }
+
+  private publishApplied(): void {
+    if (!this.pendingSeq.size) return;
+    const nowMs = Date.now();
+    for (const [playerId, entry] of this.pendingSeq) {
+      this.appliedSeq.set(playerId, entry.seq);
+      this.heldMs.set(playerId, nowMs - entry.at);
+    }
+    this.pendingSeq.clear();
   }
 
   async webSocketClose(ws: WebSocket): Promise<void> {
@@ -272,6 +298,9 @@ export class GameRoom extends DurableObject<Env> {
     }
     if (!session) return;
     if (this.game) this.game.removePlayer(session.id);
+    this.appliedSeq.delete(session.id);
+    this.heldMs.delete(session.id);
+    this.pendingSeq.delete(session.id);
     if (this.master === session.id) this.master = this.sessions()[0]?.session.id ?? null;
     if (!this.sessions().length) this.stopTicker();
     await this.persist(true);
@@ -332,6 +361,7 @@ export class GameRoom extends DurableObject<Env> {
   }
 
   private async broadcast(): Promise<void> {
+    this.publishApplied();
     const text = JSON.stringify({
       t: 'state',
       phase: this.phase,
@@ -339,7 +369,9 @@ export class GameRoom extends DurableObject<Env> {
       tick: this.tick,
       players: this.playerList(),
       world: this.game ? this.game.snapshot() : null,
-    });
+      applied: this.mapBySeat(this.appliedSeq),
+      held: this.mapBySeat(this.heldMs),
+    } satisfies ServerMessage);
     for (const ws of this.ctx.getWebSockets()) {
       try {
         ws.send(text);
@@ -347,6 +379,13 @@ export class GameRoom extends DurableObject<Env> {
         /* socket mati, close handler yang membereskan */
       }
     }
+  }
+
+  /** Peta kursi -> nilai, sama seperti bentuk yang dipakai metrik netbench. */
+  private mapBySeat(values: Map<string, number>): Record<number, number> {
+    const out: Record<number, number> = {};
+    for (const s of this.sessions()) out[s.session.seat] = values.get(s.session.id) ?? 0;
+    return out;
   }
 
   private async persist(force: boolean): Promise<void> {

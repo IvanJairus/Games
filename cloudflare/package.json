@@ -6,7 +6,8 @@
     "dev": "wrangler dev --local --port 8787",
     "typecheck": "tsc --noEmit",
     "deploy": "wrangler deploy",
-    "test:ws": "node tests/ws.test.mjs"
+    "test:ws": "node --test --test-timeout=25000 tests/ws.test.mjs",
+    "test:soak": "node tests/soak.mjs"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20261019.1",
