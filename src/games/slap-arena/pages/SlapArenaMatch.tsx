@@ -97,7 +97,7 @@ export const SlapArenaMatch: React.FC = () => {
   const [muted, toggleMute] = useMuted();
   const [fxMode, setFxMode] = useState<FxMode>(() => readFxMode());
   const [fxLevel, setFxLevel] = useState<FxLevel>('high');
-  const [hud, setHud] = useState<HudSnapshot>(() => blankHud(localId, roomCode));
+  const [hud, setHud] = useState<HudSnapshot>(() => blankHud(seatKey, roomCode));
   const [fatal, setFatal] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [isHost, setIsHost] = useState(isSolo);
@@ -245,7 +245,7 @@ export const SlapArenaMatch: React.FC = () => {
 
   // ---- multiplayer --------------------------------------------------------
   useEffect(() => {
-    if (isSolo) return;
+    if (isSolo || doorMode) return;
     if (!getSupabase()) {
       setFatal('Mode online butuh server permainan. Supabase belum dikonfigurasi untuk build ini.');
       return;
@@ -507,8 +507,10 @@ export const SlapArenaMatch: React.FC = () => {
       inputRef.current.z = z;
 
       // Hand the sim a copy. It clears the action flags in place, and the wire sender
-      // has to be able to see the one this frame acted on.
-      sim.setInput(localId, { ...inputRef.current });
+      // has to be able to see the one this frame acted on. In door mode the sim's local
+      // player is keyed by the Worker seat id (seatKey), not the session id, so the key
+      // must match sim.localId or local prediction never receives input.
+      sim.setInput(sim.localId, { ...inputRef.current });
       sim.step(dt);
       inputRef.current.slap = false;
       inputRef.current.dash = false;
@@ -530,7 +532,7 @@ export const SlapArenaMatch: React.FC = () => {
   useEffect(() => {
     const id = window.setInterval(() => {
       const { state } = sim;
-      const me = state.players[localId];
+      const me = state.players[seatKey];
       setHud((prev) => ({
         ...prev,
         round: state.round,
@@ -539,7 +541,7 @@ export const SlapArenaMatch: React.FC = () => {
         scoreToWin: state.scoreToWin,
         winnerId: state.winnerId,
         matchWinnerId: state.matchWinnerId,
-        localId,
+        localId: seatKey,
         roomCode,
         players: Object.values(state.players).map((p) => ({
           id: p.id,
@@ -570,6 +572,10 @@ export const SlapArenaMatch: React.FC = () => {
     return () => clearTimeout(t);
   }, [notice]);
 
+  // In door mode the DB "host" flag is meaningless; the seat 0 master decided by the Worker
+  // is the one who controls the round, so route the control check through isDoorMasterRef.
+  const controlsRound = isSolo || isHost || (doorMode && isDoorMasterRef.current);
+
   // ---- round flow ---------------------------------------------------------
   const advance = useCallback(() => {
     if (doorMode) doorRef.current?.sendNextRound();
@@ -577,10 +583,10 @@ export const SlapArenaMatch: React.FC = () => {
   }, [sim]);
 
   useEffect(() => {
-    if (hud.phase !== 'ROUND_OVER' || disconnected || fatal || (!isHost && !isSolo)) return;
+    if (hud.phase !== 'ROUND_OVER' || disconnected || fatal || !controlsRound) return;
     const t = window.setTimeout(advance, AUTO_NEXT_ROUND_MS);
     return () => clearTimeout(t);
-  }, [hud.phase, hud.round, disconnected, fatal, isHost, isSolo, advance]);
+  }, [hud.phase, hud.round, disconnected, fatal, isHost, isSolo, controlsRound, advance]);
 
   const releaseStick = useCallback(() => {
     stickRef.current = { x: 0, y: 0 };
@@ -633,8 +639,7 @@ export const SlapArenaMatch: React.FC = () => {
   }, [hud.phase, hud.matchWinnerId, isHost, isSolo]);
 
   const winner = hud.winnerId ? hud.players.find((p) => p.id === hud.winnerId) : null;
-  const me = hud.players.find((p) => p.id === localId);
-  const canControlRound = isSolo || isHost;
+  const me = hud.players.find((p) => p.id === seatKey);
   const roundOver = hud.phase === 'ROUND_OVER' && !disconnected && !fatal;
   const matchOver = hud.phase === 'MATCH_OVER' && !disconnected && !fatal;
   const spectating = !!me?.out && hud.phase === 'BATTLE';
@@ -657,7 +662,7 @@ export const SlapArenaMatch: React.FC = () => {
         <Arena3D
           ref={arenaRef}
           sim={sim}
-          localId={localId}
+          localId={seatKey}
           reducedMotion={reducedMotion}
           fxMode={fxMode}
           onError={setFatal}
@@ -683,7 +688,7 @@ export const SlapArenaMatch: React.FC = () => {
       {!fatal && usesTouch && hud.phase === 'BATTLE' && (
         <TouchControls
           sim={sim}
-          localId={localId}
+          localId={seatKey}
           onMove={(x, y) => {
             stickRef.current = { x, y };
           }}
@@ -742,7 +747,7 @@ export const SlapArenaMatch: React.FC = () => {
               : 'Semua brawler jatuh bersamaan.'
           }
           actions={
-            canControlRound
+            controlsRound
               ? [
                   { label: 'Ronde berikutnya', onClick: advance, variant: 'primary' },
                   { label: 'Keluar ke lobby', onClick: exitToLobby, variant: 'ghost' },
@@ -755,7 +760,7 @@ export const SlapArenaMatch: React.FC = () => {
       {matchOver && (
         <ArenaModal
           testId="slap-match-over"
-          title={hud.matchWinnerId === localId ? 'Kamu juara pulau!' : 'Pertandingan selesai'}
+          title={hud.matchWinnerId === seatKey ? 'Kamu juara pulau!' : 'Pertandingan selesai'}
           body={winner ? `${winner.name} menutup dengan ${winner.score} poin.` : 'Tidak ada juara ronde ini.'}
           actions={[
             { label: 'Main lagi', onClick: playAgain, variant: 'primary' },
