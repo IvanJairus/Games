@@ -204,3 +204,36 @@ memakai anon key dan id pemain adalah string acak localStorage), jadi tiket tida
 tahu kode kamar; dia tetap bisa mint kursinya sendiri. Yang ditutup: pemalsuan tiket, perebutan kursi
 lewat token yang ditebak, replay tiket antar kamar, dan koneksi tanpa melewati mint. Rate limit per
 koneksi dan batas byte pesan masih terbuka, dan tick tetap didorong pesan masuk (temuan 2 dan 3 audit).
+
+## 9. Hasil langkah 3 urutan audit: tick berbasis timer (19 Oktober)
+
+Temuan 2 dan 3 audit ditutup bersamaan. `GameRoom` sekarang memasang `setInterval` saat fase
+`playing` dan mematikan timer itu ketika pemain terakhir keluar atau laga selesai. Alasannya
+dipisah dari Alarm: granularity Alarm adalah detik, dan 20 Hz butuh 50 ms. Catatan `waitUntil()`
+yang salah di komentar lama sudah dibetulkan; yang dilarang adalah menahan objek hidup, bukan
+memakai timer selama WebSocket masih terbuka.
+
+Perubahan bentuk: pesan masuk hanya memanggil `apply()` dan mengirim balasan error kalau perlu.
+Yang menyiarkan dunia hanya timer, satu siaran per tick.
+
+Bukti merah-lalu-hijau, n = 1 rangkaian per baris, `wrangler dev --local`:
+
+| Tahap | Hasil |
+| --- | --- |
+| Dua tes baru terhadap kode tiket tanpa timer (`b0065b5`) | dua-duanya gagal: `selama diam harus ada siaran dari server, dapat 0` dan `siaran 30 untuk 30 input: siaran masih menempel ke pesan masuk` |
+| Suite penuh setelah timer masuk | 18 lulus dari 18, `npx tsc --noEmit` exit 0, `guard:check` bersih |
+
+Terukur pada versi lokal, satu jendela 3 detik dengan dua pemain dan nol byte dari klien:
+
+| Yang diukur | Lokal (`wrangler dev`) | Tayang (`workers.dev`, dari laptop yang sama) |
+| --- | --- | --- |
+| state diterima | 57 di 3.000 ms = 19,0 per detik | 60 di 3.003 ms = 20,0 per detik |
+| tick unik / tick dobel | 57 / 0 | 60 / 0 |
+| gap antar siaran | min 50,6 / median 52,6 / max 54,0 ms | min 0,1 / median 49,7 / max 142,3 ms |
+| suite penuh | 18 lulus dari 18 | 18 lulus dari 18 (n = 1 rangkaian) |
+
+Yang masih belum terukur: konsumsi CPU per jam kamar, dan penyebab bentuk di kolom tayang. Di sana
+gap terkecil 0,1 ms berpasangan dengan gap terbesar 142,3 ms dalam jendela yang sama, yang konsisten
+dengan siaran yang tertahan lalu datang berdekatan, tapi itu baru pembacaan satu jendela dan belum
+dibuktikan. Membedakan jitter jaringan dari keterlambatan aplikasi butuh `applied` dan `held` di
+protokol, dan itu langkah berikutnya.

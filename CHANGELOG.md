@@ -123,6 +123,27 @@ exit 1, sebelum file implementasinya ada.
 `npx tsc -b` lulus. `test:unit` 268/268 lulus (16 file). `test:ui` 114/114 lulus (14 file).
 `release:check` 5/5 tahap lulus. `guard:check` bersih, tiga cek lolos.
 
+## 2026-10-19 - Kamar Cloudflare bergerak sendiri, siaran tidak lagi menempel pada input
+
+Dua temuan audit yang tersisa di `netbench/audits/do-slap-arena-2026-10-19.md` ditutup bersamaan.
+Sebelumnya dunia hanya dimajukan ketika ada pesan masuk, jadi kamar yang semua pemainnya diam ikut
+berhenti, dan setiap pesan masuk memicu satu siaran keluar: tiga puluh input berarti tiga puluh snapshot.
+
+Sekarang `GameRoom` memasang `setInterval` 50 ms saat fase `playing` dan mematikannya saat pemain
+terakhir keluar atau laga selesai. Alarm tidak dipakai karena granularity-nya detik. Pesan masuk hanya
+memanggil `apply()`; yang menyiarkan dunia hanya timer, satu siaran per tick.
+
+Bukti merah-lalu-hijau, n = 1 rangkaian per baris, `wrangler dev --local`:
+
+| Tahap | Hasil |
+| --- | --- |
+| Dua tes baru terhadap kode tiket tanpa timer | dua-duanya gagal: `selama diam harus ada siaran dari server, dapat 0`, `siaran 30 untuk 30 input: siaran masih menempel ke pesan masuk` |
+| Suite penuh setelah timer | 18 lulus dari 18, `npx tsc --noEmit` exit 0, `guard:check` bersih |
+
+Terukur pada versi lokal, satu jendela 3.000 ms dengan dua pemain dan nol byte dari klien: 57 state
+diterima (19,0 siaran per detik), 57 tick unik dan 0 tick dobel, gap antar siaran min 50,6 / median
+52,6 / max 54,0 ms. Belum terukur: angka yang sama lewat internet dan konsumsi CPU per jam kamar.
+
 ## 2026-10-19 - Kamar Cloudflare akhirnya punya pintu: tiket bertanda tangan
 
 `cloudflare/src/room.ts` versi sebelumnya menerbitkan token sendiri dan menerima token apa pun yang

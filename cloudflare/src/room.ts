@@ -46,6 +46,8 @@ export class GameRoom extends DurableObject<Env> {
   private lastAdvanceMs = 0;
   private lastSnapshotMs = 0;
   private info: RoomInfo | null = null;
+  private tickTimer: ReturnType<typeof setInterval> | null = null;
+  private ticking = false;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -201,6 +203,8 @@ export class GameRoom extends DurableObject<Env> {
       exp: check.claim.exp,
     } satisfies ServerMessage));
     await this.broadcast();
+    // DO bisa dibekukan setelah pemain terakhir keluar; siapa yang masuk duluan menyalakan lagi.
+    if (this.phase === 'playing') this.startTicker();
     return new Response(null, { status: 101, webSocket: client });
   }
 
@@ -230,8 +234,6 @@ export class GameRoom extends DurableObject<Env> {
 
     if (msg.t === 'ping') return this.send(ws, { t: 'pong', ts: msg.ts });
 
-    await this.advanceClock();
-
     if (msg.t === 'start' || msg.t === 'next') {
       if (session.id !== this.master) return this.send(ws, { t: 'error', reason: 'not_master' });
       if (msg.t === 'start') {
@@ -241,14 +243,16 @@ export class GameRoom extends DurableObject<Env> {
       }
       this.phase = 'playing';
       await this.persist(true);
-      return this.broadcast();
+      this.startTicker();
+      return;
     }
 
     if (this.phase !== 'playing' || !this.game) return this.send(ws, { t: 'error', reason: 'wrong_phase' });
 
     const result = this.game.apply(session.id, msg);
     if (!result.ok) return this.send(ws, { t: 'error', reason: result.reason });
-    await this.broadcast();
+    // Sengaja tidak broadcast di sini. Yang menyiarkan dunia adalah timer, jadi tiga puluh input
+    // dalam satu detik tidak berubah menjadi tiga puluh snapshot keluar.
   }
 
   async webSocketClose(ws: WebSocket): Promise<void> {
@@ -269,16 +273,41 @@ export class GameRoom extends DurableObject<Env> {
     if (!session) return;
     if (this.game) this.game.removePlayer(session.id);
     if (this.master === session.id) this.master = this.sessions()[0]?.session.id ?? null;
+    if (!this.sessions().length) this.stopTicker();
     await this.persist(true);
     await this.broadcast();
   }
 
   /**
-   * Untuk sekarang dunia hanya dimajukan ketika ada pesan masuk, jadi kamar yang semua
-   * pemainnya diam berhenti. Yang benar adalah timer selama socket terbuka; `waitUntil()`
-   * tidak ada hubungannya dengan itu, larangannya hanya soal menahan objek tetap hidup.
-   * Perbaikan itu masuk langkah tick, sengaja tidak diselipkan ke langkah tiket.
+   * Timer biasa, bukan Alarm: Alarm punya granularity detik dan tidak cocok untuk 20 Hz.
+   * Yang dilarang dokumentasi Cloudflare adalah memakai `waitUntil()` untuk menahan objek
+   * tetap hidup, bukan memakai `setInterval` selama masih ada WebSocket terbuka.
    */
+  private startTicker(): void {
+    if (this.tickTimer) return;
+    this.lastAdvanceMs = Date.now();
+    this.tickTimer = setInterval(() => {
+      void this.tickOnce();
+    }, TICK_SECONDS * 1000);
+  }
+
+  private stopTicker(): void {
+    if (!this.tickTimer) return;
+    clearInterval(this.tickTimer);
+    this.tickTimer = null;
+  }
+
+  private async tickOnce(): Promise<void> {
+    if (this.ticking) return;
+    this.ticking = true;
+    try {
+      await this.advanceClock();
+      if (this.sessions().length) await this.broadcast();
+    } finally {
+      this.ticking = false;
+    }
+  }
+
   private async advanceClock(): Promise<void> {
     if (this.phase !== 'playing' || !this.game) {
       this.lastAdvanceMs = Date.now();
@@ -295,6 +324,7 @@ export class GameRoom extends DurableObject<Env> {
     }
     if (this.game.finished()) {
       this.phase = 'finished';
+      this.stopTicker();
       await this.persist(true);
     } else if (now - this.lastSnapshotMs > SNAPSHOT_MIN_INTERVAL_SECONDS * 1000) {
       await this.persist(false);

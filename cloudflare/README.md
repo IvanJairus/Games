@@ -22,9 +22,9 @@ cd cloudflare
 ROOM_BASE=http://localhost:8790 node --test --test-timeout=20000 tests/ws.test.mjs
 ```
 
-Enam belas tes, semuanya lulus pada `wrangler dev --local` (n = 1 rangkaian, 19 Oktober). Suite ini
-dijalankan lebih dulu terhadap worker versi commit dan gagal 13 dari 16, jadi penjaga barunya terbukti
-bisa merah.
+Enam belas tes tiket plus dua tes timer, semuanya lulus pada `wrangler dev --local` (n = 1 rangkaian,
+19 Oktober). Suite ini dijalankan lebih dulu terhadap worker tanpa fitur yang dijaganya, dan gagal di
+sana, jadi penjaganya terbukti bisa merah.
 
 | Tes | Yang dijaga |
 | --- | --- |
@@ -44,6 +44,8 @@ bisa merah.
 | pengambilalihan kursi | socket lama berhenti menerima siaran dan tidak dihitung dua kali |
 | aksi sebelum mulai | `wrong_phase`, dan `too_few_players` untuk mulai sendirian |
 | dua pemain mulai | fase `playing` dan dunia benar-benar maju |
+| kamar diam total | server tetap menyiarkan ~19 state per detik dan tick naik sendiri tanpa satu byte pun dari klien |
+| banjir 30 input | siaran yang diterima klien tidak menempel ke jumlah input (dibatasi <= 15 untuk 30 input dalam 400 ms) |
 
 ## Deploy
 
@@ -56,14 +58,17 @@ npx wrangler deploy
 ```
 
 Worker aktif di `https://ij-game-rooms.filemonivanjairus.workers.dev` dengan `TEST_MODE = "0"`.
-Frontend belum ada yang menunjuk ke sini: tidak ada satu pun berkas di `src/` yang memanggil URL ini,
-jadi jalur Supabase hari ini tidak berubah.
+Versi tayang sekarang `187cba5b-f138-4e0b-a9e8-6971bb99cd4b` (kode timer tiket). Frontend belum ada
+yang menunjuk ke sini: tidak ada satu pun berkas di `src/` yang memanggil URL ini, jadi jalur Supabase
+hari ini tidak berubah.
 
-Terukur pada deploy uji itu, dari laptop ini ke edge Cloudflare:
+Terukur dari laptop ini ke edge Cloudflare selama dua deploy uji (tiket, lalu timer). Baris suite dan
+laju siaran berasal dari deploy timer; baris mint dan handshake dari deploy tiket:
 
 | Yang diukur | Hasil |
 | --- | --- |
-| Suite 16 tes dijalankan terhadap URL tayang (`TEST_MODE=1` sementara) | 16 lulus dari 16, n = 1 rangkaian |
+| Suite 18 tes dijalankan terhadap URL tayang (`TEST_MODE=1` sementara) | 18 lulus dari 18, n = 1 rangkaian |
+| Laju siaran saat klien diam total, lewat internet | 60 state dalam 3.003 ms = 20,0 per detik, 60 tick unik, 0 dobel; gap min 0,1 / median 49,7 / max 142,3 ms |
 | `POST /room/<kode>/ticket` | n = 8: min 28 ms, median 41 ms, max 546 ms |
 | Handshake WebSocket dengan tiket sah | n = 5: min 59 ms, median 61 ms, max 70 ms |
 | Konfigurasi produksi setelah revert | `/health` 200, mint 200, `?probe=1` menolak 426, koneksi bertiket 101 |
@@ -84,20 +89,21 @@ Setelah deploy nyata, `ALLOWED_ORIGINS` harus memuat domain Vercel produksi, dan
 - Pesan masuk maksimal 1024 karakter, payload di luar itu dibuang.
 - Origin harus sama dengan host Worker atau ada di `ALLOWED_ORIGINS`.
 - Nama dibersihkan dari `<`, `>`, `&` dan dipotong 12 karakter, dan hanya diterima lewat mint.
+- Dunia dimajukan timer 50 ms selama ada pemain, dan setiap tick menghasilkan tepat satu siaran,
+  termasuk saat tidak ada satu pesan masuk pun. Timer mati saat kamar kosong atau laga selesai.
 
 ## Yang belum benar, diketahui, dan jadi pekerjaan berikutnya
 
-Tiga temuan audit yang tersisa dari `netbench/audits/do-slap-arena-2026-10-19.md`:
+Satu temuan audit yang tersisa dari `netbench/audits/do-slap-arena-2026-10-19.md`:
 
-1. Tick didorong pesan masuk klien. Komentar lama yang melarangnya salah: yang dilarang dokumentasi
-   Cloudflare adalah memakai `waitUntil()` untuk menahan objek tetap hidup, bukan memakai timer selama
-   masih ada WebSocket terbuka.
-2. Satu pesan masuk memicu satu siaran keluar, jadi siaran tumbuh mengikuti jumlah pesan masuk,
-   bukan mengikuti tick.
-3. Protokol tidak membawa `applied` dan `held`, sehingga loop latency tidak terukur di game ini.
+1. Protokol tidak membawa `applied` dan `held`, sehingga loop latency tidak terukur dari sisi klien.
+   Timer sekarang mengirim tepat satu siaran per tick (terukur 19,0 siaran per detik dan 57 tick unik
+   tanpa duplikasi di lokal, 20,0 siaran per detik dan 60 tick unik tanpa duplikasi pada deploy uji),
+   tapi tanpa dua field itu tidak bisa dibuktikan klien menerimanya dengan laju yang sama.
 
-Ditambah dua hal lebih kecil: batas pesan masih menghitung karakter UTF-16 bukan byte (PR #75 sudah
-membuktikan versi byte di sisi klien), dan belum ada batas laju per koneksi.
+Ditambah tiga hal lebih kecil: batas pesan masih menghitung karakter UTF-16 bukan byte (PR #75 sudah
+membuktikan versi byte di sisi klien), belum ada batas laju per koneksi, dan hasil laga belum ditulis
+ke Postgres dari sisi server.
 
 Satu catatan lingkungan: saat socket lama ditutup karena kursi diambil alih, workerd lokal mengirim
 close frame tapi tidak menuntaskan teardown, jadi klien bertahan di readyState 2 dan event `close`
