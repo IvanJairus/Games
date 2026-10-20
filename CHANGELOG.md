@@ -168,6 +168,25 @@ bukan assertion. Setelah helper membaca seluruh log, merah yang tersisa adalah a
 Belum ada satu baris kode frontend yang memakai jalur ini; `TRANSPORT` dan klien Supabase hari ini tidak
 berubah.
 
+## 2026-10-19 - Production diarahkan ke Cloudflare, dengan penjaga CSP
+
+Situs produksi sekarang memakai jalur Worker untuk Slap Arena multiplayer (`VITE_TRANSPORT=cloudflare`
+di environment Production). Penyebabnya sempat salah dibaca dua kali, jadi dicatat di sini: build
+melihat keempat variabel env, kodenya juga aktif, tapi `Content-Security-Policy` situs tidak
+mengizinkan `*.workers.dev`. Browser menolak mint tiket sebelum request keluar, dan pemain melihat
+"Pertandingan berhenti · Failed to fetch".
+
+- `vercel.json`: `connect-src` kini memuat `https://*.workers.dev` dan `wss://*.workers.dev`.
+- `scripts/csp-guard.mjs` baru, dirangkaikan ke `npm run guard:check`: kalau salah satu host itu hilang
+  dari policy, CI gagal. Alasannya konkret: tidak ada tes Node yang bisa menangkap pelanggaran CSP,
+  persis seperti tes Node yang buta terhadap CORS.
+- Diagnostik sementara di `vite.config.ts` (mencetak nama variabel yang terlihat build) dihapus.
+
+Terukur: penjaga CSP merah saat `workers.dev` saya hapus dari policy (`csp:check gagal: connect-src tidak
+mengizinkan ...`), hijau lagi dengan md5 file identik seperti sebelum eksperimen. Verifikasi produksi
+dua tab di `www.ivanjairus.xyz`: host dan tamu sama-sama `mint 200`, satu WebSocket, tanpa dialog fatal,
+tanpa error konsol (n = 1 rangkaian).
+
 ## 2026-10-19 - Pesan server membawa `applied` dan `held`, dan kamar Cloudflare akhirnya terukur
 
 Temuan 4 audit: `ServerMessage.state` tidak membawa `applied` maupun `held`, jadi loop latency tidak bisa

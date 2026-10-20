@@ -1,7 +1,4 @@
 import { defineConfig } from 'vite';
-// Diagnostik build: hanya nama variabel, tidak pernah nilainya.
-const viteKeys = Object.keys(process.env).filter((k) => k.startsWith('VITE_')).sort();
-console.log(`[build] VITE_ yang terlihat proses build: ${viteKeys.join(', ') || '(kosong)'}`);
 import react from '@vitejs/plugin-react';
 import path from 'path';
 
