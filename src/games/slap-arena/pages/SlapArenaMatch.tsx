@@ -83,6 +83,10 @@ export const SlapArenaMatch: React.FC = () => {
   const doorId = useRef(doorMode ? getOrCreateDoorId() : '').current;
   const seatKey = doorMode ? doorId : localId;
   const doorRef = useRef<ArenaServerNet | null>(null);
+  /** Start boleh dipicu oleh event database sebelum tiket sempat siap; arsip ini menyimpannya. */
+  const startArmedRef = useRef(false);
+  /** Master Worker adalah kursi 0, dan hanya dia yang boleh memulai lewat pintu. */
+  const isDoorMasterRef = useRef(false);
   const playerName = useRef(getStoredPlayerName() || 'Brawler').current;
   const playerColor = useRef(readColor()).current;
   const reducedMotion = useRef(
@@ -268,25 +272,28 @@ export const SlapArenaMatch: React.FC = () => {
       const seen = new Set<string>();
       for (const row of sync.players) {
         seen.add(row.session_id);
+        // Di jalur Worker id pemain adalah id kursi DO, bukan id sesi Supabase. Memirroring baris
+        // database ke sim akan menciptakan pemain hantu dan menghapus pemain yang benar.
         const existing = sim.players[row.session_id];
-        if (!existing) {
+        if (!existing && !doorMode) {
           sim.addPlayer({
             id: row.session_id,
             name: row.name,
             color: row.session_id === localId ? playerColor : '#ff8c66',
             isHost: row.is_host,
           });
-        } else {
+        } else if (existing) {
           existing.name = row.name;
         }
       }
-      for (const id of sim.listIds()) if (!seen.has(id)) sim.removePlayer(id);
+      if (!doorMode) for (const id of sim.listIds()) if (!seen.has(id)) sim.removePlayer(id);
 
       const roster = Object.keys(sim.players).length;
       setHud((prev) => ({ ...prev, peers: roster, needed: 2 }));
 
       if (host && roster >= 2 && sim.state.phase === 'WAITING') {
         if (doorMode) {
+          startArmedRef.current = true;
           doorRef.current?.sendStart();
         } else {
           void startOnlineMatch(sync.match.id).catch((err) => console.warn('[slap-arena] gagal memulai match', err));
@@ -429,6 +436,8 @@ export const SlapArenaMatch: React.FC = () => {
           dash: wireRef.current.dash,
         }),
         onWelcome: (info) => {
+          isDoorMasterRef.current = info.master === info.id;
+          if (startArmedRef.current || isDoorMasterRef.current) doorRef.current?.sendStart();
           if (info.seat !== undefined && ticket.seat !== info.seat) {
             console.warn('[slap-arena] kursi Worker berbeda dari tiket', ticket.seat, info.seat);
           }
@@ -436,6 +445,11 @@ export const SlapArenaMatch: React.FC = () => {
         onWorld: (snap) => {
           if (!sim.players[seatKey]) sim.addPlayer({ id: seatKey, name: playerName, color: playerColor });
           sim.applySnapshot(snap);
+          // Event database bisa mendahului state pertama, jadi master mencoba mulai lagi begitu
+          // dunia benar-benar berisi dua kursi. Pintu menolak duplikat start dengan wrong_phase.
+          if (isDoorMasterRef.current && snap.phase === 'WAITING' && snap.players.length >= 2) {
+            net.sendStart();
+          }
           setHud((prev) => ({ ...prev, peers: snap.players.length }));
         },
         onFx: (events) => events.forEach((ev) => handleSimEvent(ev, sim, arenaRef.current)),
