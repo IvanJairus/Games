@@ -514,3 +514,16 @@ test('mint menerima id usulan 128 bit dan menolak id yang pendek', async () => {
   assert.equal(w.id, mine, 'welcome harus membawa id yang sama dengan yang diusulkan');
   c.ws.terminate();
 });
+
+test('jawaban HTTP membawa header CORS untuk origin yang diizinkan', async () => {
+  const code = room('C1');
+  const mint = await fetch(`${BASE}/room/${code}/ticket?game=selftest&name=Cors`, { method: 'POST', headers: { origin: ORIGIN } });
+  assert.equal(mint.status, 200);
+  assert.equal(mint.headers.get('access-control-allow-origin'), ORIGIN);
+  assert.match(mint.headers.get('vary') ?? '', /Origin/);
+  const health = await fetch(`${BASE}/health`, { headers: { origin: ORIGIN } });
+  assert.equal(health.headers.get('access-control-allow-origin'), ORIGIN);
+  const pre = await fetch(`${BASE}/room/${code}/ticket`, { method: 'OPTIONS', headers: { origin: ORIGIN, 'access-control-request-method': 'POST' } });
+  assert.equal(pre.status, 204);
+  assert.match(pre.headers.get('access-control-allow-methods') ?? '', /POST/);
+});
