@@ -103,6 +103,8 @@ export const SlapArenaMatch: React.FC = () => {
   const [isHost, setIsHost] = useState(isSolo);
   const [disconnected, setDisconnected] = useState<string | null>(null);
   const [linkDown, setLinkDown] = useState(false);
+  /** Mirrors isDoorMasterRef into state so a master change re-renders the round controls. */
+  const [isDoorMaster, setIsDoorMaster] = useState(false);
 
   const arenaRef = useRef<Arena3DHandle>(null);
   const inputRef = useRef<InputState>({ x: 0, z: 0, slap: false, dash: false });
@@ -124,6 +126,16 @@ export const SlapArenaMatch: React.FC = () => {
   const reported = useRef(false);
   const lastCount = useRef(0);
   const netStatsRef = useRef<ArenaNet | null>(null);
+
+  /** The Worker owns the master seat, so the ref and the rendered control move together. */
+  const applyDoorMaster = useCallback(
+    (master: string | null) => {
+      const mine = !!master && master === seatKey;
+      isDoorMasterRef.current = mine;
+      setIsDoorMaster(mine);
+    },
+    [seatKey]
+  );
 
   const sim = useMemo(() => {
     const s = new SlapSim({ localId: seatKey, authoritative: isSolo, scoreToWin: 3 });
@@ -447,15 +459,21 @@ export const SlapArenaMatch: React.FC = () => {
           wireRef.current.charge = 0;
         },
         onWelcome: (info) => {
-          isDoorMasterRef.current = info.master === info.id;
+          applyDoorMaster(info.master);
           if (startArmedRef.current || isDoorMasterRef.current) doorRef.current?.sendStart();
           if (info.seat !== undefined && ticket.seat !== info.seat) {
             console.warn('[slap-arena] kursi Worker berbeda dari tiket', ticket.seat, info.seat);
           }
         },
-        onWorld: (snap) => {
+        onMeta: (meta) => {
+          // The master can change mid-match (the host leaves). The Worker already promoted
+          // someone; without this the remaining seats keep waiting for a host that is gone.
+          applyDoorMaster(meta.master);
+        },
+        onInputSent: (seq, input) => sim.noteSentInput(seq, input),
+        onWorld: (snap, applied) => {
           if (!sim.players[seatKey]) sim.addPlayer({ id: seatKey, name: playerName, color: playerColor });
-          sim.applySnapshot(snap);
+          sim.applySnapshot(snap, applied);
           // Event database bisa mendahului state pertama, jadi master mencoba mulai lagi begitu
           // dunia benar-benar berisi dua kursi. Pintu menolak duplikat start dengan wrong_phase.
           if (isDoorMasterRef.current && snap.phase === 'WAITING' && snap.players.length >= 2) {
@@ -465,7 +483,16 @@ export const SlapArenaMatch: React.FC = () => {
         },
         onFx: (events) => events.forEach((ev) => handleSimEvent(ev, sim, arenaRef.current)),
         onLink: (state, detail) => {
-          if (state === 'up') return;
+          if (state === 'up') {
+            setLinkDown(false);
+            return;
+          }
+          // A retry is a tunnel or a phone switching networks, not a dead room. Keep the
+          // board on screen and let the socket come back; only a terminal close ends it.
+          if (detail === 'retrying') {
+            setLinkDown(true);
+            return;
+          }
           setDisconnected(`Kamar terputus (${detail ?? 'tanpa alasan'}). Muat ulang untuk masuk lagi.`);
         },
       });
@@ -481,7 +508,7 @@ export const SlapArenaMatch: React.FC = () => {
       doorRef.current?.stop();
       doorRef.current = null;
     };
-  }, [doorMode, roomCode, seatKey, playerName, playerColor, sim]);
+  }, [doorMode, roomCode, seatKey, playerName, playerColor, sim, applyDoorMaster]);
 
   // ---- simulation loop ----------------------------------------------------
   useEffect(() => {
@@ -572,9 +599,9 @@ export const SlapArenaMatch: React.FC = () => {
     return () => clearTimeout(t);
   }, [notice]);
 
-  // In door mode the DB "host" flag is meaningless; the seat 0 master decided by the Worker
-  // is the one who controls the round, so route the control check through isDoorMasterRef.
-  const controlsRound = isSolo || isHost || (doorMode && isDoorMasterRef.current);
+  // In door mode the DB "host" flag is meaningless; the seat the Worker names as master is
+  // the one who controls the round, and it can change mid-match.
+  const controlsRound = isSolo || isHost || (doorMode && isDoorMaster);
 
   // ---- round flow ---------------------------------------------------------
   const advance = useCallback(() => {

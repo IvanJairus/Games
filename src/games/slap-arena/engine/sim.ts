@@ -9,11 +9,18 @@ import {
   executeSlap,
   resolvePlayerCollisions,
   spawnPlayersInCircle,
+  stepMovement,
   updatePlayerMovement,
 } from './physics';
 import { botInputToState, computeBotAi } from './botAi';
 
 const FIXED_DT = 1 / 120;
+/** One Worker tick. A replayed input is worth exactly this much simulated time. */
+const REPLAY_STEP = 0.05;
+/** Three seconds at 20 Hz; past that the ack has stalled and replaying is guessing. */
+const MAX_PENDING = 60;
+/** A jump bigger than this is a respawn or a KO, not drift: snap it, do not smear it. */
+const MAX_CORRECTION = 4;
 export const GRACE_SECONDS = 2.5;
 const MAX_STEP_SECONDS = 0.25;
 
@@ -58,6 +65,12 @@ export class SlapSim {
   private koEmitted = new Set<string>();
   /** Local-only view of remote brawlers, filled by applySnapshot on clients. */
   private remoteTargets = new Map<string, PlayerSnapshot>();
+  /**
+   * Inputs that went on the wire but have not been acknowledged by the host yet, in order.
+   * Reconciliation rewinds to the host position and re-runs these, so prediction and the
+   * host agree without the player seeing a correction.
+   */
+  private pendingInputs: { seq: number; input: InputState }[] = [];
 
   constructor(opts: SimOptions) {
     this.localId = opts.localId;
@@ -76,6 +89,17 @@ export class SlapSim {
 
   setInput(id: string, input: InputState): void {
     this.inputs.set(id, input);
+  }
+
+  /**
+   * Records an input exactly as the wire carried it, keyed by the same `seq` the host
+   * publishes back through `applied`. Only the local seat needs this; a remote brawler is
+   * never replayed.
+   */
+  noteSentInput(seq: number, input: InputState): void {
+    if (!Number.isFinite(seq)) return;
+    this.pendingInputs.push({ seq, input: { ...input } });
+    if (this.pendingInputs.length > MAX_PENDING) this.pendingInputs.shift();
   }
 
   addPlayer(p: Partial<PlayerState> & { id: string }): PlayerState {
@@ -130,6 +154,13 @@ export class SlapSim {
     this.roundElapsed = 0;
     this.state.phase = 'BATTLE';
     this.state.winnerId = null;
+    // The queue belongs to the round that just ended; replaying it would push a body
+    // across the fresh spawn point.
+    this.pendingInputs.length = 0;
+    for (const p of Object.values(this.state.players)) {
+      p.corrX = 0;
+      p.corrZ = 0;
+    }
     this.onEvent({ kind: 'roundStart', round: this.state.round });
   }
 
@@ -292,8 +323,9 @@ export class SlapSim {
   }
 
   /** Client-side: adopt the authoritative world, keeping own prediction. */
-  applySnapshot(snap: WorldSnapshot): void {
+  applySnapshot(snap: WorldSnapshot, appliedSeq?: number): void {
     const { state } = this;
+    const newRound = snap.round !== state.round;
     state.round = snap.round;
     state.scoreToWin = snap.scoreToWin;
     state.winnerId = snap.winnerId;
@@ -301,9 +333,19 @@ export class SlapSim {
     state.countdown = snap.countdown;
     if (state.phase !== snap.phase) state.phase = snap.phase;
 
+    if (newRound) {
+      // A new round respawns everyone; replaying the old queue would shove the body off
+      // the spawn point, and an old visual offset would smear it.
+      this.pendingInputs.length = 0;
+      for (const p of Object.values(state.players)) {
+        p.corrX = 0;
+        p.corrZ = 0;
+      }
+    }
+
     for (const p of snap.players) {
       if (p.id === this.localId) {
-        this.reconcile(p);
+        this.reconcile(p, appliedSeq);
         continue;
       }
       this.remoteTargets.set(p.id, p);
@@ -334,7 +376,7 @@ export class SlapSim {
     }
   }
 
-  private reconcile(p: PlayerSnapshot): void {
+  private reconcile(p: PlayerSnapshot, appliedSeq?: number): void {
     const me = this.local;
     if (!me) return;
     // The host resolved any colour clash, so adopt its answer and stay in sync.
@@ -342,15 +384,43 @@ export class SlapSim {
     me.score = p.score;
     me.isFalling = p.isFalling;
     me.eliminated = p.eliminated;
-    const error = Math.hypot(p.x - me.x, p.z - me.z);
-    // Small drift is corrected smoothly by the renderer; big error means we were
-    // hit or knocked off, so snap to what the host decided.
-    if (error > 1.1) {
-      me.x = p.x;
-      me.z = p.z;
-      me.vx = p.vx;
-      me.vz = p.vz;
+
+    // Everything up to `appliedSeq` has already shaped this position; drop it.
+    if (typeof appliedSeq === 'number' && Number.isFinite(appliedSeq)) {
+      while (this.pendingInputs.length && this.pendingInputs[0].seq <= appliedSeq) {
+        this.pendingInputs.shift();
+      }
     }
+
+    const beforeX = me.x;
+    const beforeZ = me.z;
+
+    // The host is the truth for where the body is. Cooldowns, chargeT and angle are NOT
+    // copied back: they are one network round trip stale on the wire, and adopting them
+    // would make the charge meter tick backwards and delay every slap by an RTT. The local
+    // frame loop owns those, and the host still refuses a slap that was actually too early.
+    me.x = p.x;
+    me.z = p.z;
+    me.vx = p.vx;
+    me.vz = p.vz;
+    me.y = p.y ?? 0;
+    if (!me.isFalling) {
+      for (const item of this.pendingInputs) {
+        stepMovement(me, item.input.x, item.input.z, REPLAY_STEP);
+      }
+    }
+
+    // Absorb the jump instead of drawing it. A real teleport (respawn, KO) is snapped.
+    const dx = beforeX - me.x;
+    const dz = beforeZ - me.z;
+    if (Math.hypot(dx, dz) < MAX_CORRECTION) {
+      me.corrX += dx;
+      me.corrZ += dz;
+    } else {
+      me.corrX = 0;
+      me.corrZ = 0;
+    }
+
     this.remoteTargets.set(p.id, p);
   }
 

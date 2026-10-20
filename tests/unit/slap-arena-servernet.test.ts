@@ -209,3 +209,99 @@ describe('ArenaServerNet terima', () => {
     net.stop();
   });
 });
+
+describe('ArenaServerNet lifecycle', () => {
+  const idle = () => ({ x: 0, z: 0, slap: false, dash: false }) as InputState;
+
+  it('menutup socket saat stop supaya Worker melepas kursinya', () => {
+    const { net } = makeNet(idle);
+    net.start();
+    const socket = FakeSocket.last!;
+    net.stop();
+    expect(socket.readyState).toBe(3);
+  });
+
+  it('menyambung ulang setelah putus tidak normal, bukan mengakhiri match', () => {
+    const { net, link } = makeNet(idle);
+    net.start();
+    const first = FakeSocket.last!;
+    first.handlers.close.forEach((h) => h({ code: 1006 }));
+    expect(link.at(-1)).toEqual(['down', 'retrying']);
+
+    vi.advanceTimersByTime(400);
+    expect(FakeSocket.last).not.toBe(first);
+    expect(link.at(-1)?.[0]).toBe('up');
+    net.stop();
+  });
+
+  it('tidak menyambung ulang saat kursi direbut tab lain', () => {
+    const { net, link } = makeNet(idle);
+    net.start();
+    const socket = FakeSocket.last!;
+    socket.handlers.close.forEach((h) => h({ code: 4002 }));
+    expect(link.at(-1)).toEqual(['down', 'close-4002']);
+
+    vi.advanceTimersByTime(5000);
+    expect(FakeSocket.last).toBe(socket);
+    net.stop();
+  });
+
+  it('meneruskan seq yang sudah dieksekusi untuk kursi ini', () => {
+    const worlds: [WorldSnapshot, number | undefined][] = [];
+    const net = new ArenaServerNet({
+      wsUrl: 'ws://door.test/room/ABC123/ws?ticket=t',
+      getInput: idle,
+      onWelcome: () => {},
+      onWorld: (w, applied) => worlds.push([w, applied]),
+      onFx: () => {},
+      onLink: () => {},
+      socket: fakeSocket,
+    });
+    net.start();
+    const socket = FakeSocket.last!;
+    socket.emitMessage({ t: 'welcome', id: 'aa', seat: 1, name: 'A', master: 'aa', players: [], exp: 9 });
+    socket.emitMessage({ t: 'state', phase: 'playing', master: 'aa', tick: 4, players: [], world: world(), applied: { 0: 2, 1: 7 }, held: {}, fx: [] });
+    expect(worlds[0][1]).toBe(7);
+    net.stop();
+  });
+
+  it('melaporkan pasangan seq dan input yang benar-benar terkirim', () => {
+    const sent: [number, InputState][] = [];
+    let x = 0.4;
+    const net = new ArenaServerNet({
+      wsUrl: 'ws://door.test/room/ABC123/ws?ticket=t',
+      getInput: () => ({ x, z: 0, slap: false, dash: false }) as InputState,
+      onWelcome: () => {},
+      onWorld: () => {},
+      onFx: () => {},
+      onLink: () => {},
+      onInputSent: (seq, input) => sent.push([seq, input]),
+      socket: fakeSocket,
+    });
+    net.start();
+    vi.advanceTimersByTime(TICK_MS);
+    expect(sent[0][0]).toBe(1);
+    expect(sent[0][1]).toMatchObject({ x: 0.4 });
+    net.stop();
+  });
+
+  it('melaporkan master di setiap state supaya pergantian tuan rumah terlihat', () => {
+    const masters: (string | null)[] = [];
+    const net = new ArenaServerNet({
+      wsUrl: 'ws://door.test/room/ABC123/ws?ticket=t',
+      getInput: idle,
+      onWelcome: () => {},
+      onWorld: () => {},
+      onMeta: (meta) => masters.push(meta.master),
+      onFx: () => {},
+      onLink: () => {},
+      socket: fakeSocket,
+    });
+    net.start();
+    const socket = FakeSocket.last!;
+    socket.emitMessage({ t: 'state', phase: 'playing', master: 'aa', tick: 1, players: [], world: null, applied: {}, held: {}, fx: [] });
+    socket.emitMessage({ t: 'state', phase: 'playing', master: 'bb', tick: 2, players: [], world: null, applied: {}, held: {}, fx: [] });
+    expect(masters).toEqual(['aa', 'bb']);
+    net.stop();
+  });
+});
