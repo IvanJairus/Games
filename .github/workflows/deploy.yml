@@ -116,35 +116,53 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
-      # Self-healing link: resolves the project by name under the team slug and writes
-      # .vercel/project.json. This survives a project being re-created or moved, which is
-      # exactly what makes a stored project id rot. Link and pull share one step so a dead
-      # token fails once, in a place the fallback can see.
+      # Self-healing link: resolves the project by name and writes .vercel/project.json, so a
+      # project that was re-created or moved links itself again instead of depending on an
+      # opaque id that rots. The default scope is tried first (a personal token usually owns
+      # the project directly); the team slug is only the fallback.
       - name: Link and pull the Vercel project
         id: pull
-        # A dead token or a renamed project must not leave a red X on a commit that the Git
-        # integration deployed successfully. The fallback step below asserts that instead.
-        continue-on-error: true
+        # A dead token must not leave a red X on a commit the Git integration deployed. This
+        # step records whether the CLI path is usable and always exits 0; the fallback step
+        # below asserts the deployment that actually happened.
         run: |
-          npx vercel link --yes --project "$VERCEL_PROJECT" --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN"
-          npx vercel pull --yes --environment=production --token "$VERCEL_TOKEN"
+          set +e
+          npx vercel link --yes --project "$VERCEL_PROJECT" --token "$VERCEL_TOKEN"
+          LINK=$?
+          if [ "$LINK" -ne 0 ]; then
+            echo "::warning::Link with the default scope failed; retrying with scope '$VERCEL_SCOPE'."
+            npx vercel link --yes --project "$VERCEL_PROJECT" --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN"
+            LINK=$?
+          fi
+          PULL=1
+          if [ "$LINK" -eq 0 ]; then
+            npx vercel pull --yes --environment=production --token "$VERCEL_TOKEN"
+            PULL=$?
+          fi
+          if [ "$PULL" -eq 0 ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=Vercel CLI is unusable::The CLI could not link or read the project. 'The specified scope does not exist' means VERCEL_TOKEN is expired or revoked, not that the project is gone. Production is deployed by the Vercel Git integration; this job asserts that deployment instead."
+          fi
+          exit 0
 
       - name: Inject Supabase Credentials into Vercel Build Environment
-        if: steps.pull.outcome == 'success'
+        if: steps.pull.outputs.ok == 'true'
         run: |
           mkdir -p .vercel
           echo "VITE_SUPABASE_URL=${{ secrets.VITE_SUPABASE_URL }}" >> .vercel/.env.production.local
           echo "VITE_SUPABASE_ANON_KEY=${{ secrets.VITE_SUPABASE_ANON_KEY }}" >> .vercel/.env.production.local
 
       - name: Build Project Artifacts
-        if: steps.pull.outcome == 'success'
+        if: steps.pull.outputs.ok == 'true'
         run: npx vercel build --prod --token "$VERCEL_TOKEN"
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
 
       - name: Deploy to Vercel (Production)
-        if: steps.pull.outcome == 'success'
+        if: steps.pull.outputs.ok == 'true'
         id: deploy
         run: |
           DEPLOY_URL=$(npx vercel deploy --prebuilt --prod --token "$VERCEL_TOKEN")
@@ -162,7 +180,7 @@ jobs:
       # HTML as JavaScript for a year. The client reloads once instead (ErrorBoundary), which is
       # the part that actually protects players today.
       - name: Verify deployed routing
-        if: steps.pull.outcome == 'success'
+        if: steps.pull.outputs.ok == 'true'
         run: |
           BASE=https://www.ivanjairus.xyz/games
           PROBE=$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT
@@ -179,7 +197,7 @@ jobs:
       # integration still deploys `main`; this asserts that the Production deployment for THIS
       # commit actually reached success, so the job is green only when production is really live.
       - name: Assert production was deployed by the Git integration
-        if: steps.pull.outcome != 'success'
+        if: steps.pull.outputs.ok != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
