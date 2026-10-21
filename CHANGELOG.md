@@ -1,3 +1,34 @@
+## 2026-10-21 - Bomberman online: panah baru tidak lagi menunggu langkah lama
+
+Laporan pemain lewat video: satu tekan panah membuat karakter terlihat mundur lalu maju. Terjadi di
+room Online 4 kursi di ponsel, bukan di Latihan melawan bot.
+
+### Penyebab
+
+- `MovementPredictor.observe` menolak observasi baru selama satu lead masih aktif. Menekan arah lain
+  saat langkah prediksi masih berjalan tetap menyelesaikan langkah lama dulu, baru server membalik
+  arah. Di layar itu terbaca sebagai bergerak ke arah yang salah sebelum berbalik.
+- Lepas tombol tidak pernah membatalkan lead. Tap yang lebih pendek dari satu tick server (33 ms)
+  tidak pernah menjadi langkah, tetapi klien tetap menggambar satu petak penuh sampai deadline
+  280 ms, lalu menariknya kembali. Satu tekan bisa terlihat maju lalu mundur.
+
+### Diubah
+
+- `src/games/bomberman/engine/predict.ts`: lead menyimpan arah. Arah baru membatalkan lead lama dan
+  langsung memulai lead baru. `observe(null)` menandai tombol dilepas; bila server tidak mengonfirmasi
+  dalam 150 ms, lead dibuang dan tampilan kembali ke petak otoritatif. Konfirmasi di dalam masa
+  tenggang tetap menyelesaikan langkah, jadi tekan yang benar-benar diterima server tidak ikut dibuang.
+- `tests/unit/bomberman-predict-rewind.test.ts`: empat kasus baru, termasuk arah berbalik di tengah
+  lead dan tap yang tidak pernah diterapkan server.
+
+### Terukur
+
+- Test baru merah sebelum fix pada kasus arah berbalik: `expected 5.6336 to be less than 5.3168`.
+- `npm run test:unit`: 379 lulus, 2 dilewati.
+- `npm run test:ui`: 122 lulus.
+- `npm run release:check`: 5 tahap lulus.
+- `npm run guard:check`: 3 cek engine plus `csp:check` lolos.
+
 ## 2026-10-21 - Bomberman: mode tim akhirnya ikut terkirim ke Worker
 
 Mode tim 2v2 yang baru tayang hanya hidup di klien. `mintRoomTicket` mengirim `seats` dan `size`

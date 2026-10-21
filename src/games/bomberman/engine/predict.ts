@@ -17,9 +17,12 @@ const CORRECTION_DECAY = 0.72;
 const CORRECTION_EPSILON = 0.01;
 /** A correction larger than this is a teleport, not a late frame; snapping is safer. */
 const MAX_CORRECTION_CELLS = 2;
+/** How long a released press may wait for the server to confirm it before the view gives up. */
+const RELEASE_GRACE_MS = 150;
 
 interface Lead {
   seat: number;
+  dir: Facing;
   fx: number;
   fy: number;
   tx: number;
@@ -33,10 +36,23 @@ interface Lead {
 export class MovementPredictor {
   private lead: Lead | null = null;
   private correction = { seat: -1, x: 0, y: 0 };
+  private releasedAt: number | null = null;
 
   reset(): void {
     this.lead = null;
     this.correction = { seat: -1, x: 0, y: 0 };
+    this.releasedAt = null;
+  }
+
+  /**
+   * The key went up. A tap can be shorter than the server's next tick, in which case the
+   * step being drawn will never exist. The lead is kept for a short grace so a press that
+   * the server did receive still lands, then dropped back to the authority.
+   */
+  release(now: number): boolean {
+    if (!this.lead) return false;
+    this.releasedAt = now;
+    return true;
   }
 
   /**
@@ -44,10 +60,23 @@ export class MovementPredictor {
    * the tests use and the page does not need.
    */
   observe(state: BombermanState, seat: number, dir: Facing | null, now: number): boolean {
-    if (!dir || seat < 0 || state.phase !== 'battle') return false;
+    if (!dir) {
+      this.release(now);
+      return false;
+    }
+    if (seat < 0 || state.phase !== 'battle') return false;
     const p = state.players.find((q) => q.seat === seat);
-    if (!p || !p.alive || p.step) return false;
-    if (this.lead?.seat === seat) return false;
+    if (!p || !p.alive) return false;
+    /* A new direction replaces a lead that is still only a guess. Keeping the old one made
+       the view finish a step the player had already cancelled, which reads as moving the
+       wrong way before it turns. */
+    if (this.lead?.seat === seat) {
+      if (this.lead.dir === dir) return false;
+      this.lead = null;
+      this.correction = { seat: -1, x: 0, y: 0 };
+    }
+    this.releasedAt = null;
+    if (p.step) return false;
 
     const d = DIRS[dir];
     const tx = p.x + d.x;
@@ -56,6 +85,7 @@ export class MovementPredictor {
 
     this.lead = {
       seat,
+      dir,
       fx: p.x,
       fy: p.y,
       tx,
@@ -87,7 +117,14 @@ export class MovementPredictor {
       const stepping =
         !!p.step && p.step.fx === lead.fx && p.step.fy === lead.fy && p.step.tx === lead.tx && p.step.ty === lead.ty;
       const movedElsewhere = p.x !== lead.fx || p.y !== lead.fy;
-      if (reached || stepping || movedElsewhere || now >= lead.deadline) {
+      const releasedLongEnough = this.releasedAt !== null && now - this.releasedAt >= RELEASE_GRACE_MS;
+      if (releasedLongEnough && !reached && !stepping && !movedElsewhere) {
+        // The server never took the move: stop drawing a step that does not exist.
+        this.lead = null;
+        this.correction = { seat: -1, x: 0, y: 0 };
+        this.releasedAt = null;
+        justFinished = true;
+      } else if (reached || stepping || movedElsewhere || now >= lead.deadline) {
         this.finishLead(p);
         justFinished = true;
       }
@@ -134,6 +171,7 @@ export class MovementPredictor {
     const dx = lead.visualX - p.ax;
     const dy = lead.visualY - p.ay;
     this.lead = null;
+    this.releasedAt = null;
     this.correction =
       Math.hypot(dx, dy) <= MAX_CORRECTION_CELLS ? { seat: lead.seat, x: dx, y: dy } : { seat: -1, x: 0, y: 0 };
   }
