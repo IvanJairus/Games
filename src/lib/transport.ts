@@ -50,6 +50,9 @@ export async function mintRoomTicket(
   if (playerId && /^[0-9a-f]{32}$/.test(playerId)) query.set('player', playerId);
   if (options?.seats) query.set('seats', String(options.seats));
   if (options?.size) query.set('size', options.size);
+  /* The Worker builds the room from this first mint, so a flag left out here is a mode the
+     server never knows about, however many times the URL repeats it later. */
+  if (options?.teams) query.set('teams', '1');
   const url = `${base}/room/${encodeURIComponent(code)}/ticket?${query}`;
   const res = await fetchImpl(url, { method: 'POST' });
   if (!res.ok) {

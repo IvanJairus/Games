@@ -1,3 +1,15 @@
+## 2026-10-21 - Bomberman: mode tim akhirnya ikut terkirim ke Worker
+
+Mode tim 2v2 yang baru tayang hanya hidup di klien. `mintRoomTicket` mengirim `seats` dan `size`
+ke Worker tetapi tidak pernah mengirim `teams`, dan Worker membangun room dari mint pertama itu.
+Akibatnya room online selalu dibuat sebagai free-for-all walaupun URL dan lobby bilang tim, dan
+tombol "Mode tim 2v2" tidak berpengaruh pada laga yang dimainkan server.
+
+Perbaikannya satu baris di `src/lib/transport.ts`: `teams=1` ikut dikirim saat opsi itu menyala.
+`tests/unit/bomberman-door-mint.test.ts` mengunci kedua arah: flag terkirim saat tim menyala, dan
+tidak dikirim saat bebas. Test itu merah sebelum perbaikan (`expected null to be '1'`) dan hijau
+sesudahnya. Tidak ada perubahan aturan main di engine.
+
 ## 2026-10-21 - Bomberman: papan menyempit, arena 25x17, power-up, 2v2, dan angin lantai
 
 Laporan pemain: dua manusia masih hidup, dua bot sudah mati, lalu popup "bot menang" muncul dan
