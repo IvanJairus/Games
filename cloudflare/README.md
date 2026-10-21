@@ -78,19 +78,20 @@ npx wrangler deploy
 ```
 
 Worker aktif di `https://ij-game-rooms.filemonivanjairus.workers.dev` dengan `TEST_MODE = "0"`.
-Versi tayang sekarang `487b2c27-976a-43e2-8e98-66ca57ae9ccd` (tiket + timer + metrik + adapter
-Slap Arena).
+Versi tayang sekarang `4a3e3e16-4ac3-4221-9268-2c67c767b05d` (tiket + tick 30 Hz + metrik + adapter
+Slap Arena + adapter Bomberman), di-deploy 21 Oktober dari `main` setelah PR #97.
 
-Branch `feat/bomberman-cloudflare-door` menambah adapter Bomberman. Dry-run bundlenya 96,86 KiB /
-gzip 26,86 KiB (naik dari 47,25 / 13,45 KiB karena sim, bot, `gameApi`, dan `predict` ikut ter-bundle).
-Deploy branch ini mengganti Worker yang sama dengan Slap Arena, jadi dilakukan setelah PR di-merge:
+Bundlenya 96,86 KiB / gzip 26,86 KiB (naik dari 47,25 / 13,45 KiB karena sim, bot, `gameApi`, dan
+`predict` ikut ter-bundle). Deploy memakai Worker yang sama dengan Slap Arena:
 
 ```bash
 cd cloudflare
 npx wrangler deploy
 ```
 
-Frontend memakai Worker bila build punya `VITE_TRANSPORT=cloudflare` dan `VITE_CF_ROOMS_URL`.
+Frontend produksi memakai Worker karena workflow deploy menyuntikkan `VITE_TRANSPORT=cloudflare` dan
+`VITE_CF_ROOMS_URL` ke build Vercel. Sejak PR #98, deploy gagal lebih dulu kalau chunk `transport-*.js`
+tidak memuat switch `cloudflare` dan host Worker; guard-nya ada di `.github/workflows/deploy.yml`.
 
 Terukur dari laptop ini ke edge Cloudflare selama deploy uji berturut-turut. Baris suite dan laju siaran
 berasal dari deploy adapter; baris mint dan handshake dari deploy tiket:
@@ -104,6 +105,7 @@ berasal dari deploy adapter; baris mint dan handshake dari deploy tiket:
 | Handshake WebSocket dengan tiket sah | n = 5: min 59 ms, median 61 ms, max 70 ms |
 | Bundle Worker | 47,25 KiB naik dari 17,37 KiB (gzip 13,45 KiB dari 5,38 KiB), startup 3 ms |
 | Konfigurasi produksi setelah revert | `/health` 200, mint 200, `?probe=1` menolak 426, koneksi bertiket 101, dua kursi Slap Arena sampai fase `COUNTDOWN` |
+| Bomberman produksi, 2 kursi, dua konteks Chrome (`ij-games.vercel.app`) | 10 lulus dari 10: lobby membuat room, mint 200, WebSocket ke Worker, fase `battle`, gerak terkonfirmasi, 123 frame / 30,3 per detik, 0 pageerror |
 
 Angka latensi ini satu sampel dari satu laptop, dan catatan `macos-environment` berlaku: jaringan
 kantor tidak layak untuk mengukur latensi. `applied` dan `held` sudah terukur dari sisi klien, tapi
