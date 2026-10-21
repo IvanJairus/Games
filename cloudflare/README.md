@@ -22,10 +22,12 @@ cd cloudflare
 ROOM_BASE=http://localhost:8790 node --test --test-timeout=20000 tests/ws.test.mjs
 ```
 
-Dua puluh enam tes: enam belas tiket, dua timer, empat metrik protokol, empat Slap Arena nyata.
-Semuanya lulus pada `wrangler dev --local` dan 26 lulus dari 26 terhadap URL tayang (n = 1 rangkaian
-untuk setiap, 19 Oktober). Tiap kelompok tes dijalankan lebih dulu terhadap worker tanpa fitur yang
-dijaganya, dan gagal di sana, jadi penjaganya terbukti bisa merah.
+Empat puluh satu tes: enam belas tiket, dua timer, empat metrik protokol, empat Slap Arena nyata,
+dan sepuluh Bomberman nyata. Tiga puluh satu tes lama sudah lulus pada `wrangler dev --local` dan
+26 lulus dari 26 terhadap URL tayang (n = 1 rangkaian, 19 Oktober). Sepuluh tes Bomberman baru lulus
+41 dari 41 pada `wrangler dev --local` (21 Oktober); versi tayang belum memuat adapter Bomberman.
+Tiap kelompok tes dijalankan lebih dulu terhadap worker tanpa fitur yang dijaganya, dan gagal di sana,
+jadi penjaganya terbukti bisa merah.
 
 | Tes | Yang dijaga |
 | --- | --- |
@@ -55,6 +57,15 @@ dijaganya, dan gagal di sana, jadi penjaganya terbukti bisa merah.
 | Slap Arena mulai | yang bukan master ditolak pintu (`unknown_player`), master memulai, fase DO ikut fase dunia |
 | Slap Arena bergerak | input `{t:'input', seq, input}` mengubah dunia dan `applied` mengikutinya sampai `BATTLE` |
 | Slap Arena payload jahat | `x` di luar rentang balas `bad_payload`, seq berulang balas `duplicate_seq`, dan `applied` tidak naik |
+| Bomberman config papan | `welcome` membawa `{seats,size}` dari mint pertama, lorong belum punya dunia, `players` membawa kursi |
+| Bomberman kapasitas | papan 2 menolak tiket ketiga 409 `room_full`; papan 4 menolak tiket kelima |
+| Bomberman opsi bentrok | mint dengan papan berbeda di kamar yang sama balas 409 `options_conflict` |
+| Bomberman mulai | bukan master balas `not_master`; master membuat dunia server yang berjalan sendiri ke `battle` |
+| Bomberman input | `{t:'input', seq, dir}` menggerakkan kursi dan `applied` mengikutinya |
+| Bomberman payload jahat | arah asing balas `bad_payload`, seq berulang balas `duplicate_seq`, `applied` tidak naik |
+| Bomberman bot | satu manusia dengan `fillBots:true` mendapat kursi bot di dunia server |
+| Bomberman karakter | klaim `char` dari lorong masuk ke `world.players[].charId` |
+| Bomberman reconnect | socket putus di tengah match mempertahankan kursi; mint ulang memakai kursi yang sama dan mengambil alih botnya |
 
 ## Deploy
 
@@ -68,8 +79,18 @@ npx wrangler deploy
 
 Worker aktif di `https://ij-game-rooms.filemonivanjairus.workers.dev` dengan `TEST_MODE = "0"`.
 Versi tayang sekarang `487b2c27-976a-43e2-8e98-66ca57ae9ccd` (tiket + timer + metrik + adapter
-Slap Arena). Frontend belum ada yang menunjuk ke sini: tidak ada satu pun berkas di `src/` yang
-memanggil URL ini, jadi jalur Supabase hari ini tidak berubah.
+Slap Arena).
+
+Branch `feat/bomberman-cloudflare-door` menambah adapter Bomberman. Dry-run bundlenya 96,86 KiB /
+gzip 26,86 KiB (naik dari 47,25 / 13,45 KiB karena sim, bot, `gameApi`, dan `predict` ikut ter-bundle).
+Deploy branch ini mengganti Worker yang sama dengan Slap Arena, jadi dilakukan setelah PR di-merge:
+
+```bash
+cd cloudflare
+npx wrangler deploy
+```
+
+Frontend memakai Worker bila build punya `VITE_TRANSPORT=cloudflare` dan `VITE_CF_ROOMS_URL`.
 
 Terukur dari laptop ini ke edge Cloudflare selama deploy uji berturut-turut. Baris suite dan laju siaran
 berasal dari deploy adapter; baris mint dan handshake dari deploy tiket:
@@ -95,6 +116,8 @@ Setelah deploy nyata, `ALLOWED_ORIGINS` harus memuat domain Vercel produksi, dan
 ## Batas yang dijaga kode ini
 
 - `MAX_PLAYERS = 6`, kursi ketujuh ditolak 409 saat mint, jadi sebelum ada socket yang dibuat.
+  Bomberman memakai kapasitas papannya sendiri (2 atau 4) dari `room_config`, jadi tiket ketiga di
+  papan dua sudah ditolak sebelum socket lahir.
 - Handshake WebSocket butuh tiket HMAC-SHA256 yang ditandatangani Worker untuk kamar itu. Tanpa tiket,
   tiket palsu, tiket kamar lain, atau tiket kedaluwarsa: 401, tidak ada sesi yang diterima.
 - Tiket default 1 jam (`TICKET_TTL_SECONDS = 3600`), dan `ttl` hanya bisa dikecilkan saat `TEST_MODE=1`.
@@ -122,6 +145,11 @@ protokol sekarang membawa `applied` dan `held` (lihat bagian Mengukur di bawah).
    yang sama lewat Broadcast, dan belum ada satu baris pun kode frontend yang membaca `applied`/`held`.
 5. Belum terukur: CPU per tick di runtime nyata (wrangler lokal tidak memakainya), dan `load()` dari
    snapshot belum pernah diuji lewat eviksi DO sungguhan.
+6. Bomberman memprediksi satu langkah gerak lokal, tetapi tidak memprediksi bom, ledakan, atau
+   kematian. Tick global 30 Hz, ukuran snapshot per papan, dan hasil browser dua tab ada di
+   `docs/cloudflare-migration.md` bagian 14.
+7. Tanpa Supabase, room Bomberman tetap bisa dibuat dan dimainkan; yang hilang hanya baris riwayat
+   `matches` dan angka Hub. Hasil laga masih ditulis klien master lewat `finishOnlineMatch`.
 
 ## Mengukur
 

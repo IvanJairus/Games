@@ -35,6 +35,7 @@ const frames = (n: number): Promise<void> =>
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
 });
 
 describe('lobby', () => {
@@ -82,6 +83,15 @@ describe('lobby', () => {
     expect(screen.getByTestId('bomberman-join')).toBeDisabled();
     fireEvent.click(screen.getByTestId('bomberman-tab-solo'));
     expect(screen.getByTestId('bomberman-lobby-sedang')).toBeInTheDocument();
+  });
+
+  it('enables room creation from the Worker door even without Supabase', () => {
+    vi.stubEnv('VITE_TRANSPORT', 'cloudflare');
+    vi.stubEnv('VITE_CF_ROOMS_URL', 'https://rooms.example');
+    renderAt('/bomberman');
+    fireEvent.click(screen.getByTestId('bomberman-tab-online'));
+    expect(screen.getByTestId('bomberman-create')).not.toBeDisabled();
+    expect(screen.getByTestId('bomberman-join')).not.toBeDisabled();
   });
 
   it('normalises a typed code and refuses to send a short one', () => {

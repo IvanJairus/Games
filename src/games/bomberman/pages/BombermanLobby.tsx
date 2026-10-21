@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
-import { createOnlineRoom } from '../../common/multiplayer';
+import { createOnlineRoom, generateRoomCode } from '../../common/multiplayer';
+import { activeTransport } from '../../../lib/transport';
 import { getStoredPlayerName, isSupabaseConfigured, setStoredPlayerName } from '../../../lib/supabase';
 import { BOMBER_BOT_LEVELS } from '../engine/ai';
 import { characterById } from '../sprites';
@@ -24,7 +25,10 @@ const cleanCode = (raw: string): string => (raw.toUpperCase().match(CODE_ALPHABE
  */
 export function BombermanLobby() {
   const navigate = useNavigate();
-  const online = isSupabaseConfigured();
+  // The Worker door carries a room on its own. Supabase is still used for the match row and
+  // the result history when configured, but it is no longer a prerequisite for playing.
+  const doorMode = activeTransport() === 'cloudflare';
+  const online = isSupabaseConfigured() || doorMode;
   const [tab, setTab] = useState<Tab>('solo');
   const [name, setName] = useState(getStoredPlayerName());
   const [seats, setSeats] = useState(2);
@@ -54,13 +58,34 @@ export function BombermanLobby() {
     setError('');
     const board = boardFor(seats, size);
     try {
-      const { roomCode } = await createOnlineRoom({
-        gameType: 'bomberman',
-        maxPlayers: board.seats,
-        hostName: host,
-        initialState: { gameType: 'bomberman', seats: board.seats, size },
-      });
-      navigate(`/bomberman/m/${roomCode}`);
+      let roomCode: string;
+      if (doorMode) {
+        // The Worker creates the room on the first ticket mint, so the code can be generated
+        // here. The Supabase row is best-effort: it is what makes the result history work,
+        // not what makes the match playable.
+        roomCode = generateRoomCode();
+        try {
+          await createOnlineRoom({
+            gameType: 'bomberman',
+            maxPlayers: board.seats,
+            hostName: host,
+            initialState: { gameType: 'bomberman', seats: board.seats, size },
+            roomCode,
+          });
+        } catch (err) {
+          console.warn('[bomberman] baris riwayat Supabase tidak dibuat; room Worker tetap jalan', err);
+        }
+      } else {
+        ({ roomCode } = await createOnlineRoom({
+          gameType: 'bomberman',
+          maxPlayers: board.seats,
+          hostName: host,
+          initialState: { gameType: 'bomberman', seats: board.seats, size },
+        }));
+      }
+      // The Worker mints the first ticket from this URL. Board settings are part of the
+      // room, so the Durable Object can cap seats before a second player connects.
+      navigate(`/bomberman/m/${roomCode}?seats=${board.seats}&size=${size}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Room gagal dibuat.');
     } finally {

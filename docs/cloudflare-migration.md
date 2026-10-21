@@ -396,3 +396,106 @@ Cara rollback kalau Worker bermasalah: hapus `VITE_TRANSPORT` dari environment P
 Ini env build-time, bukan saklar runtime.
 
 Catatan operasional: env VITE_TRANSPORT dan VITE_CF_ROOMS_URL harus ada di tab Project untuk\lenvironment Production (bukan hanya Shared). CI menarik env dengan vercel pull --environment=production,\ljadi variabel yang tidak tertaut ke project tidak akan pernah masuk ke build.
+
+## 14. Bomberman pindah ke Durable Object (21 Oktober)
+
+Branch: `feat/bomberman-cloudflare-door`, dibuat dari `origin/main` dan sudah di-rebase ke
+`ae19208` (commit Slap Arena 30 Hz) sebelum PR. Worker yang dipakai **sama** dengan Slap Arena:
+satu Worker adalah router tipis ke satu Durable Object per kamar, dan isolasi sebenarnya sudah ada
+di level DO. Worker kedua hanya akan menggandakan secret, CORS, URL, dan pipeline deploy tanpa
+menambah isolasi.
+
+### 14.1 Bentuk arsitekturnya
+
+Bomberman mengikuti pintu yang sama dengan Slap Arena, dengan satu perbedaan yang dipaksa bentuk
+permainannya: **lorong Bomberman bukan dunia**. `BombermanSim` baru boleh lahir saat master menekan
+mulai, karena papan dan jumlah kursi sudah dipilih di lobby, sementara papan baru bisa dibuat setelah
+roster manusia diketahui.
+
+| Lapisan | Berkas | Tanggung jawab |
+| --- | --- | --- |
+| Aturan murni | `src/games/bomberman/engine/gameApi.ts` | `createGame`, `applyAction`, `removePlayer`, `loadWorld`, `snapshotOf`, `parseRoomConfig`. Tanpa DOM, jaringan, atau Supabase. |
+| Adapter Worker | `cloudflare/src/games/bomberman.ts` | Tipis: `join`, `start`, `input`, `char`, `tick` diteruskan ke `gameApi`; seed dan lantai dibuat server. |
+| Registry + kapasitas | `cloudflare/src/games/registry.ts` | `parseRoomOptions`, `roomCapacity`, `createAdapter(game, env, config)`. Bomberman memakai kapasitas papan (2 atau 4), bukan 6 kursi transport. |
+| Kamar | `cloudflare/src/room.ts` | Tabel `room_config`, negosiasi opsi pada mint pertama, kursi yang dipertahankan saat match berjalan, `releaseGhostSeats()` saat selesai. |
+| Pintu klien | `src/games/bomberman/engine/serverNet.ts` | `BombermanServerNet`: kirim niat, terima dunia. Kirim arah hanya saat berubah, bom saat ditekan, dan mint ulang saat reconnect. |
+| Prediksi tampilan | `src/games/bomberman/engine/predict.ts` | `MovementPredictor`: satu langkah lokal saat arah ditekan, lalu rekonsiliasi dengan offset pendek. Hanya menulis `ax`/`ay`, tidak pernah `x`/`y`. |
+| Halaman | `src/games/bomberman/pages/BombermanMatch.tsx` | `doorMode` dari `VITE_TRANSPORT`; jalur Broadcast lama tetap utuh dan tetap default. |
+
+Lima keputusan yang tidak ada di Slap Arena, dan alasannya:
+
+1. **Papan adalah milik kamar, bukan milik aksi `start`.** Lobby mengirim `?seats=2|4&size=kecil|besar`
+   saat membuat room. Mint pertama menyimpan `{seats,size}` di `room_config`; mint berikutnya boleh
+   mengosongkannya dan memakai nilai tersimpan. Nilai yang berbeda di kamar yang sama ditolak
+   `options_conflict` (409), dan kursi ketiga di papan dua ditolak `room_full` (409) **sebelum** socket
+   dibuat. Kalau papan baru ditentukan saat `start`, kamar bisa memberi enam kursi lalu menemukan
+   papannya hanya dua. Bila tab tamu sempat membuka kamar lebih dulu, klien mencoba mint tanpa opsi
+   dan memakai papan tersimpan, bukan menolak room.
+2. **Bot dijalankan tick server.** `gameApi` membuat `BombermanBot` per kursi bot dan memanggil
+   `update(state, dt)` di dalam aksi `tick`. Tab master tidak lagi menyimulasikan apa pun.
+3. **Input dikirim saat berubah, bukan tiap tick.** Arah yang ditahan tidak menghasilkan pesan; hanya
+   perubahan arah dan tekanan bom. `seq` tetap naik pada setiap pesan dan `gameApi` menolak `seq` yang
+   tidak maju, jadi pesan lama tidak bisa diputar ulang. Pada 30 Hz, ini membuat pemain yang menahan
+   satu arah hampir tidak mengirim apa pun.
+4. **Kursi tidak dilepas di tengah match.** Kalau pemain terputus saat `phase = playing`, DO
+   mempertahankan baris `room_seats`, `removePlayer` mengubah badannya menjadi bot, dan reconnect
+   meminta tiket dengan id pemain yang sama sehingga kursinya kembali. `join` mengambil alih badan
+   bot itu (`bot = false`). Saat match selesai, `releaseGhostSeats()` membuang kursi yang tidak
+   kembali, jadi rematch tidak menemukan kamar yang tampak penuh.
+5. **Satu langkah diprediksi di klien, sisanya server.** `MovementPredictor` memulai langkah lokal
+   pada frame berikutnya hanya bila sel tujuan masih walkable di snapshot terakhir. Saat server
+   memulai langkah yang sama, offset yang tersisa diredam sekitar 100 ms; bila server menolak,
+   sprite meluncur kembali ke sel otoritatif. Prediksi tidak pernah menulis `x`/`y`, tidak
+   memprediksi bom, dan mati saat pemain KO atau fase bukan `battle`.
+
+Kontrak pesan tidak berubah bentuknya: `welcome`, `state`, `applied`, `held`, `fx`, dan `error`.
+`welcome` sekarang membawa `config` (papan), dan `players` membawa `seat`; keduanya opsional bagi
+klien lama. `Arena` juga memberi `data-seat` pada node pemain, dipakai untuk mengukur prediksi di
+browser.
+
+### 14.2 Bukti
+
+| Tahap | Hasil |
+| --- | --- |
+| `npx tsc -b`, `cloudflare npx tsc --noEmit` | exit 0 |
+| `npx vitest run tests/unit/bomberman-api.test.ts` | 25 lulus dari 25 |
+| `npx vitest run tests/unit/bomberman-servernet.test.ts` | 11 lulus dari 11 |
+| `npx vitest run tests/unit/bomberman-predict.test.ts` | 5 lulus dari 5 |
+| Suite vitest penuh | 482 lulus, 2 skipped (tes live yang butuh `RUN_LIVE_WS=1`), 38 berkas |
+| Suite Worker `wrangler dev --local` | 41 lulus dari 41, termasuk 10 tes Bomberman baru |
+| `guard:check` + `csp:check` | bersih |
+| Build `VITE_TRANSPORT=cloudflare` | sukses; `BombermanMatch` 22,90 KiB (gzip 8,51 KiB) |
+| Bundle Worker (`wrangler deploy --dry-run`) | 96,86 KiB / gzip 26,86 KiB, naik dari 47,25 / 13,45 KiB |
+| Browser nyata, dua konteks Chrome, room 2 kursi | 11 lulus dari 11: room dibuat tanpa Supabase (0 request REST), mint 200, WebSocket terbuka, fase `battle`, gerak kursi master, prediksi 19 ms vs sel server 206 ms, 0 `pageerror` |
+| Laju siaran server (klien WS, 3,98 detik) | 30,16 state/detik, rata-rata 1.770 B/state untuk 2 kursi |
+
+Pengukuran payload dunia (`JSON.stringify(snapshot).length`, satu sampel setelah 10 detik):
+
+| Papan | Byte |
+| --- | --- |
+| 2 kursi, kecil 11 x 9 | 1.475 |
+| 2 kursi, besar 15 x 13 | 2.174 |
+| 4 kursi, kecil 15 x 11 | 2.444 |
+| 4 kursi, besar 21 x 15 | 3.552 |
+
+Pada 30 Hz, papan terbesar berarti sekitar 107 kB/detik per kursi. Egress Worker tidak ditagih, dan
+`rows written` tetap rendah karena snapshot SQL hanya ditulis tiap 15 detik dan saat fase berubah.
+
+### 14.3 Yang belum dikerjakan dan batasnya
+
+1. **Deploy:** Worker dan frontend di-deploy dari commit yang sudah di-merge. Kalau Worker perlu
+   rollback, deploy ulang commit sebelumnya; frontend bisa kembali ke Broadcast dengan menghapus
+   `VITE_TRANSPORT` lalu redeploy.
+2. **Prediksi hanya satu langkah dan tidak memprediksi bom.** Ledakan, kematian, dan bot tetap murni
+   server. Pemain yang menekan arah ke sel yang baru saja berubah di server bisa melihat koreksi
+   pendek; itu konsekuensi yang diterima, bukan bug yang disembunyikan.
+3. **Lorong bisa berdiri tanpa Supabase, tetapi riwayat laga butuh Supabase.** Kode room dibuat klien
+   dengan alfabet 32 karakter, lalu baris `matches` Supabase dibuat best-effort memakai kode yang
+   sama. Tanpa Supabase, mabar tetap jalan; hanya riwayat dan angka Hub yang tidak tercatat.
+   `finishOnlineMatch` masih dipanggil klien master, bukan DO.
+4. **Tick 30 Hz global.** Bomberman ikut tick yang sama dengan Slap Arena; tidak ada tick per game.
+5. **`load()` belum diuji lewat eviksi DO sungguhan.** Yang ada: unit test snapshot/restore dan
+   `loadWorld` di Worker, bukan eviction nyata di runtime Cloudflare.
+
+Rollback tetap satu saklar build: hapus `VITE_TRANSPORT` atau setel ke `supabase`, lalu redeploy
+frontend. Jalur Broadcast lama tidak dihapus.

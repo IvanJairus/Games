@@ -1,6 +1,9 @@
+/** The subset of Web Crypto this file needs; keeps the Worker build free of the DOM lib. */
+type CryptoLike = { getRandomValues?: (array: Uint8Array) => Uint8Array };
+
 export const randomBytes = (length: number): Uint8Array => {
   const bytes = new Uint8Array(length);
-  const webcrypto = typeof globalThis.crypto !== 'undefined' ? globalThis.crypto : undefined;
+  const webcrypto = (globalThis as { crypto?: CryptoLike }).crypto;
   if (webcrypto && typeof webcrypto.getRandomValues === 'function') {
     webcrypto.getRandomValues(bytes);
     return bytes;
