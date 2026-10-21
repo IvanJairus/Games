@@ -1,5 +1,9 @@
 # Migrasi lapisan realtime ke Cloudflare Workers + Durable Objects
 
+> Catatan 2026-10-21: prediksi langkah lokal Bomberman sudah dilepas. Bagian yang menyebut
+> `engine/predict.ts` di dokumen ini adalah catatan sejarah, bukan keadaan kode sekarang. Lihat
+> CHANGELOG 2026-10-21.
+
 Status dokumen: langkah 1 (inventaris dan rencana). Tidak ada kode yang diubah.
 
 Baseline rollback: tag `baseline-pre-cloudflare` pada commit `4053857` (commit yang sama dengan
