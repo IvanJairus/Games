@@ -44,8 +44,9 @@ akhir:           phase finished, winner 3, winnerName "Bot 4", alive [0,1]
 - `npm run test:unit`: 373 lulus, 2 dilewati.
 - `npm run test:ui`: 122 lulus.
 - `cd cloudflare && npm run test:ws` dengan `wrangler dev --local`: 41 dari 41 lulus.
-- `npm run gameplay:check`: 157 dari 157 lulus, termasuk viewport baru `desktop-luas` dan
-  `phone-landscape-luas` serta tumpang tindih D-pad 0 px2.
+- `npm run gameplay:check`: 173 dari 173 lulus, termasuk viewport baru `desktop-luas`,
+  `phone-landscape-luas`, dan `desktop-teams`; tumpang tindih D-pad 0 px2, badge tim T1/T2 muncul dua
+  kali masing-masing, dan lantai batu menampilkan ventilasinya.
 - `npm run release:check`: 5 tahap lulus.
 
 ### Catatan
