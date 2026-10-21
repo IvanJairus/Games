@@ -21,6 +21,7 @@ import { BombermanSim } from '../engine/sim';
 import { smooth } from '../engine/smooth';
 import { BombermanBot } from '../engine/ai';
 import { BombermanNet, type WorldPayload } from '../engine/net';
+import { MovementPredictor } from '../engine/predict';
 import {
   BombermanServerNet,
   parseDoorConfig,
@@ -117,6 +118,10 @@ export function BombermanMatch() {
   const netRef = useRef<BombermanNet | null>(null);
   const doorRef = useRef<BombermanServerNet | null>(null);
   const doorPlayerIdRef = useRef('');
+  const predictorRef = useRef(new MovementPredictor());
+  const lastPredictDirRef = useRef<Facing | null>(null);
+  const lastPredictRoundRef = useRef(-1);
+  const lastWorldPhaseRef = useRef('');
   const isHostRef = useRef(false);
   const mySeatRef = useRef(-1);
   const keysRef = useRef<Set<Facing>>(new Set());
@@ -383,6 +388,8 @@ export function BombermanMatch() {
         getDir: () => touchRef.current ?? Array.from(keysRef.current).pop() ?? null,
         onWelcome: (info: DoorWelcome) => {
           doorPlayerIdRef.current = info.id;
+          predictorRef.current.reset();
+          lastPredictDirRef.current = null;
           setDoorSeat(info.seat);
           mySeatRef.current = info.seat;
           setDoorMaster(info.master === info.id);
@@ -415,6 +422,18 @@ export function BombermanMatch() {
             simRef.current = sim;
           }
           sim.applySnapshot(world);
+          // A new round (or a fresh countdown) invalidates a lead from the old board.
+          if (world.phase === 'countdown' || world.round !== lastPredictRoundRef.current) {
+            predictorRef.current.reset();
+            lastPredictDirRef.current = null;
+            lastPredictRoundRef.current = world.round;
+          }
+          if (world.phase !== lastWorldPhaseRef.current) {
+            // A direction held through the countdown must be observed again when the fight
+            // starts, otherwise the first move of the round gets no prediction at all.
+            if (world.phase === 'battle') lastPredictDirRef.current = null;
+            lastWorldPhaseRef.current = world.phase;
+          }
           setPhase('playing');
           setResult(world.phase === 'finished' ? { winner: world.winner } : null);
         },
@@ -498,7 +517,15 @@ export function BombermanMatch() {
         // The server owns the clock. This tab only samples the held direction and animates
         // between the 20 Hz frames; sending happens on change, not on every frame.
         doorRef.current?.flush();
+        if (held !== lastPredictDirRef.current) {
+          lastPredictDirRef.current = held;
+          predictorRef.current.observe(sim.state, mySeatRef.current, held, now);
+        }
         smooth(sim.state, dt);
+        // View-only lead: it writes ax/ay, never the server's x/y. The next snapshot and the
+        // correction decay in reconcile() keep it from drifting away from the authority.
+        predictorRef.current.reconcile(sim.state, mySeatRef.current, now);
+        predictorRef.current.apply(sim.state, mySeatRef.current, now);
         arenaRef.current?.draw(sim.state, []);
         return;
       }

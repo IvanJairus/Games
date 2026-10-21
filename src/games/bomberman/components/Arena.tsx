@@ -188,7 +188,7 @@ export const Arena = forwardRef<ArenaHandle, ArenaProps>(function Arena(
         }
       }
 
-      const want = new Map<string, { x: number; y: number; sig: string; markup: string }>();
+      const want = new Map<string, { x: number; y: number; sig: string; markup: string; seat?: number }>();
       for (let y = 0; y < state.rows; y++) {
         for (let x = 0; x < state.cols; x++) {
           if (state.grid[y][x] === 'soft') {
@@ -222,6 +222,7 @@ export const Arena = forwardRef<ArenaHandle, ArenaProps>(function Arena(
           y: p.ay,
           sig: `player:${p.charId}:${pose}:${p.facing}:${p.shield ? 1 : 0}`,
           markup: fit(spriteMarkup(p.charId, pose, p.facing as SpriteFacing), CHAR_BOX),
+          seat: p.seat,
         });
       }
 
@@ -233,6 +234,7 @@ export const Arena = forwardRef<ArenaHandle, ArenaProps>(function Arena(
           node = document.createElementNS('http://www.w3.org/2000/svg', 'g');
           node.innerHTML = spec.markup;
           node.dataset.sig = spec.sig;
+          if (spec.seat !== undefined) node.dataset.seat = String(spec.seat);
           host.appendChild(node);
           nodes.current.set(key, node);
         } else if (node.dataset.sig !== spec.sig) {

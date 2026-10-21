@@ -111,12 +111,20 @@ export async function createOnlineRoom(params: {
   maxPlayers: number;
   hostName: string;
   initialState: unknown;
+  /**
+   * A Worker-created room already chose its code before the first ticket mint. Reusing that
+   * code here keeps the Supabase history row attached to the same room instead of inventing
+   * a second, unrelated code.
+   */
+  roomCode?: string;
 }): Promise<{ roomCode: string; matchId: string }> {
   const supabase = getSupabase();
   if (!supabase) throw new Error('Supabase belum terkonfigurasi');
 
   const sessionId = getPlayerSessionId();
-  const roomCode = generateRoomCode();
+  const asked = params.roomCode?.trim().toUpperCase();
+  if (asked && !/^[A-Z0-9]{4,12}$/.test(asked)) throw new Error('Kode room tidak sah');
+  const roomCode = asked || generateRoomCode();
 
   const { data: matchData, error: matchError } = await supabase
     .from('matches')
