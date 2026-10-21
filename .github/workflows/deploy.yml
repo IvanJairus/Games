@@ -147,12 +147,17 @@ jobs:
           fi
           exit 0
 
-      - name: Inject Supabase Credentials into Vercel Build Environment
+      - name: Inject Supabase and Worker Credentials into Vercel Build Environment
         if: steps.pull.outputs.ok == 'true'
         run: |
           mkdir -p .vercel
           echo "VITE_SUPABASE_URL=${{ secrets.VITE_SUPABASE_URL }}" >> .vercel/.env.production.local
           echo "VITE_SUPABASE_ANON_KEY=${{ secrets.VITE_SUPABASE_ANON_KEY }}" >> .vercel/.env.production.local
+          # The transport flag is a build-time switch. Keeping it next to the Supabase
+          # credentials means a CLI deploy can never ship a bundle that still points at
+          # Broadcast while the Worker is the thing being verified.
+          echo "VITE_TRANSPORT=cloudflare" >> .vercel/.env.production.local
+          echo "VITE_CF_ROOMS_URL=https://ij-game-rooms.filemonivanjairus.workers.dev" >> .vercel/.env.production.local
 
       - name: Build Project Artifacts
         if: steps.pull.outputs.ok == 'true'
@@ -160,6 +165,26 @@ jobs:
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_TRANSPORT: cloudflare
+          VITE_CF_ROOMS_URL: https://ij-game-rooms.filemonivanjairus.workers.dev
+
+      # A green deploy that shipped the Broadcast bundle is the exact failure this flag
+      # already caused once. Assert the Worker URL is physically in the lazy chunk.
+      - name: Assert the Worker transport is in the build
+        if: steps.pull.outputs.ok == 'true'
+        run: |
+          set -e
+          shopt -s nullglob
+          files=(dist/games/assets/v2/BombermanMatch-*.js)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "BombermanMatch chunk tidak ditemukan di dist/games/assets/v2"
+            exit 1
+          fi
+          if ! grep -q "workers.dev" "${files[@]}"; then
+            echo "Transport Worker tidak ikut ke bundle: VITE_TRANSPORT/VITE_CF_ROOMS_URL hilang"
+            exit 1
+          fi
+          echo "Transport Worker terverifikasi di ${files[*]}"
 
       - name: Deploy to Vercel (Production)
         if: steps.pull.outputs.ok == 'true'
