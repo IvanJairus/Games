@@ -169,19 +169,25 @@ jobs:
           VITE_CF_ROOMS_URL: https://ij-game-rooms.filemonivanjairus.workers.dev
 
       # A green deploy that shipped the Broadcast bundle is the exact failure this flag
-      # already caused once. Assert the Worker URL is physically in the lazy chunk.
+      # already caused once. The switch and URL live in the shared transport chunk, not in
+      # the lazy BombermanMatch chunk; a CF build compiles the switch to `()=>"cloudflare"`,
+      # while a default build compiles it to `()=>"supabase"` and drops the Worker URL.
       - name: Assert the Worker transport is in the build
         if: steps.pull.outputs.ok == 'true'
         run: |
           set -e
           shopt -s nullglob
-          files=(dist/games/assets/v2/BombermanMatch-*.js)
+          files=(dist/games/assets/v2/transport-*.js)
           if [ ${#files[@]} -eq 0 ]; then
-            echo "BombermanMatch chunk tidak ditemukan di dist/games/assets/v2"
+            echo "transport chunk tidak ditemukan di dist/games/assets/v2"
             exit 1
           fi
-          if ! grep -q "workers.dev" "${files[@]}"; then
-            echo "Transport Worker tidak ikut ke bundle: VITE_TRANSPORT/VITE_CF_ROOMS_URL hilang"
+          if ! grep -q 'cloudflare' "${files[@]}"; then
+            echo "VITE_TRANSPORT tidak masuk ke bundle: transport masih default"
+            exit 1
+          fi
+          if ! grep -q 'workers.dev' "${files[@]}"; then
+            echo "VITE_CF_ROOMS_URL tidak masuk ke bundle"
             exit 1
           fi
           echo "Transport Worker terverifikasi di ${files[*]}"
