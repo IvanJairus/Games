@@ -1,3 +1,36 @@
+## 2026-10-21 - Bomberman online: prediksi langkah lokal dilepas
+
+Setelah dua perbaikan pada `MovementPredictor` tetap menyisakan gerak yang terasa mundur lalu maju,
+prediksi langkah lokal dilepas dari jalur door. Server tetap otoritatif dan mengirim state 30 Hz;
+klien hanya menjalankan `smooth()` untuk interpolasi 60 fps di antara snapshot.
+
+### Kenapa
+
+- Server tick 30 Hz dan satu langkah petak sekitar 150 ms. Tanpa prediksi, gerak mulai setelah satu
+  RTT ditambah paling lama 33 ms. Pada RTT ponsel 50 sampai 100 ms itu sekitar 80 sampai 130 ms,
+  masih di bawah satu langkah.
+- Prediksi hanya menghemat sekitar satu RTT, tetapi menambah sumber posisi visual kedua yang harus
+  direkonsiliasi terus-menerus. Dua bug terakhir, langkah lama yang dimainkan saat arah berubah dan
+  tap yang tidak pernah diterapkan server, hidup di lapisan itu, bukan di engine.
+
+### Diubah
+
+- `src/games/bomberman/pages/BombermanMatch.tsx` jalur door: `observe`, `reconcile`, dan `apply`
+  dibuang; tinggal `smooth()` lalu `draw()`. Komentar loop menjelaskan bahwa tidak ada langkah yang
+  digambar mendahului server.
+- `src/games/bomberman/engine/predict.ts` dan dua berkas test-nya dihapus. Tidak ada import lain yang
+  memakainya.
+- `docs/cloudflare-migration.md` diberi catatan bahwa bagian prediksi di dokumen itu adalah sejarah.
+
+### Terukur
+
+- `npm run test:unit`: 370 lulus, 2 dilewati. Turun 9 karena sembilan test prediksi ikut dihapus.
+- `npm run test:ui`: 122 lulus.
+- `npm run release:check`: 5 tahap lulus.
+- `npm run guard:check`: 3 cek engine plus `csp:check` lolos.
+- Belum diukur: latency tombol ke gerak di room nyata sesudah perubahan. Angka 80 sampai 130 ms di
+  atas adalah hitungan dari RTT ditambah tick 33 ms, bukan hasil pengukuran.
+
 ## 2026-10-21 - Bomberman online: panah baru tidak lagi menunggu langkah lama
 
 Laporan pemain lewat video: satu tekan panah membuat karakter terlihat mundur lalu maju. Terjadi di
