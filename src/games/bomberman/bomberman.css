@@ -164,6 +164,17 @@
   font-weight: 500;
 }
 
+/* Team badge: two chars, so it fits the chip on a phone without hiding the score. */
+.bm-chip__team {
+  flex: 0 0 auto;
+  padding: 1px 5px;
+  border-radius: 6px;
+  background: rgba(28, 25, 23, .08);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .3px;
+}
+
 @media (min-width: 720px) {
   .bm-chip__char { display: inline; }
 }
@@ -192,6 +203,7 @@
 /* ---------- stage ---------- */
 
 .bm-stage {
+  --bm-dir: 92px;
   position: relative;
   z-index: 1;
   flex: 1 1 auto;
@@ -314,6 +326,18 @@
   text-align: center;
 }
 
+/* Sudden death warning. It shares the status row, so its arrival cannot move the board. */
+.bm-hint {
+  flex: 0 0 auto;
+  color: var(--ink-dim, #5c5348);
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.bm-hint--danger {
+  color: #b42318;
+}
+
 /* ---------- controls ---------- */
 
 .bm-pad {
@@ -332,7 +356,6 @@
    width-bound in portrait, so the pad grows into the empty band under it. Measured at
    390x844 the overlap is 0 px2 on both the 11x9 and the 21x15 board. */
 .bm-dpad {
-  --bm-dir: 92px;
   position: relative;
   z-index: 6;
   display: grid;
@@ -562,7 +585,7 @@
    360x640 the arena is covered by 21419 px2, which is about 22 cells of the 11x9 board.
    64 px is the largest value that measured 0 px2 there. */
 @media (orientation: portrait) and (max-height: 700px) {
-  .bm-dpad { --bm-dir: 64px; }
+  .bm-stage { --bm-dir: 64px; }
 }
 
 @media (max-height: 480px) and (orientation: landscape) {
@@ -573,7 +596,15 @@
      both boards (52 px covers 993 px2 of the 21x15 arena), so that is the ceiling here and
      the arrows grow by 4 px, not by 2x. Shrinking the board to buy more arrow was not
      approved and is not what this does. */
-  .bm-dpad { --bm-dir: 48px; }
+  .bm-stage { --bm-dir: 48px; }
+  /* The pad shares the bottom-left corner of the stage with the board. At 667 px the
+     25-column board measured 369 px wide and reached 3 px under the pad (453 px2 of
+     playfield). The wrap keeps one control column free on each side, which caps a phone
+     landscape board at 667 - 2 * (148 + 8) = 355 px. The 21-column board is 351 px, so
+     this rule does not touch it. */
+  .bm-stage:has(.bm-dpad) .bm-boardwrap {
+    width: min(100%, calc(100cqh * var(--bm-ratio-num, 1.2)), calc(100vw - 2 * (3 * var(--bm-dir) + 12px)));
+  }
   .bm-action--bom { width: 72px; height: 72px; font-size: 12px; }
   .bm-top { padding-top: calc(4px + var(--bm-safe-t)); padding-bottom: 2px; }
   .bm-status { min-height: 30px; font-size: 12px; }

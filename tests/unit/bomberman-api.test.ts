@@ -51,13 +51,13 @@ describe('room config at the door', () => {
     expect(parsed).toEqual({ ok: true, config: DEFAULT_ROOM_CONFIG, provided: false });
   });
 
-  it('reads the two lobby knobs and marks them provided', () => {
+  it('reads the lobby knobs and marks them provided', () => {
     const params = new Map([
       ['seats', '2'],
       ['size', 'besar'],
     ]);
     const parsed = parseRoomConfig((name) => params.get(name) ?? null);
-    expect(parsed).toEqual({ ok: true, config: { seats: 2, size: 'besar' }, provided: true });
+    expect(parsed).toEqual({ ok: true, config: { seats: 2, size: 'besar', teams: false }, provided: true });
   });
 
   it('rejects a seat count or board the engine does not know', () => {

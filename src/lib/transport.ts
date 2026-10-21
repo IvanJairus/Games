@@ -25,7 +25,9 @@ export interface RoomMintOptions {
   /** Bomberman board seats. The Worker caps the room at this number from the first mint. */
   seats?: 2 | 4;
   /** Bomberman board size. Stored with the room, so later joins do not need to repeat it. */
-  size?: 'kecil' | 'besar';
+  size?: 'kecil' | 'besar' | 'luas';
+  /** Bomberman two-team mode. Four seats only; the Worker stores it with the room. */
+  teams?: boolean;
 }
 
 /**

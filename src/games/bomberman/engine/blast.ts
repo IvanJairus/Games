@@ -15,8 +15,11 @@ import {
   ESCAPE_DEPTH,
   Facing,
   PowerPickup,
+  SHRINK_WARN_SECONDS,
+  VENT_WARN_SECONDS,
   bombAt,
   cellAt,
+  nextShrinkCells,
   walkable,
 } from './types';
 
@@ -42,6 +45,7 @@ const key = (x: number, y: number): string => `${x},${y}`;
 export const blastCells = (
   state: BombermanState,
   bomb: { x: number; y: number; range: number },
+  pierce = false,
 ): Blast => {
   const cells: BlastCell[] = [{ x: bomb.x, y: bomb.y, core: true }];
   const softs: Coord[] = [];
@@ -56,7 +60,11 @@ export const blastCells = (
       if (kind === 'hard') break;
       if (kind === 'soft') {
         softs.push({ x, y });
-        break;
+        /* A piercing blast spends a block and keeps the arm going. The block cell itself
+           is not flame: nothing can stand there, and drawing fire inside the rubble read
+           as if the block survived. */
+        if (!pierce) break;
+        continue;
       }
       cells.push({ x, y, end: i === bomb.range });
       const other = bombAt(state, x, y);
@@ -134,6 +142,16 @@ export const dangerCells = (state: BombermanState): Set<string> => {
   for (const f of state.flames) out.add(key(f.x, f.y));
   for (const b of state.bombs) {
     for (const c of blastCells(state, b).cells) out.add(key(c.x, c.y));
+  }
+  /* The ring that is about to become wall is just as lethal as fire, and it is
+     announced first, so a bot that ignores it would walk into the collapse. */
+  if (state.sudden > 0 && state.sudden <= SHRINK_WARN_SECONDS) {
+    for (const c of nextShrinkCells(state)) out.add(key(c.x, c.y));
+  }
+  /* A vent about to fire is a hazard the bot can see coming. Before the warning it is
+     just floor, so walking over one early is a risk, not a mistake. */
+  if (state.vent > 0 && state.vent <= VENT_WARN_SECONDS) {
+    for (const v of state.vents) out.add(key(v.x, v.y));
   }
   return out;
 };

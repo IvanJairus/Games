@@ -13,9 +13,12 @@ export type Facing = 'up' | 'down' | 'left' | 'right';
  */
 export const CHARACTER_IDS = ['robo', 'tupai', 'radar', 'biskuit', 'lampu', 'sekrup'] as const;
 export type CharacterId = (typeof CHARACTER_IDS)[number];
-export type PowerKind = 'flame' | 'speed' | 'count' | 'shield';
+export type PowerKind = 'flame' | 'speed' | 'count' | 'shield' | 'kick' | 'remote' | 'pierce';
 export type Phase = 'waiting' | 'countdown' | 'battle' | 'roundOver' | 'finished';
 export type FloorKind = 'grass' | 'sand' | 'stone';
+
+/** Seats alternate teams, so the four corners put each pair on one side of the board. */
+export const teamOf = (seat: number): number => seat % 2;
 
 export interface Coord {
   x: number;
@@ -48,11 +51,19 @@ export const ROUND_OVER_SECONDS = 1.8;
  */
 export const SCORE_TO_WIN = 3;
 /**
- * A round has to end even if nobody dies. Two cautious bots, or two players who both
- * hide, otherwise stall the match forever: the only other ending was a death. Kept short
- * enough that three stalled rounds are still under two minutes of play.
+ * A round has to end even if nobody dies, but not by handing the win to a machine
+ * pick. Past this mark the arena starts closing in, and the ring that is about to
+ * collapse is announced first, so a death there is a choice the player could see.
  */
-export const ROUND_SECONDS = 40;
+export const ROUND_SECONDS = 90;
+/** Seconds between two ring collapses once the arena starts closing. */
+export const SHRINK_INTERVAL = 8;
+/** How long before a collapse the target ring is announced and counted down. */
+export const SHRINK_WARN_SECONDS = 3;
+/** Seconds between eruptions of a stone-floor vent. */
+export const VENT_SECONDS = 9;
+/** How long before an eruption the vent counts as danger, for the bots and the HUD. */
+export const VENT_WARN_SECONDS = 1.6;
 /**
  * A shield pops once, but the flame that broke it keeps burning for FLAME_SECONDS.
  * Without a grace window the same fire kills the seat on the very next frame.
@@ -68,34 +79,44 @@ export interface BoardConfig {
 }
 
 /**
- * Two arenas, chosen in the lobby. The 15x11 board exists so four seats get
- * real elbow room; every rule in the engine reads cols/rows off the state.
+ * Three arenas, chosen in the lobby. `luas` exists because two humans plus two bots on
+ * 21x15 still meet in the middle quickly; the extra width buys flanking routes, paid for
+ * with smaller cells. Only the four-seat board has it, since a duel already fits one.
  */
-export type BoardSize = 'kecil' | 'besar';
+export type BoardSize = 'kecil' | 'besar' | 'luas';
 
 /**
- * Two arenas per seat count. The large pair is about twice the cell count of the small
- * one, which is what "twice as big" means for a top-down grid: doubling the side would
- * quadruple the field and leave a phone with unreadable cells.
+ * The large pair is about twice the cell count of the small one. 25x17 is the third
+ * step: on a 375 px phone its cells are about 15 px, which is the floor where a sprite
+ * with a face still reads.
  */
 export const BOARDS = {
   duel: { seats: 2, cols: 11, rows: 9 },
   duelLarge: { seats: 2, cols: 15, rows: 13 },
   freeFor: { seats: 4, cols: 15, rows: 11 },
   freeForLarge: { seats: 4, cols: 21, rows: 15 },
+  freeForHuge: { seats: 4, cols: 25, rows: 17 },
 } satisfies Record<string, BoardConfig>;
 
 export const boardFor = (seats: number, size: BoardSize = 'kecil'): BoardConfig => {
-  if (seats >= 4) return size === 'besar' ? BOARDS.freeForLarge : BOARDS.freeFor;
-  return size === 'besar' ? BOARDS.duelLarge : BOARDS.duel;
+  if (seats >= 4) {
+    if (size === 'luas') return BOARDS.freeForHuge;
+    return size === 'besar' ? BOARDS.freeForLarge : BOARDS.freeFor;
+  }
+  return size === 'kecil' ? BOARDS.duel : BOARDS.duelLarge;
 };
 
 /**
  * Reads the size back out of a board geometry. A client builds its arena from the first
  * world frame it receives, which carries cols and rows but not the lobby setting.
  */
-export const sizeForBoard = (seats: number, cols: number): BoardSize =>
-  boardFor(seats, 'besar').cols === cols ? 'besar' : 'kecil';
+export const sizeForBoard = (seats: number, cols: number): BoardSize => {
+  if (seats >= 4) {
+    if (cols >= BOARDS.freeForHuge.cols) return 'luas';
+    return cols >= BOARDS.freeForLarge.cols ? 'besar' : 'kecil';
+  }
+  return cols >= BOARDS.duelLarge.cols ? 'besar' : 'kecil';
+};
 
 export interface Bomb extends Coord {
   id: number;
@@ -140,6 +161,12 @@ export interface PlayerState {
   maxBombs: number;
   speed: number;
   shield: boolean;
+  /** Walking into a bomb pushes it one cell, if the far side is free. */
+  kick: boolean;
+  /** A second bomb press detonates this seat's bombs instead of planting. */
+  remote: boolean;
+  /** Blast destroys a soft block and keeps going through the cell behind it. */
+  pierce: boolean;
   grace: number;
   wins: number;
   /** Bombs planted in the current round, used to break a timeout without a death. */
@@ -161,6 +188,8 @@ export type SimEvent =
   | { t: 'countdown'; value: number }
   | { t: 'start' }
   | { t: 'round'; winner: number | null; round: number }
+  | { t: 'shrink'; ring: number; cells: number }
+  | { t: 'vent'; cells: number }
   | { t: 'end'; winner: number | null };
 
 export interface BombermanState {
@@ -170,6 +199,8 @@ export interface BombermanState {
   cols: number;
   rows: number;
   seats: number;
+  /** Four seats are split into two teams; three or fewer always play free-for-all. */
+  teams: boolean;
   round: number;
   scoreToWin: number;
   roundOver: number;
@@ -182,6 +213,14 @@ export interface BombermanState {
   elapsed: number;
   countdown: number;
   nextId: number;
+  /** Seconds until the next ring collapses. Zero until the arena starts closing. */
+  sudden: number;
+  /** How many outer rings have already become wall this round. */
+  ring: number;
+  /** Stone-floor vents that erupt on a timer. Empty on the other floors. */
+  vents: Coord[];
+  /** Seconds until the vents fire again. */
+  vent: number;
 }
 
 export interface InputState {
@@ -207,6 +246,37 @@ export const walkable = (state: BombermanState, x: number, y: number): boolean =
 
 export const aliveSeats = (state: BombermanState): number[] =>
   state.players.filter((p) => p.alive).map((p) => p.seat);
+
+/** Teams that still have at least one seat standing. Empty when the mode is free-for-all. */
+export const aliveTeams = (state: BombermanState): number[] => {
+  const out = new Set<number>();
+  for (const p of state.players) if (p.alive) out.add(teamOf(p.seat));
+  return [...out];
+};
+
+/** Distance of a cell from the outer wall, in rings. The wall itself is ring 0. */
+export const ringDistance = (state: BombermanState, x: number, y: number): number =>
+  Math.min(x, y, state.cols - 1 - x, state.rows - 1 - y);
+
+/**
+ * The last ring allowed to collapse. Stopping at a 1x1 core leaves somewhere to stand,
+ * so the walls never eat the board out from under a round.
+ */
+export const maxShrinkRings = (cols: number, rows: number): number =>
+  Math.max(0, Math.floor((Math.min(cols, rows) - 1) / 2) - 1);
+
+/** Cells of the ring that collapses next, so the HUD and the bots can react to it. */
+export const nextShrinkCells = (state: BombermanState): Coord[] => {
+  const ring = state.ring + 1;
+  if (ring > maxShrinkRings(state.cols, state.rows)) return [];
+  const out: Coord[] = [];
+  for (let y = 0; y < state.rows; y++) {
+    for (let x = 0; x < state.cols; x++) {
+      if (ringDistance(state, x, y) === ring) out.push({ x, y });
+    }
+  }
+  return out;
+};
 
 export const bombsOf = (state: BombermanState, seat: number): number =>
   state.bombs.reduce((n, b) => (b.seat === seat ? n + 1 : n), 0);

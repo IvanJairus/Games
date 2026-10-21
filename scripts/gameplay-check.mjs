@@ -43,6 +43,10 @@ const VIEWPORTS = [
   { name: 'desktop-large', width: 1280, height: 800, floor: 'stone', size: 'besar', seats: 4 },
   { name: 'phone-portrait-large', width: 375, height: 667, touch: true, floor: 'grass', size: 'besar', seats: 4 },
   { name: 'phone-landscape-large', width: 667, height: 375, touch: true, floor: 'sand', size: 'besar', seats: 4 },
+  /* The widest board is measured on both a desktop and the screen that will actually
+     shrink it: 25 columns of a four-seat arena on a phone. */
+  { name: 'desktop-luas', width: 1280, height: 800, floor: 'grass', size: 'luas', seats: 4 },
+  { name: 'phone-landscape-luas', width: 667, height: 375, touch: true, floor: 'sand', size: 'luas', seats: 4 },
 ];
 
 const results = [];
@@ -254,7 +258,16 @@ async function run() {
     await page.waitForSelector('[data-testid="bomberman-board"]', { timeout: 5000 });
     if (vp.size || vp.seats) {
       const box = await page.evaluate(() => document.querySelector('[data-testid="bomberman-board"]')?.getAttribute('viewBox'));
-      const want = vp.seats === 4 ? (vp.size === 'besar' ? '0 0 840 600' : '0 0 600 440') : (vp.size === 'besar' ? '0 0 600 520' : '0 0 440 360');
+      const want =
+        vp.seats === 4
+          ? vp.size === 'luas'
+            ? '0 0 1000 680'
+            : vp.size === 'besar'
+              ? '0 0 840 600'
+              : '0 0 600 440'
+          : vp.size === 'besar'
+            ? '0 0 600 520'
+            : '0 0 440 360';
       check(`${vp.name}: opens the arena it was asked for`, box === want, `${box} vs ${want}`);
     }
     if (vp.touch) {

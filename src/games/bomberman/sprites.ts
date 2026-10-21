@@ -229,7 +229,12 @@ export const softMarkup = (): string => `<svg class="bm-sprite" viewBox="0 0 64 
   <rect x="6" y="10" width="52" height="12" rx="6" fill="#fff" opacity=".22"/>
 </svg>`;
 
-export const POWER_KINDS = ['flame', 'speed', 'count', 'shield'] as const;
+export const ventMarkup = (): string => `<svg class="bm-sprite" viewBox="0 0 64 64" aria-hidden="true" focusable="false">
+  <rect x="10" y="14" width="44" height="36" rx="7" fill="#3f3f46" ${ink(2.6)}/>
+  <path d="M19 23h26M19 32h26M19 41h26" stroke="#a1a1aa" stroke-width="4" stroke-linecap="round"/>
+</svg>`;
+
+export const POWER_KINDS = ['flame', 'speed', 'count', 'shield', 'kick', 'remote', 'pierce'] as const;
 export type PowerGlyph = (typeof POWER_KINDS)[number];
 
 const POWER_SKIN: Record<PowerGlyph, { color: string; glyph: string; label: string }> = {
@@ -237,6 +242,9 @@ const POWER_SKIN: Record<PowerGlyph, { color: string; glyph: string; label: stri
   speed: { color: '#4dabf7', label: 'LARI', glyph: `<path d="M22 16l16 12-9 2 11 18-6 0-9-14-5 12z" fill="${CREAM}" ${ink(2.6)}/>` },
   count: { color: '#ffcf5c', label: '+1 BOM', glyph: `<circle cx="26" cy="34" r="9" fill="${CREAM}" ${ink(2.6)}/><circle cx="40" cy="30" r="7" fill="${CREAM}" ${ink(2.6)}/>` },
   shield: { color: '#5fd06a', label: 'PERISAI', glyph: `<path d="M32 15l14 5v11c0 9-7 14-14 18-7-4-14-9-14-18V20z" fill="${CREAM}" ${ink(2.8)}/>` },
+  kick: { color: '#c084fc', label: 'TENDANG', glyph: `<path d="M18 32h17l-6-7 5-4 13 12-13 12-5-4 6-7H18z" fill="${CREAM}" ${ink(2.4)}/>` },
+  remote: { color: '#fb923c', label: 'LEDAK', glyph: `<circle cx="32" cy="38" r="10" fill="${CREAM}" ${ink(2.6)}/><path d="M26 22l6-8 6 8M22 17l-5-4M42 17l5-4" stroke="${CREAM}" stroke-width="3" fill="none" stroke-linecap="round"/>` },
+  pierce: { color: '#22d3ee', label: 'TEMBUS', glyph: `<path d="M16 38h10l6-6 6 6h10" stroke="${CREAM}" stroke-width="4" fill="none" stroke-linecap="round"/><path d="M40 22l6 6-6 6" stroke="${CREAM}" stroke-width="4" fill="none" stroke-linecap="round"/>` },
 };
 
 export const powerLabel = (kind: PowerGlyph): string => POWER_SKIN[kind].label;

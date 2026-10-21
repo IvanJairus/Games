@@ -39,7 +39,12 @@ export function roomCapacity(code: string, options: unknown): number {
 
 const isBombermanConfig = (value: unknown): value is BombermanRoomConfig => {
   const config = value as Partial<BombermanRoomConfig> | null;
-  return !!config && (config.seats === 2 || config.seats === 4) && (config.size === 'kecil' || config.size === 'besar');
+  return (
+    !!config &&
+    (config.seats === 2 || config.seats === 4) &&
+    (config.size === 'kecil' || config.size === 'besar' || config.size === 'luas') &&
+    (config.teams === undefined || typeof config.teams === 'boolean')
+  );
 };
 
 export function createAdapter(code: string, env: Env, options?: unknown): GameAdapter | null {

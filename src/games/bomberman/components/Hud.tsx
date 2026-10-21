@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { Volume2, VolumeX } from 'lucide-react';
 
 import type { BombermanState } from '../engine/types';
+import { teamOf } from '../engine/types';
 import type { FxLevel, FxMode } from '../engine/fxMode';
 import { characterById } from '../sprites';
 
@@ -74,8 +75,12 @@ export function Hud({
             data-me={p.seat === mySeat ? '1' : '0'}
             data-testid={`bomberman-chip-${p.seat}`}
           >
-            <span className="bm-dot" style={{ background: SEAT_COLORS[i % SEAT_COLORS.length] }} />
+            <span
+              className="bm-dot"
+              style={{ background: SEAT_COLORS[state.teams ? teamOf(p.seat) : i % SEAT_COLORS.length] }}
+            />
             <span className="bm-chip__name">{p.name}</span>
+            {state.teams && <span className="bm-chip__team">T{teamOf(p.seat) + 1}</span>}
             <b>{p.wins}</b>
             <span className="bm-chip__char" aria-hidden="true">{characterById(p.charId).label}</span>
           </div>
@@ -87,13 +92,28 @@ export function Hud({
 
 interface StatusProps {
   text: string;
+  /** Seconds until the next ring becomes wall. Zero means the arena is not closing yet. */
+  sudden?: number;
+  ring?: number;
+  /** The bomb button fires this seat's bomb instead of planting another one. */
+  remote?: boolean;
 }
 
 /** Lives in its own reserved slot: the board must not move when this line changes length. */
-export function StatusLine({ text }: StatusProps) {
+export function StatusLine({ text, sudden = 0, ring = 0, remote = false }: StatusProps) {
   return (
     <div className="bm-status" role="status" aria-live="polite" data-testid="bomberman-status">
-      {text}
+      <span>{text}</span>
+      {remote && (
+        <b className="bm-hint" data-testid="bomberman-remote">
+          BOM lagi = ledak
+        </b>
+      )}
+      {sudden > 0 && (
+        <b className="bm-hint bm-hint--danger" data-testid="bomberman-shrink">
+          {ring > 0 ? `Papan menyempit ${ring}` : 'Papan menyempit'}: {Math.max(0, Math.ceil(sudden))}s
+        </b>
+      )}
     </div>
   );
 }

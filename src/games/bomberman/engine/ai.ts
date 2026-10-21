@@ -18,6 +18,7 @@ import {
   aliveSeats,
   bombAt,
   bombsOf,
+  teamOf,
   walkable,
 } from './types';
 
@@ -235,9 +236,16 @@ export class BombermanBot {
   }
 
   private rival(state: BombermanState): Coord {
-    const others = aliveSeats(state).filter((s) => s !== this.seat);
-    const target = others.length ? state.players.find((p) => p.seat === others[0]) : null;
-    return target ? { x: target.x, y: target.y } : { x: 0, y: 0 };
+    /* In team mode the nearest enemy is the target; a teammate's body is not something to
+       walk into, and chasing it made both bots of one side ignore the other side. */
+    const enemies = aliveSeats(state).filter((s) => s !== this.seat && (!state.teams || teamOf(s) !== teamOf(this.seat)));
+    const others = enemies.length ? enemies : aliveSeats(state).filter((s) => s !== this.seat);
+    const me = state.players.find((p) => p.seat === this.seat);
+    const pick = others
+      .map((s) => state.players.find((p) => p.seat === s))
+      .filter((p): p is PlayerState => !!p)
+      .sort((a, b) => (me ? this.distance(me, a) - this.distance(me, b) : 0))[0];
+    return pick ? { x: pick.x, y: pick.y } : { x: 0, y: 0 };
   }
 
   private distance(a: Coord, b: Coord): number {
