@@ -30,7 +30,7 @@ import {
 } from '../engine/serverNet';
 import { CHAR_IDS, characterById, spriteMarkup } from '../sprites';
 import { readCharId } from '../charPreference';
-import { type BoardSize, type Facing, type FloorKind, type InputState, type SimEvent, boardFor, sizeForBoard } from '../engine/types';
+import { type BoardSize, type Facing, type FloorKind, type InputState, type SimEvent, boardFor, sizeForBoard, teamOf } from '../engine/types';
 import { createFpsController, fxGates, levelAtMount, readFxMode, writeFxMode, type FxLevel } from '../engine/fxMode';
 import { Arena, type ArenaHandle } from '../components/Arena';
 import { Hud, StatusLine } from '../components/Hud';
@@ -50,12 +50,14 @@ interface RoomConfig {
   floor: FloorKind;
   seats: number;
   size: BoardSize;
+  teams: boolean;
   roster: SeatInfo[];
 }
 
 const FLOORS: FloorKind[] = ['grass', 'sand', 'stone'];
 const pickChar = (i: number): string => CHAR_IDS[i % CHAR_IDS.length];
-const readSize = (raw: unknown): BoardSize => (raw === 'besar' ? 'besar' : 'kecil');
+const readSize = (raw: unknown): BoardSize =>
+  raw === 'luas' ? 'luas' : raw === 'besar' ? 'besar' : 'kecil';
 
 const readConfig = (raw: unknown): RoomConfig | null => {
   const c = raw as Partial<RoomConfig> | null;
@@ -66,6 +68,7 @@ const readConfig = (raw: unknown): RoomConfig | null => {
     floor: c.floor ?? 'grass',
     seats: c.seats ?? c.roster.length,
     size: readSize(c.size),
+    teams: c.teams === true,
     roster: c.roster,
   };
 };
@@ -89,12 +92,13 @@ export function BombermanMatch() {
      lobby chose; a guest joining with only a code lets the Durable Object's stored config
      decide. Sending a default here would fight the stored value and be rejected. */
   const urlSeats: 2 | 4 = params.get('seats') === '2' ? 2 : 4;
-  const urlSize: BoardSize = params.get('size') === 'besar' ? 'besar' : 'kecil';
+  const urlSize: BoardSize = params.get('size') === 'luas' ? 'luas' : params.get('size') === 'besar' ? 'besar' : 'kecil';
   const doorMode = useRef(activeTransport() === 'cloudflare' && !!code).current;
   const doorId = useRef(doorMode ? getOrCreateDoorId() : '').current;
-  const mintOptions = useRef<{ seats?: 2 | 4; size?: BoardSize }>({
+  const mintOptions = useRef<{ seats?: 2 | 4; size?: BoardSize; teams?: boolean }>({
     ...(params.get('seats') ? { seats: urlSeats } : {}),
     ...(params.get('size') ? { size: urlSize } : {}),
+    ...(params.get('teams') ? { teams: params.get('teams') === '1' && urlSeats === 4 } : {}),
   }).current;
   const [sync, setSync] = useState<MatchSyncData | null>(null);
   const [phase, setPhase] = useState<'joining' | 'waiting' | 'playing' | 'gone'>('joining');
@@ -111,7 +115,11 @@ export function BombermanMatch() {
   const [doorSeat, setDoorSeat] = useState(-1);
   const [doorMaster, setDoorMaster] = useState(false);
   const [doorPlayers, setDoorPlayers] = useState<{ id: string; name: string; seat?: number }[]>([]);
-  const [doorConfig, setDoorConfig] = useState<DoorConfig>({ seats: urlSeats, size: urlSize });
+  const [doorConfig, setDoorConfig] = useState<DoorConfig>({
+    seats: urlSeats,
+    size: urlSize,
+    teams: urlSeats === 4 && params.get('teams') === '1',
+  });
 
   const arenaRef = useRef<ArenaHandle | null>(null);
   const simRef = useRef<BombermanSim | null>(null);
@@ -170,6 +178,7 @@ export function BombermanMatch() {
     return new BombermanSim({
       seats: board.seats,
       size: cfg.size,
+      teams: cfg.teams === true,
       seed: cfg.seed,
       floor: cfg.floor,
       players: cfg.roster.map((r) => ({ seat: r.seat, name: r.name, charId: r.charId, bot: r.bot })),
@@ -215,6 +224,7 @@ export function BombermanMatch() {
       floor: FLOORS[Math.floor(Math.random() * FLOORS.length)],
       seats: boardFor(data.match.max_players).seats,
       size: readSize((data.match.game_state as { size?: unknown } | null)?.size),
+      teams: (data.match.game_state as { teams?: unknown } | null)?.teams === true,
       roster,
     };
     simRef.current = makeSim(cfg);
@@ -326,6 +336,7 @@ export function BombermanMatch() {
                 simRef.current = new BombermanSim({
                   seats: st.seats,
                   size: sizeForBoard(st.seats, st.cols),
+                  teams: st.teams === true,
                   seed: st.seed,
                   floor: st.floor,
                   players: st.players.map((p) => ({ seat: p.seat, name: p.name, charId: p.charId, bot: p.bot })),
@@ -415,6 +426,7 @@ export function BombermanMatch() {
             sim = new BombermanSim({
               seats: world.seats,
               size: sizeForBoard(world.seats, world.cols),
+              teams: world.teams === true,
               seed: world.seed,
               floor: world.floor,
               players: world.players.map((p) => ({ seat: p.seat, name: p.name, charId: p.charId, bot: p.bot })),
@@ -658,6 +670,10 @@ export function BombermanMatch() {
   }, [sync, isHost, doorMode, doorPlayers.length, doorConfig.seats]);
 
   const sim = simRef.current;
+  const iWon =
+    result !== null &&
+    result.winner !== null &&
+    (sim?.state.teams ? teamOf(result.winner) === teamOf(mySeat) : result.winner === mySeat);
   const board = doorMode
     ? boardFor(doorConfig.seats, doorConfig.size)
     : boardFor(sync?.match.max_players ?? 2, readSize((sync?.match.game_state as { size?: unknown } | null)?.size));
@@ -760,15 +776,20 @@ export function BombermanMatch() {
         </Arena>
         {usesTouch && <DirectionPad dirRef={touchRef} onBomb={pressBomb} disabled={!!result} />}
       </div>
-      <StatusLine text={notice || status} />
+      <StatusLine
+        text={notice || status}
+        sudden={sim.state.sudden}
+        ring={sim.state.ring}
+        remote={!!me?.remote}
+      />
       {result && (
         <ResultDialog
           isOpen
           testId="bomberman-result"
           titleId="bomberman-result-online-title"
-          title={result.winner === mySeat ? 'Kamu menang' : 'Kamu kalah'}
+          title={iWon ? 'Kamu menang' : 'Kamu kalah'}
           kicker={`Room ${code}`}
-          tone={result.winner === mySeat ? 'win' : 'lose'}
+          tone={iWon ? 'win' : 'lose'}
           chip={characterById(me?.charId ?? 'robo').label}
           stats={[
             { label: 'Ronde', value: sim.state.round, accent: true },

@@ -1,6 +1,6 @@
 import { boardFor, type BoardSize } from '../engine/types';
 
-const SIZES: BoardSize[] = ['kecil', 'besar'];
+const LABELS: Record<BoardSize, string> = { kecil: 'Kecil', besar: 'Besar', luas: 'Luas' };
 
 interface BoardPickerProps {
   seats: number;
@@ -9,15 +9,16 @@ interface BoardPickerProps {
 }
 
 /**
- * Arena geometry chosen next to the seat count, because the two are tied together: every
- * seat count has exactly one small and one large board. The grid is printed on each option
- * so the tradeoff is a number the player can see rather than a surprise after the match
- * starts.
+ * Arena geometry chosen next to the seat count, because the two are tied together. The
+ * grid is printed on each option so the tradeoff is a number the player can see rather
+ * than a surprise after the match starts. The widest board only exists for four seats;
+ * for a duel it would be the same 15x13 as `besar`.
  */
 export function BoardPicker({ seats, value, onChange }: BoardPickerProps) {
+  const sizes: BoardSize[] = seats >= 4 ? ['kecil', 'besar', 'luas'] : ['kecil', 'besar'];
   return (
     <div className="bm-pick__row">
-      {SIZES.map((size) => {
+      {sizes.map((size) => {
         const board = boardFor(seats, size);
         return (
           <button
@@ -27,7 +28,7 @@ export function BoardPicker({ seats, value, onChange }: BoardPickerProps) {
             onClick={() => onChange(size)}
             data-testid={`bomberman-size-${size}`}
           >
-            {size === 'kecil' ? 'Kecil' : 'Besar'} {board.cols} x {board.rows}
+            {LABELS[size]} {board.cols} x {board.rows}
           </button>
         );
       })}

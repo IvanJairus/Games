@@ -18,18 +18,20 @@ import { useMuted } from '../../common/SoundToggle';
 import { playBombDrop, playExplosion, playKo, playPowerup, unlockAudio } from '../../common/audio';
 import { buzzThud } from '../../common/haptics';
 import { generateSeed } from '../engine/rng';
+import { teamOf } from '../engine/types';
 
 interface Setup {
   level: BotLevel;
   seats: number;
   size: BoardSize;
+  teams: boolean;
   charId: string;
   /** Pinned only for the screenshot pass; a normal match draws its floor from the seed. */
   floor?: FloorKind;
 }
 
 const FLOOR_NAMES: FloorKind[] = ['grass', 'sand', 'stone'];
-const SIZES: BoardSize[] = ['kecil', 'besar'];
+const SIZES: BoardSize[] = ['kecil', 'besar', 'luas'];
 
 export function BombermanLocal() {
   const [params] = useSearchParams();
@@ -39,6 +41,7 @@ export function BombermanLocal() {
     level: BOMBER_BOT_LEVELS.some((l) => l.id === levelParam) ? levelParam : 'sedang',
     seats: params.get('seats') === '4' ? 4 : 2,
     size: SIZES.includes(sizeParam as BoardSize) ? (sizeParam as BoardSize) : 'kecil',
+    teams: params.get('teams') === '1' && params.get('seats') === '4',
     charId: CHAR_IDS.includes(params.get('char') ?? '') ? (params.get('char') as string) : readCharId(),
     floor: FLOOR_NAMES.includes(params.get('floor') as FloorKind) ? (params.get('floor') as FloorKind) : undefined,
   });
@@ -91,6 +94,7 @@ export function BombermanLocal() {
         players,
         seats: board.seats,
         size: cfg.size,
+        teams: cfg.seats >= 4 && cfg.teams,
         seed: generateSeed(),
         floor: cfg.floor,
         rand: Math.random,
@@ -197,9 +201,13 @@ export function BombermanLocal() {
       } else if (!me?.alive) {
         setStatus('Kamu KO. Menunggu ronde berikutnya.');
       } else {
+        const kit = [me.kick ? 'tendang' : '', me.pierce ? 'tembus' : '', me.remote ? 'ledak jauh' : '']
+          .filter(Boolean)
+          .join(' \u00b7 ');
         setStatus(
           `Bom ${sim.state.bombs.filter((b) => b.seat === 0).length}/${me.maxBombs} \u00b7 jangkauan ${me.range} \u00b7 ` +
-            `kecepatan ${me.speed.toFixed(1)} \u00b7 ronde ${sim.state.round}/${sim.state.scoreToWin}`,
+            `kecepatan ${me.speed.toFixed(1)} \u00b7 ronde ${sim.state.round}/${sim.state.scoreToWin}` +
+            (kit ? ` \u00b7 ${kit}` : ''),
         );
       }
     };
@@ -255,7 +263,9 @@ export function BombermanLocal() {
                     key={n}
                     type="button"
                     aria-pressed={setup.seats === n}
-                    onClick={() => setSetup({ ...setup, seats: n })}
+                    onClick={() =>
+                      setSetup({ ...setup, seats: n, size: n < 4 && setup.size === 'luas' ? 'besar' : setup.size })
+                    }
                     data-testid={`bomberman-seats-${n}`}
                   >
                     {n} pemain
@@ -267,6 +277,21 @@ export function BombermanLocal() {
               <span className="bm-field__label">Ukuran arena</span>
               <BoardPicker seats={setup.seats} value={setup.size} onChange={(size) => setSetup({ ...setup, size })} />
             </div>
+            {setup.seats === 4 && (
+              <div className="bm-field">
+                <label className="bm-field__label" htmlFor="bm-local-teams">
+                  <input
+                    id="bm-local-teams"
+                    type="checkbox"
+                    checked={setup.teams}
+                    onChange={(e) => setSetup({ ...setup, teams: e.target.checked })}
+                    data-testid="bomberman-teams"
+                  />{' '}
+                  Mode tim 2v2
+                </label>
+                <p className="bm-note">Kamu dan bot ketiga satu tim. Api rekan tidak melukai, bom sendiri tetap.</p>
+              </div>
+            )}
             <p className="bm-note">
               Papan besar hampir dua kali jumlah petaknya. Di layar ponsel petaknya jadi lebih kecil.
             </p>
@@ -281,6 +306,7 @@ export function BombermanLocal() {
   }
 
   const finished = sim.state.phase === 'finished';
+  const won = sim.state.winner !== null && (sim.state.teams ? teamOf(sim.state.winner) === 0 : sim.state.winner === 0);
 
   return (
     <div className="bm-root" data-testid="bomberman-match">
@@ -323,16 +349,16 @@ export function BombermanLocal() {
         {usesTouch && <DirectionPad dirRef={touchRef} onBomb={() => sim.place(0)} disabled={finished} />}
       </div>
 
-      <StatusLine text={status} />
+      <StatusLine text={status} sudden={sim.state.sudden} ring={sim.state.ring} remote={!!sim.player(0)?.remote} />
 
       {finished && (
         <ResultDialog
           isOpen
           testId="bomberman-result"
           titleId="bomberman-result-title"
-          title={sim.state.winner === 0 ? 'Kamu menang' : 'Kamu kalah'}
+          title={won ? 'Kamu menang' : 'Kamu kalah'}
           kicker={`${sim.state.round} ronde dimainkan`}
-          tone={sim.state.winner === 0 ? 'win' : 'lose'}
+          tone={won ? 'win' : 'lose'}
           chip={characterById(sim.state.players[0].charId).label}
           stats={[
             { label: 'Bom ditanam', value: sim.state.players[0].bombsPlaced, accent: true },

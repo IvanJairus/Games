@@ -612,7 +612,7 @@ async function bomberTable(tag, opts = {}) {
 
 test('kamar bomberman membawa pengaturan papan dari mint pertama', async () => {
   const { a, b, wa } = await bomberTable('H1', { seats: 2, size: 'besar' });
-  assert.deepEqual(wa.config, { seats: 2, size: 'besar' }, `welcome harus membawa config papan: ${JSON.stringify(wa.config)}`);
+  assert.deepEqual(wa.config, { seats: 2, size: 'besar', teams: false }, `welcome harus membawa config papan: ${JSON.stringify(wa.config)}`);
   const lobby = await a.recvState((s) => s.phase === 'lobby');
   assert.equal(lobby.world, null, 'lorong bomberman belum punya dunia');
   assert.equal(lobby.players.length, 2);

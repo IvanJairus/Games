@@ -43,6 +43,12 @@ const VIEWPORTS = [
   { name: 'desktop-large', width: 1280, height: 800, floor: 'stone', size: 'besar', seats: 4 },
   { name: 'phone-portrait-large', width: 375, height: 667, touch: true, floor: 'grass', size: 'besar', seats: 4 },
   { name: 'phone-landscape-large', width: 667, height: 375, touch: true, floor: 'sand', size: 'besar', seats: 4 },
+  /* The widest board is measured on both a desktop and the screen that will actually
+     shrink it: 25 columns of a four-seat arena on a phone. */
+  { name: 'desktop-luas', width: 1280, height: 800, floor: 'grass', size: 'luas', seats: 4 },
+  /* Four seats split into two teams: the scoreboard is the only place the mode shows. */
+  { name: 'desktop-teams', width: 1280, height: 800, floor: 'grass', size: 'kecil', seats: 4, teams: true },
+  { name: 'phone-landscape-luas', width: 667, height: 375, touch: true, floor: 'sand', size: 'luas', seats: 4 },
 ];
 
 const results = [];
@@ -233,6 +239,7 @@ async function run() {
     if (vp.floor) query.set('floor', vp.floor);
     if (vp.size) query.set('size', vp.size);
     if (vp.seats) query.set('seats', String(vp.seats));
+    if (vp.teams) query.set('teams', '1');
     const qs = query.toString();
     await page.goto(`${BASE}/bomberman/local${qs ? `?${qs}` : ''}`, { waitUntil: 'load' });
     await page.waitForSelector('[data-testid="bomberman-start"]', { timeout: 15000 });
@@ -252,9 +259,32 @@ async function run() {
 
     await page.click('[data-testid="bomberman-start"]');
     await page.waitForSelector('[data-testid="bomberman-board"]', { timeout: 5000 });
+    if (vp.teams) {
+      const badges = await page.evaluate(() =>
+        Array.from(document.querySelectorAll('[data-testid^="bomberman-chip-"] .bm-chip__team')).map((e) => e.textContent),
+      );
+      check(
+        `${vp.name}: both teams are on the scoreboard`,
+        badges.filter((b) => b === 'T1').length === 2 && badges.filter((b) => b === 'T2').length === 2,
+        badges.join(','),
+      );
+    }
+    if (vp.floor === 'stone') {
+      const vents = await page.evaluate(() => document.querySelectorAll('[data-sig="vent"]').length);
+      check(`${vp.name}: the stone floor shows its vents`, vents >= 2, `${vents} vents`);
+    }
     if (vp.size || vp.seats) {
       const box = await page.evaluate(() => document.querySelector('[data-testid="bomberman-board"]')?.getAttribute('viewBox'));
-      const want = vp.seats === 4 ? (vp.size === 'besar' ? '0 0 840 600' : '0 0 600 440') : (vp.size === 'besar' ? '0 0 600 520' : '0 0 440 360');
+      const want =
+        vp.seats === 4
+          ? vp.size === 'luas'
+            ? '0 0 1000 680'
+            : vp.size === 'besar'
+              ? '0 0 840 600'
+              : '0 0 600 440'
+          : vp.size === 'besar'
+            ? '0 0 600 520'
+            : '0 0 440 360';
       check(`${vp.name}: opens the arena it was asked for`, box === want, `${box} vs ${want}`);
     }
     if (vp.touch) {

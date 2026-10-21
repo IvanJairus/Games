@@ -124,7 +124,8 @@ const state = (over: Partial<DoorState> = {}): DoorState => ({
 
 describe('door welcome and config', () => {
   it('parses only a complete board config', () => {
-    expect(parseDoorConfig({ seats: 2, size: 'besar' })).toEqual({ seats: 2, size: 'besar' });
+    expect(parseDoorConfig({ seats: 2, size: 'besar' })).toEqual({ seats: 2, size: 'besar', teams: false });
+    expect(parseDoorConfig({ seats: 4, size: 'luas', teams: true })).toEqual({ seats: 4, size: 'luas', teams: true });
     expect(parseDoorConfig({ seats: 3, size: 'kecil' })).toBeNull();
     expect(parseDoorConfig({ seats: 2, size: 'raksasa' })).toBeNull();
     expect(parseDoorConfig(null)).toBeNull();

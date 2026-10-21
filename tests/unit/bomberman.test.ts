@@ -12,9 +12,12 @@ import {
   Facing,
   FUSE_SECONDS,
   ROUND_SECONDS,
+  SHRINK_INTERVAL,
+  SHRINK_WARN_SECONDS,
   BombermanState,
   aliveSeats,
   boardFor,
+  maxShrinkRings,
   sizeForBoard,
   spawnCells,
   spawnClearance,
@@ -38,6 +41,7 @@ const bareState = (grid: CellKind[][], extra: Partial<BombermanState> = {}): Bom
   cols: grid[0].length,
   rows: grid.length,
   seats: 2,
+  teams: false,
   round: 1,
   scoreToWin: SCORE_TO_WIN,
   roundOver: 0,
@@ -50,6 +54,10 @@ const bareState = (grid: CellKind[][], extra: Partial<BombermanState> = {}): Bom
   elapsed: 0,
   countdown: 0,
   nextId: 1,
+  sudden: 0,
+  ring: 0,
+  vents: [],
+  vent: 0,
   ...extra,
 });
 
@@ -84,7 +92,7 @@ const hold = (sim: BombermanSim, s: number, dir: Facing | null, bomb = false, se
   sim.setInput(s, { dir, bomb, seq });
 
 /** Every geometry a match can be played on, small and large, duel and free-for-all. */
-const ALL_BOARDS = [BOARDS.duel, BOARDS.duelLarge, BOARDS.freeFor, BOARDS.freeForLarge];
+const ALL_BOARDS = [BOARDS.duel, BOARDS.duelLarge, BOARDS.freeFor, BOARDS.freeForLarge, BOARDS.freeForHuge];
 
 describe('map generation', () => {
   it('builds the same arena twice from one seed', () => {
@@ -156,7 +164,8 @@ describe('map generation', () => {
     /* A client rebuilds its sim from a world frame, which carries cols and rows but not
        the lobby setting, so the geometry has to name the size it came from. */
     for (const seats of [2, 4]) {
-      for (const size of ['kecil', 'besar'] as const) {
+      const sizes = seats === 4 ? (['kecil', 'besar', 'luas'] as const) : (['kecil', 'besar'] as const);
+      for (const size of sizes) {
         const board = boardFor(seats, size);
         expect(sizeForBoard(board.seats, board.cols)).toBe(size);
       }
@@ -460,30 +469,63 @@ describe('sim rules', () => {
     expect(sim.state.elapsed).toBe(frozen);
   });
 
-  it('ends a round nobody lost, so hiding cannot stall the match', () => {
-    const sim = make(arena(11, 9), [seat(0, { x: 1, y: 1 }), seat(1, { x: 9, y: 7 })]);
-    // Seat 1 plants, seat 0 does nothing. Without a clock the round only ends on a death.
+  it('starts closing the arena at ROUND_SECONDS instead of crowning anyone', () => {
+    const sim = make(arena(11, 9), [seat(0, { x: 5, y: 4 }), seat(1, { x: 6, y: 4 })]);
+    run(sim, ROUND_SECONDS + 0.1);
+    expect(sim.state.phase).toBe('battle');
+    expect(aliveSeats(sim.state)).toEqual([0, 1]);
+    expect(sim.state.ring).toBe(0);
+    expect(sim.state.sudden).toBeGreaterThan(0);
+    expect(sim.state.sudden).toBeLessThanOrEqual(SHRINK_INTERVAL);
+  });
+
+  it('never hands a round to a seat that is already dead', () => {
+    const sim = make(
+      arena(11, 9),
+      [seat(0, { x: 4, y: 4 }), seat(1, { x: 6, y: 4 }), seat(2, { x: 1, y: 1 }), seat(3, { x: 9, y: 7 })],
+      { seats: 4 },
+    );
+    sim.state.players[2].alive = false;
+    sim.state.players[3].alive = false;
+    sim.state.players[2].roundBombs = 9;
+    sim.state.players[3].roundBombs = 9;
     run(sim, ROUND_SECONDS + 0.5);
+    expect(sim.state.phase).toBe('battle');
+    expect(sim.state.players.map((p) => p.wins)).toEqual([0, 0, 0, 0]);
+  });
+
+  it('announces the collapsing ring before it becomes wall', () => {
+    const sim = make(arena(11, 9), [seat(0, { x: 5, y: 4 }), seat(1, { x: 6, y: 4 })]);
+    run(sim, ROUND_SECONDS + SHRINK_INTERVAL - SHRINK_WARN_SECONDS + 0.1);
+    expect(sim.state.ring).toBe(0);
+    expect(sim.state.sudden).toBeGreaterThan(0);
+    expect(sim.state.sudden).toBeLessThanOrEqual(SHRINK_WARN_SECONDS);
+  });
+
+  it('turns the outer ring into wall and kills the seat standing there', () => {
+    const sim = make(arena(11, 9), [seat(0, { x: 1, y: 1 }), seat(1, { x: 5, y: 4 })]);
+    run(sim, ROUND_SECONDS + SHRINK_INTERVAL + 0.2);
+    expect(sim.state.ring).toBe(1);
+    expect(sim.player(0)?.alive).toBe(false);
+    expect(sim.state.phase).toBe('roundOver');
+    expect(sim.player(1)?.wins).toBe(1);
+  });
+
+  it('ends a round that two survivors could otherwise stall forever', () => {
+    const sim = make(arena(11, 9), [seat(0, { x: 4, y: 4 }), seat(1, { x: 6, y: 4 })]);
+    const rings = maxShrinkRings(11, 9);
+    run(sim, ROUND_SECONDS + (rings + 1) * SHRINK_INTERVAL + 0.5);
     expect(sim.state.phase).not.toBe('battle');
-    expect(sim.state.winner === null || sim.state.winner !== undefined).toBe(true);
+    expect(aliveSeats(sim.state).length).toBeLessThanOrEqual(1);
   });
 
-  it('awards a stalled round to whoever actually fought', () => {
-    const sim = make(arena(11, 9), [seat(0, { x: 1, y: 1 }), seat(1, { x: 9, y: 7 })]);
-    // Both seats stay alive and no bomb is live, so only the clock can end this round.
-    sim.state.players[1].roundBombs = 4;
-    run(sim, ROUND_SECONDS + 0.5);
-    expect(sim.state.phase).toBe('roundOver');
-    expect(sim.player(1)!.wins).toBe(1);
-    expect(sim.player(0)!.wins).toBe(0);
-  });
-
-  it('calls a stalled round with equal aggression a draw', () => {
-    const sim = make(arena(11, 9), [seat(0, { x: 1, y: 1 }), seat(1, { x: 9, y: 7 })]);
-    run(sim, ROUND_SECONDS + 0.5);
-    expect(sim.state.phase).toBe('roundOver');
-    expect(sim.player(0)!.wins).toBe(0);
-    expect(sim.player(1)!.wins).toBe(0);
+  it('resets the closing arena for the next round', () => {
+    const sim = make(arena(11, 9), [seat(0, { x: 1, y: 1 }), seat(1, { x: 5, y: 4 })]);
+    run(sim, ROUND_SECONDS + SHRINK_INTERVAL + 0.2);
+    run(sim, ROUND_OVER_SECONDS + COUNTDOWN_SECONDS + 0.1);
+    expect(sim.state.phase).toBe('battle');
+    expect(sim.state.ring).toBe(0);
+    expect(sim.state.sudden).toBe(0);
   });
 
   it('resets the arena and crowns a champion after enough rounds', () => {

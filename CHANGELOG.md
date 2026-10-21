@@ -1,3 +1,60 @@
+## 2026-10-21 - Bomberman: papan menyempit, arena 25x17, power-up, 2v2, dan angin lantai
+
+Laporan pemain: dua manusia masih hidup, dua bot sudah mati, lalu popup "bot menang" muncul dan
+laga diulang. Penyebabnya bukan koneksi.
+
+### Penyebab bot menang di tengah laga
+
+`judge()` memilih pemenang saat ronde menyentuh 40 detik dari `roundBombs` terbanyak tanpa memeriksa
+`alive`. Hanya cabang seri yang memeriksa hidup. Bot yang sudah mati tetap ikut pemilihan, dan tiga
+ronde seperti itu membuat `wins` bot mencapai 3, jadi laga ditutup sebagai kemenangan bot.
+
+Reproduksi di engine sebelum perbaikan, empat kursi, bot 3 dan 4 mati dengan bom ronde 5 dan 6:
+
+```
+setelah timeout: phase roundOver, alive [0,1], wins [[0,0],[1,0],[2,0],[3,3]]
+akhir:           phase finished, winner 3, winnerName "Bot 4", alive [0,1]
+```
+
+### Diubah
+
+- Ronde berjalan 90 detik. Sesudah itu papan menyempit satu ring terluar tiap 8 detik, dengan
+  peringatan 3 detik sebelumnya (jam di status bar). Ring yang runtuh menjadi dinding dan membunuh
+  siapa pun yang masih berdiri di sana, tanpa memedulikan perisai. Pemenang tidak pernah lagi dipilih
+  dari angka; ronde hanya berakhir ketika tersisa satu kursi atau satu tim.
+- Penyempitan terakhir menyisakan satu petak, jadi dua pemain yang bersembunyi di ujung baris tidak
+  bisa menggantung ronde selamanya.
+- Papan baru 25x17 untuk empat kursi, berdampingan dengan 15x11 dan 21x15. Di 667x375 petaknya
+  14.2 px (sebelumnya board 21x15: 16.7 px), di desktop 38.4 px.
+- Papan 25 kolom di lanskap ponsel sempat menimpa D-pad 453 px2. `.bm-boardwrap` sekarang menyisakan
+  satu kolom kontrol di tiap sisi, dan `--bm-dir` dipindah dari `.bm-dpad` ke `.bm-stage` supaya
+  pembungkus papan bisa membacanya. Hasilnya board 355x241, tumpang tindih 0 px2, panah tetap 48 px.
+- Tiga power-up baru: tendang bom (jalan menabrak bom mendorongnya satu petak), ledak jauh (tekan BOM
+  lagi untuk meledakkan bom sendiri, ada petunjuk di status bar), dan tembus (api menghancurkan bata
+  lunak lalu terus di belakangnya). Jenis drop kini 7, termasuk api, lari, jumlah bom, dan perisai.
+- Mode tim 2v2 untuk empat kursi: kursi 1 dan 3 satu tim, 2 dan 4 tim lain. Api rekan tidak melukai,
+  bom sendiri tetap. Kemenangan ronde diberikan ke seluruh anggota tim, dan juara ditentukan dari
+  skor tim. Pilihan ini ada di lobby online dan di Latihan melawan bot, dan ikut tersimpan di konfigurasi
+  room Worker.
+- Hazard lantai batu: 2 sampai 5 ventilasi per papan menyemburkan api tiap 9 detik, ditandai sebagai
+  bahaya 1.6 detik sebelum menyala. Ventilasi tidak pernah jatuh di area spawn.
+
+### Terukur
+
+- `npm run test:unit`: 373 lulus, 2 dilewati.
+- `npm run test:ui`: 122 lulus.
+- `cd cloudflare && npm run test:ws` dengan `wrangler dev --local`: 41 dari 41 lulus.
+- `npm run gameplay:check`: 173 dari 173 lulus, termasuk viewport baru `desktop-luas`,
+  `phone-landscape-luas`, dan `desktop-teams`; tumpang tindih D-pad 0 px2, badge tim T1/T2 muncul dua
+  kali masing-masing, dan lantai batu menampilkan ventilasinya.
+- `npm run release:check`: 5 tahap lulus.
+
+### Catatan
+
+Papan 25x17 di lanskap ponsel menghasilkan petak 14.2 px, di atas batas 12 px tempat wajah sprite
+mulai tidak terbaca, tetapi belum diukur pada perangkat fisik. Hazard baru hanya ada di lantai batu;
+lantai rumput dan pasir belum punya hazard sendiri.
+
 ## 2026-10-21 - Bomberman: dunia pindah ke Durable Object, prediksi lokal, dan room tanpa Supabase
 
 Branch baru `feat/bomberman-cloudflare-door`, dibuat dari `origin/main` dan di-rebase ke `ae19208`

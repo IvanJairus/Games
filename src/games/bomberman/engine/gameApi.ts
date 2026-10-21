@@ -15,6 +15,7 @@ import { BombermanSim, type SeatConfig } from './sim';
 import {
   CHARACTER_IDS,
   DIRS,
+  sizeForBoard,
   type BoardSize,
   type BombermanState,
   type Facing,
@@ -35,9 +36,11 @@ const DEFAULT_BOT_LEVEL: BotLevel = 'sedang';
 export interface BombermanRoomConfig {
   seats: 2 | 4;
   size: BoardSize;
+  /** Two teams of two. Only four-seat rooms can turn this on. */
+  teams?: boolean;
 }
 
-export const DEFAULT_ROOM_CONFIG: BombermanRoomConfig = { seats: 4, size: 'kecil' };
+export const DEFAULT_ROOM_CONFIG: BombermanRoomConfig = { seats: 4, size: 'kecil', teams: false };
 
 export type RejectReason =
   | 'unknown_player'
@@ -90,31 +93,48 @@ export function parseRoomConfig(get: (name: string) => string | null): {
 } | { ok: false; reason: 'bad_room_options' } {
   const seatsRaw = get('seats');
   const sizeRaw = get('size');
-  const provided = seatsRaw !== null || sizeRaw !== null;
+  const teamsRaw = get('teams');
+  const provided = seatsRaw !== null || sizeRaw !== null || teamsRaw !== null;
   if (seatsRaw !== null && seatsRaw !== '2' && seatsRaw !== '4') return { ok: false, reason: 'bad_room_options' };
-  if (sizeRaw !== null && sizeRaw !== 'kecil' && sizeRaw !== 'besar') return { ok: false, reason: 'bad_room_options' };
+  if (sizeRaw !== null && sizeRaw !== 'kecil' && sizeRaw !== 'besar' && sizeRaw !== 'luas') {
+    return { ok: false, reason: 'bad_room_options' };
+  }
+  if (teamsRaw !== null && teamsRaw !== '0' && teamsRaw !== '1') return { ok: false, reason: 'bad_room_options' };
+  const size: BoardSize = sizeRaw === 'luas' ? 'luas' : sizeRaw === 'besar' ? 'besar' : 'kecil';
+  const seats: 2 | 4 = seatsRaw === '2' ? 2 : 4;
   return {
     ok: true,
     config: {
-      seats: seatsRaw === '2' ? 2 : 4,
-      size: sizeRaw === 'besar' ? 'besar' : 'kecil',
+      seats,
+      // The widest board only exists for four seats; a duel asking for it gets the
+      // largest duel board instead of a geometry nobody can play.
+      size: seats === 2 && size === 'luas' ? 'besar' : size,
+      teams: seats === 4 && teamsRaw === '1',
     },
     provided,
   };
 }
 
-export const createGame = (config: BombermanRoomConfig = DEFAULT_ROOM_CONFIG): BombermanRoom => ({
-  config: {
-    seats: config.seats === 2 ? 2 : 4,
-    size: config.size === 'besar' ? 'besar' : 'kecil',
-  },
-  roster: new Map(),
-  seq: new Map(),
-  master: null,
-  sim: null,
-  bots: new Map(),
-  botSeed: '',
-});
+/** The widest board has no duel twin, and a duel has no `luas` geometry to restore. */
+const normalizeSize = (seats: 2 | 4, size: BoardSize | undefined): BoardSize =>
+  seats === 2 ? (size === 'kecil' ? 'kecil' : 'besar') : size === 'luas' ? 'luas' : size === 'besar' ? 'besar' : 'kecil';
+
+export const createGame = (config: BombermanRoomConfig = DEFAULT_ROOM_CONFIG): BombermanRoom => {
+  const seats: 2 | 4 = config.seats === 2 ? 2 : 4;
+  return {
+    config: {
+      seats,
+      size: normalizeSize(seats, config.size),
+      teams: seats === 4 && config.teams === true,
+    },
+    roster: new Map(),
+    seq: new Map(),
+    master: null,
+    sim: null,
+    bots: new Map(),
+    botSeed: '',
+  };
+};
 
 const reject = (reason: RejectReason): ActionResult => ({ ok: false, reason });
 
@@ -169,10 +189,12 @@ export function loadWorld(room: BombermanRoom, world: unknown): void {
   // config: a room created before `room_config` existed can be restored with the default
   // config, and a mismatch here would make the next round spawn seats on the wrong corners.
   const seats = next.seats === 2 ? 2 : 4;
-  const size = (seats === 4 ? next.cols >= 21 : next.cols >= 15) ? 'besar' : 'kecil';
+  const size = sizeForBoard(seats, next.cols);
+  const teams = next.teams === true;
   const sim = new BombermanSim({
     seats,
     size,
+    teams,
     seed: next.seed,
     floor: next.floor,
     players: next.players.map(
@@ -180,6 +202,8 @@ export function loadWorld(room: BombermanRoom, world: unknown): void {
     ),
   });
   sim.applySnapshot(next);
+  // A rematch after a reload must use the mode the saved world was played in.
+  room.config = { seats, size, teams };
   room.sim = sim;
   room.bots.clear();
   room.botSeed = sim.state.seed;
@@ -275,6 +299,7 @@ export function applyAction(room: BombermanRoom, playerId: string, action: Actio
       room.sim = new BombermanSim({
         seats: room.config.seats,
         size: room.config.size,
+        teams: room.config.teams === true,
         seed,
         floor,
         players,

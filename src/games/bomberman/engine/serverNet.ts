@@ -1,4 +1,4 @@
-import type { BombermanState, Facing, SimEvent } from './types';
+import type { BoardSize, BombermanState, Facing, SimEvent } from './types';
 
 /**
  * The client door for Bomberman's Durable Object.
@@ -25,7 +25,8 @@ const TERMINAL_CODES = new Set([1000, 4001, 4002]);
 
 export interface DoorConfig {
   seats: 2 | 4;
-  size: 'kecil' | 'besar';
+  size: BoardSize;
+  teams: boolean;
 }
 
 export interface DoorWelcome {
@@ -93,8 +94,9 @@ const isWorld = (value: unknown): value is BombermanState => {
 export const parseDoorConfig = (raw: unknown): DoorConfig | null => {
   if (!isRecord(raw)) return null;
   const seats = raw.seats === 2 ? 2 : raw.seats === 4 ? 4 : null;
-  const size = raw.size === 'kecil' || raw.size === 'besar' ? raw.size : null;
-  return seats !== null && size !== null ? { seats, size } : null;
+  const size = raw.size === 'kecil' || raw.size === 'besar' || raw.size === 'luas' ? raw.size : null;
+  const teams = raw.teams === true;
+  return seats !== null && size !== null ? { seats, size, teams } : null;
 };
 
 export class BombermanServerNet {

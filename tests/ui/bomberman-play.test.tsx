@@ -71,9 +71,21 @@ describe('lobby', () => {
     renderAt('/bomberman');
     fireEvent.click(screen.getByTestId('bomberman-tab-online'));
     expect(screen.getByTestId('bomberman-size-besar')).toHaveTextContent('Besar 15 x 13');
+    expect(screen.queryByTestId('bomberman-size-luas')).not.toBeInTheDocument();
     fireEvent.click(screen.getByTestId('bomberman-seats-4'));
     expect(screen.getByTestId('bomberman-size-kecil')).toHaveTextContent('Kecil 15 x 11');
     expect(screen.getByTestId('bomberman-size-besar')).toHaveTextContent('Besar 21 x 15');
+    expect(screen.getByTestId('bomberman-size-luas')).toHaveTextContent('Luas 25 x 17');
+  });
+
+  it('offers the team switch only when four seats are chosen', () => {
+    renderAt('/bomberman');
+    fireEvent.click(screen.getByTestId('bomberman-tab-online'));
+    expect(screen.queryByTestId('bomberman-teams')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('bomberman-seats-4'));
+    expect(screen.getByTestId('bomberman-teams')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('bomberman-seats-2'));
+    expect(screen.queryByTestId('bomberman-teams')).not.toBeInTheDocument();
   });
 
   it('keeps online actions unavailable without a game server, and solo reachable', () => {
@@ -170,6 +182,19 @@ describe('solo arena', () => {
       return el;
     });
     expect(board).toHaveAttribute('viewBox', '0 0 840 600');
+    await frames(20);
+  });
+
+  it('plays the widest board when four seats ask for it', async () => {
+    renderAt('/bomberman/local?seats=4&size=luas');
+    expect(screen.getByTestId('bomberman-size-luas')).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByTestId('bomberman-start'));
+    const board = await waitFor(() => {
+      const el = screen.getByTestId('bomberman-board');
+      expect(el).toBeInTheDocument();
+      return el;
+    });
+    expect(board).toHaveAttribute('viewBox', '0 0 1000 680');
     await frames(20);
   });
 

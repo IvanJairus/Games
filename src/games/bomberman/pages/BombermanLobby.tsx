@@ -33,6 +33,7 @@ export function BombermanLobby() {
   const [name, setName] = useState(getStoredPlayerName());
   const [seats, setSeats] = useState(2);
   const [size, setSize] = useState<BoardSize>('kecil');
+  const [teams, setTeams] = useState(false);
   const [charId, setCharId] = useState(readCharId);
   const pickChar = (id: string): void => {
     setCharId(id);
@@ -57,6 +58,7 @@ export function BombermanLobby() {
     setBusy(true);
     setError('');
     const board = boardFor(seats, size);
+    const teamMode = seats === 4 && teams;
     try {
       let roomCode: string;
       if (doorMode) {
@@ -69,7 +71,7 @@ export function BombermanLobby() {
             gameType: 'bomberman',
             maxPlayers: board.seats,
             hostName: host,
-            initialState: { gameType: 'bomberman', seats: board.seats, size },
+            initialState: { gameType: 'bomberman', seats: board.seats, size, teams: teamMode },
             roomCode,
           });
         } catch (err) {
@@ -80,12 +82,12 @@ export function BombermanLobby() {
           gameType: 'bomberman',
           maxPlayers: board.seats,
           hostName: host,
-          initialState: { gameType: 'bomberman', seats: board.seats, size },
+          initialState: { gameType: 'bomberman', seats: board.seats, size, teams: teamMode },
         }));
       }
       // The Worker mints the first ticket from this URL. Board settings are part of the
       // room, so the Durable Object can cap seats before a second player connects.
-      navigate(`/bomberman/m/${roomCode}?seats=${board.seats}&size=${size}`);
+      navigate(`/bomberman/m/${roomCode}?seats=${board.seats}&size=${size}&teams=${teamMode ? 1 : 0}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Room gagal dibuat.');
     } finally {
@@ -157,7 +159,18 @@ export function BombermanLobby() {
               <legend>Kursi dan papan</legend>
               <div className="bm-pick__row">
                 {[2, 4].map((n) => (
-                  <button key={n} type="button" aria-pressed={seats === n} onClick={() => setSeats(n)} data-testid={`bomberman-seats-${n}`}>
+                  <button
+                    key={n}
+                    type="button"
+                    aria-pressed={seats === n}
+                    onClick={() => {
+                      setSeats(n);
+                      // The widest board has no duel twin, so the choice follows the seat
+                      // count instead of leaving a size button that is no longer offered.
+                      if (n < 4 && size === 'luas') setSize('besar');
+                    }}
+                    data-testid={`bomberman-seats-${n}`}
+                  >
                     {n} kursi
                   </button>
                 ))}
@@ -166,6 +179,21 @@ export function BombermanLobby() {
                 <span className="bm-field__label">Ukuran arena</span>
                 <BoardPicker seats={seats} value={size} onChange={setSize} />
               </div>
+              {seats === 4 && (
+                <div className="bm-field">
+                  <label className="bm-field__label" htmlFor="bm-teams">
+                    <input
+                      id="bm-teams"
+                      type="checkbox"
+                      checked={teams}
+                      onChange={(e) => setTeams(e.target.checked)}
+                      data-testid="bomberman-teams"
+                    />{' '}
+                    Mode tim 2v2
+                  </label>
+                  <p className="bm-note">Kursi 1 dan 3 satu tim, kursi 2 dan 4 tim lain. Api rekan tidak melukai, bom sendiri tetap.</p>
+                </div>
+              )}
               <p className="bm-note">
                 Kursi yang tidak diisi pemain manusia akan diisi bot, jadi room 4 kursi bisa berjalan dengan 2 manusia.
               </p>

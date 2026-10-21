@@ -2,7 +2,7 @@ import { forwardRef, useImperativeHandle, useRef, type ReactNode } from 'react';
 
 import type { BombermanState, SimEvent } from '../engine/types';
 import type { FxGates } from '../engine/fxMode';
-import { bombMarkup, powerMarkup, softMarkup, spriteMarkup, type PowerGlyph, type SpriteFacing, type SpritePose } from '../sprites';
+import { bombMarkup, powerMarkup, softMarkup, spriteMarkup, ventMarkup, type PowerGlyph, type SpriteFacing, type SpritePose } from '../sprites';
 import floorGrass from '../assets/floor-grass.webp';
 import floorSand from '../assets/floor-sand.webp';
 import floorStone from '../assets/floor-stone.webp';
@@ -195,6 +195,9 @@ export const Arena = forwardRef<ArenaHandle, ArenaProps>(function Arena(
             want.set(`s${x}_${y}`, { x, y, sig: 'soft', markup: fit(softMarkup(), FLAT_BOX) });
           }
         }
+      }
+      for (const v of state.vents) {
+        want.set(`v${v.x}_${v.y}`, { x: v.x, y: v.y, sig: 'vent', markup: fit(ventMarkup(), FLAT_BOX) });
       }
       for (const u of state.powers) {
         want.set(`u${u.x}_${u.y}`, {
