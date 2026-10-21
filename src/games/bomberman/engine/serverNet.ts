@@ -15,7 +15,9 @@ import type { BombermanState, Facing, SimEvent } from './types';
  * which is what stops a reconnect from replaying an old press.
  */
 
-const POLL_MS = 50;
+// The Worker ticks at 30 Hz (TICK_SECONDS = 0.033). The poll is only a safety net:
+// key/touch changes call flush() immediately and the render loop also calls it per frame.
+const POLL_MS = 33;
 const RETRY_BASE_MS = 400;
 const RETRY_CAP_MS = 6000;
 /** Codes the server sends on purpose: retrying would only knock on a closed door. */

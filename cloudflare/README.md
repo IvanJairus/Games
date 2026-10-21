@@ -81,10 +81,9 @@ Worker aktif di `https://ij-game-rooms.filemonivanjairus.workers.dev` dengan `TE
 Versi tayang sekarang `487b2c27-976a-43e2-8e98-66ca57ae9ccd` (tiket + timer + metrik + adapter
 Slap Arena).
 
-Branch `feat/bomberman-cloudflare-door` menambah adapter Bomberman dan **belum di-deploy**. Dry-run
-bundlenya 93,59 KiB / gzip 25,83 KiB (naik dari 47,25 / 13,45 KiB karena sim, bot, dan `gameApi` ikut
-ter-bundle). Deploy branch ini akan mengganti Worker yang sedang dipakai Slap Arena, jadi perintahnya
-sengaja tidak dijalankan di sini:
+Branch `feat/bomberman-cloudflare-door` menambah adapter Bomberman. Dry-run bundlenya 96,86 KiB /
+gzip 26,86 KiB (naik dari 47,25 / 13,45 KiB karena sim, bot, `gameApi`, dan `predict` ikut ter-bundle).
+Deploy branch ini mengganti Worker yang sama dengan Slap Arena, jadi dilakukan setelah PR di-merge:
 
 ```bash
 cd cloudflare
@@ -146,9 +145,11 @@ protokol sekarang membawa `applied` dan `held` (lihat bagian Mengukur di bawah).
    yang sama lewat Broadcast, dan belum ada satu baris pun kode frontend yang membaca `applied`/`held`.
 5. Belum terukur: CPU per tick di runtime nyata (wrangler lokal tidak memakainya), dan `load()` dari
    snapshot belum pernah diuji lewat eviksi DO sungguhan.
-6. Bomberman belum punya client-side prediction untuk kursinya sendiri; gerak baru terlihat setelah
-   frame server berikutnya. Laju 20 Hz, ukuran snapshot per papan, dan hasil browser dua tab ada di
+6. Bomberman memprediksi satu langkah gerak lokal, tetapi tidak memprediksi bom, ledakan, atau
+   kematian. Tick global 30 Hz, ukuran snapshot per papan, dan hasil browser dua tab ada di
    `docs/cloudflare-migration.md` bagian 14.
+7. Tanpa Supabase, room Bomberman tetap bisa dibuat dan dimainkan; yang hilang hanya baris riwayat
+   `matches` dan angka Hub. Hasil laga masih ditulis klien master lewat `finishOnlineMatch`.
 
 ## Mengukur
 
