@@ -56,6 +56,8 @@ Bukti:
 | `guard:check` + `csp:check` | bersih |
 | Build `VITE_TRANSPORT=cloudflare` | sukses; `BombermanMatch` 22,90 KiB (gzip 8,51 KiB) |
 | Bundle Worker dry-run | 96,86 KiB / gzip 26,86 KiB |
+| Deploy Worker | versi `4a3e3e16-4ac3-4221-9268-2c67c767b05d`, 21 Oktober |
+| Produksi `ij-games.vercel.app` | 10/10: lobby, mint 200, WebSocket Worker, `battle`, gerak, 30,3 state/detik, 0 pageerror |
 
 Payload snapshot: 1.475 B (2 kursi kecil), 2.174 B (2 kursi besar), 2.444 B (4 kursi kecil), 3.552 B
 (4 kursi besar). Pada 30 Hz papan terbesar sekitar 107 kB/detik per kursi.

@@ -468,6 +468,7 @@ browser.
 | Bundle Worker (`wrangler deploy --dry-run`) | 96,86 KiB / gzip 26,86 KiB, naik dari 47,25 / 13,45 KiB |
 | Browser nyata, dua konteks Chrome, room 2 kursi | 11 lulus dari 11: room dibuat tanpa Supabase (0 request REST), mint 200, WebSocket terbuka, fase `battle`, gerak kursi master, prediksi 19 ms vs sel server 206 ms, 0 `pageerror` |
 | Laju siaran server (klien WS, 3,98 detik) | 30,16 state/detik, rata-rata 1.770 B/state untuk 2 kursi |
+| Produksi `ij-games.vercel.app`, 2 konteks Chrome | 10 lulus dari 10: room dibuat lobby, mint 200, WebSocket ke `ij-game-rooms...workers.dev`, `battle`, gerak terkonfirmasi, 123 frame / 30,3 per detik, 0 `pageerror` |
 
 Pengukuran payload dunia (`JSON.stringify(snapshot).length`, satu sampel setelah 10 detik):
 
@@ -483,9 +484,10 @@ Pada 30 Hz, papan terbesar berarti sekitar 107 kB/detik per kursi. Egress Worker
 
 ### 14.3 Yang belum dikerjakan dan batasnya
 
-1. **Deploy:** Worker dan frontend di-deploy dari commit yang sudah di-merge. Kalau Worker perlu
-   rollback, deploy ulang commit sebelumnya; frontend bisa kembali ke Broadcast dengan menghapus
-   `VITE_TRANSPORT` lalu redeploy.
+1. **Deploy:** Worker versi `4a3e3e16-4ac3-4221-9268-2c67c767b05d` sudah tayang dari `main`
+   (commit `2cb324f`) dan frontend Vercel dibangun dengan `VITE_TRANSPORT=cloudflare` lewat workflow
+   deploy. Kalau Worker perlu rollback, deploy ulang commit sebelumnya; frontend bisa kembali ke
+   Broadcast dengan menghapus `VITE_TRANSPORT` lalu redeploy.
 2. **Prediksi hanya satu langkah dan tidak memprediksi bom.** Ledakan, kematian, dan bot tetap murni
    server. Pemain yang menekan arah ke sel yang baru saja berubah di server bisa melihat koreksi
    pendek; itu konsekuensi yang diterima, bukan bug yang disembunyikan.
