@@ -86,9 +86,18 @@ export class GameRoom extends DurableObject<Env> {
     this.recorder = new MatchRecorder(env);
     this.ctx.storage.sql.exec(
       `CREATE TABLE IF NOT EXISTS room_result (
-         tick INTEGER PRIMARY KEY
+         tick INTEGER PRIMARY KEY,
+         written INTEGER NOT NULL DEFAULT 0
        )`,
     );
+    // Kamar yang lahir sebelum kolom ini ada masih punya tabel lama; ALTER-nya idempoten supaya
+    // SELECT di recordResult() tidak pernah menabrak kolom yang hilang.
+    const resultCols = this.ctx.storage.sql.exec('PRAGMA table_info(room_result)').toArray() as unknown as {
+      name: string;
+    }[];
+    if (!resultCols.some((c) => c.name === 'written')) {
+      this.ctx.storage.sql.exec('ALTER TABLE room_result ADD COLUMN written INTEGER NOT NULL DEFAULT 0');
+    }
     this.ctx.storage.sql.exec(
       `CREATE TABLE IF NOT EXISTS room_state (
          id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -511,7 +520,7 @@ export class GameRoom extends DurableObject<Env> {
     if (this.game.finished()) {
       this.phase = 'finished';
       this.stopTicker();
-      this.recordResult();
+      await this.recordResult();
       // Seats kept for reconnect have done their job once the match is over. Freeing them
       // here is what lets a rematch seat someone new instead of a room that looks full.
       this.releaseGhostSeats();
@@ -573,32 +582,38 @@ export class GameRoom extends DurableObject<Env> {
    * dipulihkan bersama tick itu, jadi DO yang bangun ulang di kamar yang sudah selesai tidak
    * menulis laganya dua kali. Tanpa kunci itu, transisi `lobby -> finished` saat pemulihan akan
    * terlihat sebagai laga baru.
+   *
+   * Markernya punya dua keadaan. `written = 0` berarti upaya sebelumnya berhenti di tengah (isolate
+   * dibekukan sebelumPATCH selesai) dan tick yang sama boleh dicoba lagi selama dunianya masih
+   * menyimpan hasil laga itu. Yang dipanggil dari `advanceClock()` di-await, jadi jalur normal tidak
+   * pernah meninggalkan marker setengah jalan.
    */
-  private recordResult(): void {
+  private async recordResult(): Promise<void> {
     if (!this.recorder?.enabled || !this.game || !this.info) return;
     const at = this.tick;
-    const seen = this.ctx.storage.sql.exec('SELECT 1 FROM room_result WHERE tick = ?', at).toArray().length;
-    if (seen) return;
-    this.ctx.storage.sql.exec('INSERT INTO room_result (tick) VALUES (?)', at);
+    const rows = this.ctx.storage.sql
+      .exec('SELECT written FROM room_result WHERE tick = ?', at)
+      .toArray() as unknown as { written: number }[];
+    if (rows[0]?.written === 1) return;
+    if (!rows.length) this.ctx.storage.sql.exec('INSERT INTO room_result (tick, written) VALUES (?, 0)', at);
     const info = this.info;
-    const job = this.recorder
-      .record({
+    try {
+      const outcome = await this.recorder.record({
         roomCode: info.code,
         game: info.game,
         seats: roomCapacity(info.game, this.configData ?? undefined),
         winnerSeat: this.game?.winnerSeat?.() ?? null,
-      })
-      .then((outcome) => {
-        // `already` berarti klien sudah menutup barisnya lebih dulu: itu sukses, bukan sesuatu yang perlu diulang.
-        if (outcome === 'written' || outcome === 'already') return;
-        // Kegagalan tulis tidak boleh mengunci hasil: markernya dilepas supaya transisi berikutnya bisa mencoba lagi.
-        this.ctx.storage.sql.exec('DELETE FROM room_result WHERE tick = ?', at);
-        console.log(`[room ${info.code}] hasil laga tidak tertulis: ${outcome}`);
-      })
-      .catch(() => {
-        this.ctx.storage.sql.exec('DELETE FROM room_result WHERE tick = ?', at);
       });
-    this.ctx.waitUntil(job);
+      // `already` berarti klien menutup barisnya lebih dulu: itu sukses, bukan sesuatu yang perlu diulang.
+      if (outcome !== 'written' && outcome !== 'already') {
+        console.log(`[room ${info.code}] hasil laga tidak tertulis: ${outcome} ${this.recorder.lastError}`);
+        return;
+      }
+      this.ctx.storage.sql.exec('UPDATE room_result SET written = 1 WHERE tick = ?', at);
+      console.log(`[room ${info.code}] hasil laga ${outcome} pada tick ${at}`);
+    } catch (err) {
+      console.log(`[room ${info.code}] hasil laga gagal ditulis: ${String(err).slice(0, 160)}`);
+    }
   }
 
   /**
@@ -666,7 +681,9 @@ export class GameRoom extends DurableObject<Env> {
     if (next === 'playing') this.startTicker();
     if (next === 'finished') {
       this.stopTicker();
-      this.recordResult();
+      // Jalur pemulihan: tidak bisa di-await dari sini, jadi marker `written = 0` yang membuat
+      // tick yang sama dicoba lagi pada transisi berikutnya kalau upaya ini ikut membeku.
+      void this.recordResult();
     }
   }
 

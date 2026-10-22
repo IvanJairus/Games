@@ -1,3 +1,35 @@
+## 2026-10-22 - Cloudflare: hasil laga di-await, bukan dilepas sebagai kerja latar
+
+Fitur penulis hasil baru dinyalakan dan langsung ketahuan pincang: baris `matches` dibuat DO tapi
+tetap `waiting`, dan `match_results` kosong. Terukur dua kali berturut-turut di Worker tayang.
+
+### Kenapa
+
+- `recordResult()` dulu melepas kerjanya lewat `ctx.waitUntil()` lalu mengembalikan kontrol. Saat laga
+  selesai, ticker sudah mati dan tab terakhir sering tertutup pada detik yang sama, jadi isolate dibekukan
+  sebelum PATCH kedua sempat kembali. POST pertama sudah mendarat, PATCH-nya tidak.
+- Suite lokal tidak bisa menangkap kelas kegagalan ini: `wrangler dev --local` tidak membekukan isolate
+  di tengah `waitUntil`. Buktinya hanya bisa datang dari Worker tayang.
+
+### Diubah
+
+- `cloudflare/src/room.ts`: `recordResult()` jadi `async` dan di-await di jalur `advanceClock()`, yaitu
+  tempat laga normal berhenti. Jalur pemulihan di `syncPhase()` tetap `void`, tapi markernya sekarang
+  menyimpan keadaan.
+- Tabel `room_result` dapat kolom `written`. `CREATE TABLE IF NOT EXISTS` tidak mengubah kamar yang sudah
+  lahir dengan tabel lama, jadi ada `ALTER TABLE ... ADD COLUMN` yang dijaga `PRAGMA table_info` supaya
+  idempoten. Marker `written = 0` menandai upaya yang berhenti di tengah dan boleh dicoba lagi untuk tick
+  yang sama, selama dunianya masih menyimpan hasil laga itu.
+- Log worker sekarang menyebut hasil akhirnya, bukan hanya kegagalannya: `hasil laga written pada tick N`,
+  `hasil laga tidak tertulis: rejected <METHOD> <status> <potongan body>`. `MatchRecorder.lastError`
+  menyimpan status dan body PostgREST, tanpa pernah memuat kunci.
+
+### Diverifikasi
+
+- `npx tsc --noEmit` bersih dan suite worker lokal 44 lulus dari 44 (n = 1 rangkaian) dengan jalur await
+  baru; tiga tes hasil laga tetap hijau terhadap PostgREST tiruan.
+- Bukti perbaikan yang sebenarnya ada di pengukuran production setelah deploy, dicatat di PR.
+
 ## 2026-10-22 - Cloudflare: catatan deploy versi penulis hasil laga dan bukti production
 
 ### Diubah
