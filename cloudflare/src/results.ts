@@ -31,6 +31,9 @@ interface MatchRow {
  * pun demi jalur server.
  */
 export class MatchRecorder {
+  /** Status kegagalan terakhir, untuk log worker. Tidak pernah memuat kunci. */
+  lastError = 'ok';
+
   constructor(private env: Env) {}
 
   get enabled(): boolean {
@@ -112,11 +115,16 @@ export class MatchRecorder {
         headers,
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       });
-      if (!res.ok) return { ok: false, rows: [] };
       const text = await res.text();
+      if (!res.ok) {
+        // PostgREST menaruh alasan penolakan pemicu di body, dan itu yang dicari di log.
+        this.lastError = `${method} ${res.status} ${text.slice(0, 180)}`;
+        return { ok: false, rows: [] };
+      }
       const parsed = text ? JSON.parse(text) : [];
       return { ok: true, rows: Array.isArray(parsed) ? parsed : [parsed] };
-    } catch {
+    } catch (err) {
+      this.lastError = `${method} threw ${String(err).slice(0, 160)}`;
       return { ok: false, rows: [] };
     }
   }
