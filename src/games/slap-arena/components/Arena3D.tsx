@@ -585,12 +585,11 @@ const Arena3D = forwardRef<Arena3DHandle, Arena3DProps>(function Arena3D(
       // the brawlers to ants, so the lip is allowed to crop and the camera follows.
       const needH = ((ARENA_RADIUS + 1.6) * 0.78) / (Math.tan(fovRad / 2) * aspect);
       const fit = Math.max(needV, needH);
-      const wide = aspect > 1.4;
-      // Kamera lebar dulu lebih rendah dan lebih jauh (1.06/0.5), sehingga pulau terbenam di
-      // bawah tengah layar sementara tampilan mobile memusatkannya ke atas. Rasio ini
-      // menyetel pitch dan jarak desktop mendekati framing mobile yang dipilih pemain.
-      const dist = fit * (wide ? 0.92 : 0.87);
-      const high = fit * (wide ? 0.62 : 0.72);
+      // Satu framing untuk semua viewport, yaitu rasio mobile yang dipilih pemain. Kamera lebih
+      // tinggi dan lebih dekat menaikkan pulau ke tengah layar dan memperbesar brawler; bibir jauh
+      // ikut terpotong, tapi kamera selalu mengikuti pemimpin jadi bagian itu bisa dikejar.
+      const dist = fit * 0.87;
+      const high = fit * 0.72;
       const fx = follow ? follow.x * 0.5 : 0;
       const fz = follow ? follow.z * 0.5 : 0;
       const k = 1 - Math.pow(0.0015, dt);
