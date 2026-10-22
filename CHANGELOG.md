@@ -1,3 +1,38 @@
+## 2026-10-22 - Slap Arena: framing desktop disamakan dengan tampilan mobile
+
+### Kenapa
+
+- PR #90 sudah menaikkan kamera desktop dari 1.06/0.5 ke 0.92/0.62, tetapi rasio mobile (0.87/0.72)
+  masih dipakai khusus untuk viewport yang lebih tinggi daripada 1.4. Acuan yang dipilih pemain adalah
+  tampilan mobile, jadi percabangan itu dihapus.
+
+### Diubah
+
+- `src/games/slap-arena/components/Arena3D.tsx`: `dist` dan `high` tidak lagi bercabang menurut
+  `aspect > 1.4`, keduanya memakai rasio mobile. Variabel `wide` ikut hilang karena tidak dipakai lagi.
+
+### Terukur
+
+Proyeksi kamera yang sama pada viewport 1280x720, brawler di pusat arena, n = 1 perhitungan:
+
+| Yang dibandingkan | Sebelum | Sesudah |
+| --- | --- | --- |
+| posisi pusat pulau di layar | y 394 | y 391 |
+| bibir dekat (bawah layar) | y 597 | y 611 |
+| bibir jauh (atas layar) | y 277 | y 257 |
+| tinggi brawler di layar | 35 px | 31 px |
+| jarak kamera ke titik pusat | 19,07 | 18,04 |
+
+Perubahan visualnya adalah sudut yang lebih tegak: permukaan pulau lebih terlihat dan sisi bawah pulau
+hilang dari bingkai, sementara posisi pusatnya nyaris tidak bergeser (3 px dari 720). Brawler di tengah
+arena menjadi 11% lebih pendek. Viewport tinggi (rasio di bawah 1.4) tidak berubah sama sekali karena
+memang sudah memakai angka ini.
+
+### Belum terukur
+
+- Perbandingan langsung dengan tangkapan layar ponsel nyata; angka di atas dihitung dari matematika
+  kamera, lalu dicocokkan dengan sepasang tangkapan layar 1280x720 pada build lokal.
+
 ## 2026-10-22 - Battleship online: tombol keluar tidak lagi mengunci pemain di halaman room
 
 Dua tab nyata di production menunjukkan pemain yang menekan keluar di tengah pertandingan tetap
