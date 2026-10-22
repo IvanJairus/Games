@@ -154,7 +154,7 @@ export const BattleshipMatch: React.FC = () => {
       opts: {
         nextTurn: 0 | 1;
         summary: Record<string, unknown>;
-        status?: 'playing' | 'completed';
+        status?: 'playing' | 'completed' | 'abandoned';
         expectTurn?: boolean;
         statusGuard?: MatchStatus;
         basedOn?: string;
@@ -298,6 +298,9 @@ export const BattleshipMatch: React.FC = () => {
         {
           nextTurn: otherSeat(seatOf(mySeat)),
           summary: { reason: 'left-while-battle' },
+          // The protocol refuses a winner while the row still reads "playing", so the
+          // hand-over has to move the status in the same write.
+          status: 'abandoned',
           expectTurn: false,
           statusGuard: 'playing',
         }
@@ -380,7 +383,7 @@ export const BattleshipMatch: React.FC = () => {
   if (!syncData || !game) {
     return (
       <div className="bs-shell">
-        <RoomHeader roomCode={roomCode} copied={copied} onCopy={copyLink} onBack={exitRoom} />
+        <RoomHeader roomCode={roomCode} copied={copied} onCopy={copyLink} onBack={() => void exitRoom()} />
         <p className="bs-turn" role="status">
           <Clock size={13} aria-hidden="true" /> Memuat room {roomCode}
         </p>
@@ -421,7 +424,7 @@ export const BattleshipMatch: React.FC = () => {
 
   return (
     <div className="bs-shell">
-      <RoomHeader roomCode={roomCode} copied={copied} onCopy={copyLink} onBack={exitRoom} />
+      <RoomHeader roomCode={roomCode} copied={copied} onCopy={copyLink} onBack={() => void exitRoom()} />
 
       <div className="bs-head" style={{ marginBottom: '14px' }}>
         <div style={{ minWidth: 0 }}>
