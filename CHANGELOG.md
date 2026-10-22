@@ -1,3 +1,42 @@
+## 2026-10-23 - Cloudflare: hasil laga jalur Worker terbukti tercatat sampai riwayat
+
+Langkah 3b tertutup dengan angka, bukan asumsi. Ini entri pencatat, tanpa perubahan kode.
+
+### Terukur di production
+
+Worker versi `eb01eefe-0e23-4881-8d96-2535014385bb` (deploy 22 Oktober 17:14 UTC dari `main` setelah
+PR #110). Pengemudi laga scripted, dua koneksi WebSocket nyata, satu kursi berjalan keluar bibir
+arena, n = 1:
+
+| Yang dibaca | Hasil |
+| --- | --- |
+| fase dunia | `MATCH_OVER` setelah 5 detik, skor 3-0, 148 frame di kursi pemenang |
+| `matches.status` | `completed` |
+| `matches.winner_index` | `0` dari `max_players` 6 |
+| `match_results` | satu baris, `finished_at 2026-10-22T17:14:31Z` |
+
+Sebelum dua perbaikan terakhir, kamar yang sama tertinggal sebagai `waiting` tanpa riwayat. Dua kamar
+bukti itu masih ada (`FSFZP7`, `FS1NAZ`) dan akan disapu `cleanup_stale_rooms` karena tidak pernah punya
+riwayat.
+
+### Yang ditutup untuk sampai ke sini
+
+- PR #109: kerja penulisan tidak lagi dilepas lewat `ctx.waitUntil()`; jalur `advanceClock()` meng-await,
+  marker `room_result.written` menandai upaya yang berhenti di tengah, dan log worker menyebut hasilnya.
+- PR #110: DO mencatat `playing` sebelum `completed`, karena pemicu `002_match_protocol.sql:17` menolak
+  `waiting -> completed` dan di jalur Worker tidak ada lagi yang menulis momen mulai.
+
+### Catatan metode
+
+Dua cacat di atas tidak bisa ditangkap `wrangler dev --local`: runtime lokal tidak membekukan isolate di
+tengah `waitUntil`, dan ia tidak menjalankan pemicu Postgres. Yang menemukan keduanya adalah pengukuran
+langsung ke Worker tayang dan pembacaan baris database sesudahnya.
+
+### Masih belum terukur
+
+Jalur baris milik lobi, tempat `GET` menemukan baris `waiting` lalu menaikkannya, dijaga tes unit terhadap
+PostgREST tiruan tapi belum diukur dengan satu laga browser nyata sampai KO.
+
 ## 2026-10-22 - Cloudflare: DO mencatat `playing` sebelum `completed`
 
 Lanjutan langsung dari #109. Setelah penulisan di-await, pengukuran production tetap gagal dengan

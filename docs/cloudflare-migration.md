@@ -570,5 +570,11 @@ setelah deploy tanpa mengubah kode.
      menandai upaya yang berhenti di tengah);
   2. pemicu `002` menolak `waiting -> completed`, jadi DO harus mencatat `playing` lebih dulu
      (PR #110).
-- Belum terukur: satu tulisan nyata yang lengkap sampai baris `match_results`. Diukur setelah deploy
-  #110 dan dicatat di PR-nya.
+- Terukur di production setelah deploy `eb01eefe` (n = 1): pengemudi laga scripted mencapai
+  `MATCH_OVER` dalam 5 detik di kamar `FSWH6N` dengan skor 3-0, dan pembacaan database menunjukkan
+  `matches.status = completed`, `winner_index = 0`, `max_players = 6`, plus satu baris `match_results`
+  pada `2026-10-22T17:14:31Z`. Sebelum perbaikan, kamar yang sama tertinggal sebagai `waiting` tanpa
+  riwayat (`FSFZP7`, `FS1NAZ`).
+- Masih belum terukur live: jalur baris milik lobi, tempat `GET` menemukan baris `waiting` lalu
+  menaikkannya. Jalur itu dijaga tes unit terhadap PostgREST tiruan; pengukurannya butuh satu laga
+  browser nyata sampai KO.
