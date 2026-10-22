@@ -21,3 +21,7 @@ TEST_MODE = "0"
 
 # TICKET_SECRET (kunci HMAC tiket) sengaja tidak ada di file ini.
 # Produksi: npx wrangler secret put TICKET_SECRET. Lokal: .dev.vars atau --var.
+#
+# SUPABASE_URL dan SUPABASE_SERVICE_KEY juga dipasang sebagai secret: keduanya mengaktifkan
+# penulisan hasil laga oleh DO. Kalau salah satu belum ada, kamar tetap berjalan dan tidak ada
+# permintaan keluar sama sekali, jadi fiturnya bisa dinyalakan tanpa deploy ulang.

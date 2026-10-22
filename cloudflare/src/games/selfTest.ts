@@ -19,6 +19,11 @@ export function selfTestGame(): GameAdapter {
     },
     apply(playerId, action) {
       const msg = action as { t?: string; vx?: number };
+      // Suite hasil laga butuh dunia yang bisa berhenti; menunggu x lewat 1000 makan 50 detik tick.
+      if (msg.t === 'finish') {
+        done = true;
+        return { ok: true };
+      }
       if (msg.t !== 'setvx' || typeof msg.vx !== 'number' || !Number.isFinite(msg.vx)) {
         return { ok: false, reason: 'bad_payload' };
       }

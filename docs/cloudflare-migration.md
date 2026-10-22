@@ -498,10 +498,64 @@ Pada 30 Hz, papan terbesar berarti sekitar 107 kB/detik per kursi. Egress Worker
 3. **Lorong bisa berdiri tanpa Supabase, tetapi riwayat laga butuh Supabase.** Kode room dibuat klien
    dengan alfabet 32 karakter, lalu baris `matches` Supabase dibuat best-effort memakai kode yang
    sama. Tanpa Supabase, mabar tetap jalan; hanya riwayat dan angka Hub yang tidak tercatat.
-   `finishOnlineMatch` masih dipanggil klien master, bukan DO.
+   Yang menutup baris sekarang DO, bukan lagi klien master (lihat bagian 15).
 4. **Tick 30 Hz global.** Bomberman ikut tick yang sama dengan Slap Arena; tidak ada tick per game.
 5. **`load()` belum diuji lewat eviksi DO sungguhan.** Yang ada: unit test snapshot/restore dan
    `loadWorld` di Worker, bukan eviction nyata di runtime Cloudflare.
 
 Rollback tetap satu saklar build: hapus `VITE_TRANSPORT` atau setel ke `supabase`, lalu redeploy
 frontend. Jalur Broadcast lama tidak dihapus.
+
+## 15. Hasil laga ditulis DO dengan kunci service (22 Oktober)
+
+Keputusan user: hasil laga ditulis sisi server, dan kuncinya `sb_secret_...` dipasang sebagai secret
+Worker. Alasannya tercatat di bagian 1: kebijakan RLS yang cukup longgar untuk DO akan sama longgarnya
+untuk browser mana pun, karena anon key memang ikut terkirim ke klien.
+
+### 15.1 Bentuk penulisannya
+
+`cloudflare/src/results.ts` hanya dipanggil saat fase kamar berpindah ke `finished`, dari dua titik di
+`room.ts`: `advanceClock()` (laga berhenti sendiri) dan `syncPhase()` (fase dibaca ulang setelah
+pemulihan dunia).
+
+1. `GET /rest/v1/matches?room_code=eq.<kode>&game_type=eq.<game>&order=created_at.desc&limit=1`.
+2. Ada baris dan belum `completed` → satu `PATCH` dengan filter `status=in.(waiting,playing)` dan body
+   `{status:'completed', winner_index}`. Ini jalur normal: lobi Slap Arena dan kamar Bomberman sudah
+   membuat barisnya lebih dulu.
+3. Baris sudah `completed` → keluar dengan `already`. Ini yang menjaga satu laga tetap satu riwayat
+   ketika klien master menutup baris lebih cepat lewat `finishOnlineMatch`.
+4. Tidak ada baris sama sekali → `POST` lahir sebagai `waiting` lalu `PATCH` ke `completed`, dua
+   permintaan, karena pemicu `003` melarang baris lahir langsung sebagai `completed`.
+
+`winner_index` selalu dilucuti terhadap `max_players` baris yang dituju; pemicu protokol menolak indeks
+di luar rentang kursi, dan DO tidak boleh membuat satu laga gagal tercatat karena angkanya tidak masuk.
+
+### 15.2 Idempoten dan kegagalan
+
+Marker ditulis ke tabel DO `room_result` dengan kunci **tick tempat laga berhenti**. Dunia dipulihkan
+beserta tick-nya, jadi DO yang bangun ulang di kamar yang sudah selesai melihat transisi
+`lobby -> finished` lagi tapi menemukan markernya dan tidak menulis dua kali. Tulis yang gagal melepas
+marker dan mencatat `hasil laga tidak tertulis` ke log worker, supaya transisi berikutnya bisa mencoba
+lagi.
+
+### 15.3 Menyalakannya
+
+```bash
+cd cloudflare
+npx wrangler secret put SUPABASE_URL            # https://<ref>.supabase.co
+npx wrangler secret put SUPABASE_SERVICE_KEY    # kunci service_role
+npx wrangler deploy
+```
+
+Keduanya dibaca sebagai env biasa, jadi `--var` saat dev juga sah. Tanpa salah satunya `recordResult()`
+keluar lebih dulu dan kamar tetap berjalan tanpa permintaan keluar, jadi fitur ini bisa dinyalakan
+setelah deploy tanpa mengubah kode.
+
+### 15.4 Status bukti
+
+- Suite worker lokal: 44 lulus dari 44 (n = 1 rangkaian, 22 Oktober), termasuk tiga tes hasil laga
+  terhadap PostgREST tiruan di port 8791.
+- Penjaga dilihat merah lebih dulu dengan dua cara: terhadap worker tanpa fitur (fase tidak pernah
+  `finished`) dan terhadap build berfitur tanpa kedua env (gagal di "harus ada insert, dapat []").
+- Belum terukur: satu tulisan nyata ke proyek Supabase produksi. Itu butuh `SUPABASE_SERVICE_KEY`
+  dipasang di Worker tayang, dan kunci itu dipegang user.

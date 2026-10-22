@@ -9,6 +9,7 @@ import {
   TICK_SECONDS,
 } from './types';
 import { MAX_TICKET_TTL_SECONDS, TICKET_TTL_SECONDS, signTicket, verifyTicket } from './ticket';
+import { MatchRecorder } from './results';
 import { createAdapter, parseRoomOptions, roomCapacity } from './games/registry';
 
 interface RoomRow {
@@ -77,9 +78,17 @@ export class GameRoom extends DurableObject<Env> {
   /** Board/room settings negotiated at the first mint, cached so ticks never touch SQL. */
   private configData: unknown = null;
   private configLoaded = false;
+  /** Hasil laga ditulis sekali per transisi; kuncinya tick saat laga berhenti. */
+  private recorder: MatchRecorder | null = null;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
+    this.recorder = new MatchRecorder(env);
+    this.ctx.storage.sql.exec(
+      `CREATE TABLE IF NOT EXISTS room_result (
+         tick INTEGER PRIMARY KEY
+       )`,
+    );
     this.ctx.storage.sql.exec(
       `CREATE TABLE IF NOT EXISTS room_state (
          id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -502,6 +511,7 @@ export class GameRoom extends DurableObject<Env> {
     if (this.game.finished()) {
       this.phase = 'finished';
       this.stopTicker();
+      this.recordResult();
       // Seats kept for reconnect have done their job once the match is over. Freeing them
       // here is what lets a rematch seat someone new instead of a room that looks full.
       this.releaseGhostSeats();
@@ -556,6 +566,39 @@ export class GameRoom extends DurableObject<Env> {
       world,
       now,
     );
+  }
+
+  /**
+   * Satu baris hasil per laga yang selesai. Kuncinya tick tempat laga berhenti, dan dunia
+   * dipulihkan bersama tick itu, jadi DO yang bangun ulang di kamar yang sudah selesai tidak
+   * menulis laganya dua kali. Tanpa kunci itu, transisi `lobby -> finished` saat pemulihan akan
+   * terlihat sebagai laga baru.
+   */
+  private recordResult(): void {
+    if (!this.recorder?.enabled || !this.game || !this.info) return;
+    const at = this.tick;
+    const seen = this.ctx.storage.sql.exec('SELECT 1 FROM room_result WHERE tick = ?', at).toArray().length;
+    if (seen) return;
+    this.ctx.storage.sql.exec('INSERT INTO room_result (tick) VALUES (?)', at);
+    const info = this.info;
+    const job = this.recorder
+      .record({
+        roomCode: info.code,
+        game: info.game,
+        seats: roomCapacity(info.game, this.configData ?? undefined),
+        winnerSeat: this.game?.winnerSeat?.() ?? null,
+      })
+      .then((outcome) => {
+        // `already` berarti klien sudah menutup barisnya lebih dulu: itu sukses, bukan sesuatu yang perlu diulang.
+        if (outcome === 'written' || outcome === 'already') return;
+        // Kegagalan tulis tidak boleh mengunci hasil: markernya dilepas supaya transisi berikutnya bisa mencoba lagi.
+        this.ctx.storage.sql.exec('DELETE FROM room_result WHERE tick = ?', at);
+        console.log(`[room ${info.code}] hasil laga tidak tertulis: ${outcome}`);
+      })
+      .catch(() => {
+        this.ctx.storage.sql.exec('DELETE FROM room_result WHERE tick = ?', at);
+      });
+    this.ctx.waitUntil(job);
   }
 
   /**
@@ -621,7 +664,10 @@ export class GameRoom extends DurableObject<Env> {
     if (next === this.phase) return;
     this.phase = next;
     if (next === 'playing') this.startTicker();
-    if (next === 'finished') this.stopTicker();
+    if (next === 'finished') {
+      this.stopTicker();
+      this.recordResult();
+    }
   }
 
   private sessions(): { ws: WebSocket; session: Session }[] {

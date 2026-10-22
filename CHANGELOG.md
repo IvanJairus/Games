@@ -1,3 +1,47 @@
+## 2026-10-22 - Cloudflare: hasil laga ditulis Durable Object dengan kunci service
+
+Langkah 3b dari rencana migrasi. Keputusan user: hasil laga ditulis sisi server dan kuncinya
+`sb_secret_...` dipasang sebagai secret Worker, bukan anon key.
+
+### Kenapa
+
+- Anon key ikut terkirim ke browser, jadi kebijakan RLS yang cukup longgar untuk DO akan sama
+  longgarnya untuk pemain: siapa pun bisa memalsukan hasil laga. Dengan service key sebagai secret
+  Worker, tidak ada kebijakan klien yang perlu dilonggarkan sedikit pun.
+- Di jalur Worker, halaman pertandingan Slap Arena tidak lagi membuka efek multiplayer, jadi tidak ada
+  satu pun pihak yang menutup baris `matches`. Baris itu menggantung sebagai `waiting` sampai
+  `cleanup_stale_rooms` menghapusnya 24 jam kemudian, dan riwayat laga hilang.
+
+### Diubah
+
+- `cloudflare/src/results.ts` baru: `MatchRecorder` mencari baris `matches` milik kode kamar, lalu
+  menuntaskannya dengan satu PATCH berfilter `status=in.(waiting,playing)`. Baris baru hanya dibuat
+  kalau kamar tidak punya jejak di database, dan itu dua permintaan karena pemicu `003` melarang baris
+  lahir langsung sebagai `completed`.
+- `cloudflare/src/room.ts`: `recordResult()` dipanggil dari `advanceClock()` dan `syncPhase()`, yaitu
+  dua titik tempat fase berpindah ke `finished`. Markernya tabel DO baru `room_result` berkunci tick
+  tempat laga berhenti, dan dunia dipulihkan bersama tick itu, jadi DO yang bangun ulang tidak menulis
+  laga yang sama dua kali. Tulis yang gagal melepas marker dan mencatatnya ke log.
+- `GameAdapter` mendapat `winnerSeat?()`: Slap Arena memetakan id pemenang ke nomor kursi, Bomberman
+  sudah menyimpan kursinya. `selfTest` menerima `{t:'finish'}` supaya suite tidak perlu menunggu 50
+  detik tick.
+- `SUPABASE_URL` dan `SUPABASE_SERVICE_KEY` dibaca sebagai env biasa. Tanpa keduanya kamar tetap
+  berjalan tanpa permintaan keluar, jadi fitur ini bisa dinyalakan setelah deploy.
+
+### Diverifikasi
+
+- Suite worker lokal: 44 lulus dari 44 (n = 1 rangkaian), termasuk tiga tes hasil laga terhadap
+  PostgREST tiruan di port 8791. `npx tsc --noEmit` bersih.
+- Penjaga dilihat merah dua kali dengan cara berbeda: terhadap worker tanpa fitur (fase tidak pernah
+  `finished`) dan terhadap build berfitur tanpa kedua env (gagal dengan "harus ada insert, dapat []").
+
+### Belum terukur
+
+- Satu tulisan nyata ke proyek Supabase produksi. Itu butuh `SUPABASE_SERVICE_KEY` dipasang di Worker
+  tayang, dan kunci itu dipegang user.
+- Bomberman masih menutup barisnya lewat klien. Urutan baru membuat upaya DO berikutnya menjadi `no-op`
+  karena filter status, jadi tidak ada riwayat ganda, tapi jalur klien itu belum dipindahkan.
+
 ## 2026-10-22 - Slap Arena: framing desktop disamakan dengan tampilan mobile
 
 ### Kenapa

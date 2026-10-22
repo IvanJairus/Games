@@ -4,6 +4,13 @@ export interface Env {
   TEST_MODE: string;
   /** Secret di `wrangler secret put`, tidak pernah masuk wrangler.toml. */
   TICKET_SECRET: string;
+  /** Proyek Supabase tempat hasil laga ditulis. Nilai publik, bukan secret. */
+  SUPABASE_URL?: string;
+  /**
+   * Secret: `wrangler secret put SUPABASE_SERVICE_KEY`. Tanpa keduanya hasil laga tidak ditulis dan
+   * kamar tetap berjalan, jadi flag ini bisa dinyalakan terpisah dari deploy.
+   */
+  SUPABASE_SERVICE_KEY?: string;
 }
 
 export const MAX_PLAYERS = 6;
@@ -78,6 +85,8 @@ export interface GameAdapter {
   master?(): string | null;
   /** Efek yang lahir sejak tick terakhir. Game tanpa efek tidak perlu memasang ini. */
   drainFx?(): unknown[];
+  /** Kursi pemenang, hanya berarti setelah `finished()` benar. Null berarti seri atau tanpa pemenang. */
+  winnerSeat?(): number | null;
 }
 
 import type { GameRoom } from './room';

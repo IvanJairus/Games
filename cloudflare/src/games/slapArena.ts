@@ -28,6 +28,8 @@ const ROOM_PHASE: Record<string, 'lobby' | 'playing' | 'finished'> = {
 export function slapArenaGame(): GameAdapter {
   const sim: SlapSim = createGame();
   const queue: SimEvent[] = [];
+  /** Dunia menyimpan pemenang sebagai id pemain, sedangkan protokol hasil butuh nomor kursi. */
+  const seatById = new Map<string, number>();
   // SlapSim mengeluarkan efek lewat callback, dan kolomnya terbuka (sim.ts:52), jadi DO bisa
   // memungutnya tanpa menyentuh gameApi.ts atau menyalin aturan ke sini.
   sim.onEvent = (event) => {
@@ -37,7 +39,11 @@ export function slapArenaGame(): GameAdapter {
 
   return {
     door: true,
-    join: (playerId, name) => run(playerId, { t: 'join', id: playerId, name }),
+    join: (playerId, name, seat) => {
+      const result = run(playerId, { t: 'join', id: playerId, name });
+      if (result.ok && typeof seat === 'number') seatById.set(playerId, seat);
+      return result;
+    },
     apply: (playerId, action) => run(playerId, action as Action),
     step: (dt) => {
       run(SERVER_ID, { t: 'tick', dt });
@@ -56,5 +62,9 @@ export function slapArenaGame(): GameAdapter {
       if (snap && Array.isArray(snap.players)) sim.applySnapshot(snap);
     },
     finished: () => sim.state.phase === 'MATCH_OVER',
+    winnerSeat: () => {
+      const winnerId = sim.state.matchWinnerId;
+      return winnerId ? (seatById.get(winnerId) ?? null) : null;
+    },
   };
 }
