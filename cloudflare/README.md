@@ -22,13 +22,13 @@ cd cloudflare
 ROOM_BASE=http://localhost:8790 node --test --test-timeout=20000 tests/ws.test.mjs
 ```
 
-Empat puluh empat tes: enam belas tiket, dua timer, empat metrik protokol, empat Slap Arena nyata,
-sepuluh Bomberman nyata, dan tiga hasil laga. Tiga puluh satu tes lama sudah lulus pada `wrangler dev
+Empat puluh lima tes: enam belas tiket, dua timer, empat metrik protokol, empat Slap Arena nyata,
+sepuluh Bomberman nyata, dan empat hasil laga. Tiga puluh satu tes lama sudah lulus pada `wrangler dev
 --local` dan 26 lulus dari 26 terhadap URL tayang (n = 1 rangkaian, 19 Oktober). Sepuluh tes Bomberman
 lulus 41 dari 41 pada `wrangler dev --local` (21 Oktober). Tiap kelompok tes dijalankan lebih dulu
 terhadap worker tanpa fitur yang dijaganya, dan gagal di sana, jadi penjaganya terbukti bisa merah.
 
-Tiga tes hasil laga butuh worker dijalankan dengan dua env tambahan, karena ia membaca PostgREST
+Empat tes hasil laga butuh worker dijalankan dengan dua env tambahan, karena ia membaca PostgREST
 tiruan yang dibuat file tes di port 8791:
 
 ```bash
@@ -78,18 +78,20 @@ sebelum fitur ini ada. Rangkaian penuh pada 22 Oktober: 44 lulus dari 44 (n = 1)
 | Bomberman bot | satu manusia dengan `fillBots:true` mendapat kursi bot di dunia server |
 | Bomberman karakter | klaim `char` dari lorong masuk ke `world.players[].charId` |
 | Bomberman reconnect | socket putus di tengah match mempertahankan kursi; mint ulang memakai kursi yang sama dan mengambil alih botnya |
-| hasil laga tertulis | satu laga selesai menghasilkan satu insert `waiting` lalu satu update `completed`, dan hanya satu pasang |
-| hasil laga atas baris lobi | baris `matches` yang sudah dibuat lobi dituntaskan lewat satu PATCH, tanpa insert kedua |
+| hasil laga tertulis | satu laga selesai: insert `waiting`, lalu `playing`, lalu `completed`, masing-masing hanya sekali |
+| hasil laga atas baris lobi | baris `waiting` milik lobi dinaikkan ke `playing` lalu `completed`, tanpa insert kedua |
+| baris playing tidak di-start ulang | baris yang sudah `playing` hanya dapat satu PATCH, tanpa catatan start kedua |
 | kamar masih bermain | nol permintaan hasil selama fase belum `finished` |
 
 ## Hasil laga
 
-Durable Object yang menulis hasil, bukan tab pemain. Urutannya begini: cari baris `matches` untuk
-kode kamar ini, dan kalau ada, tuntaskan dengan satu PATCH `waiting|playing -> completed`. Lobi Slap
-Arena dan kamar Bomberman memang sudah membuat baris itu, jadi jalur normal cuma satu permintaan, dan
-pemicu `005_match_results_are_history.sql` menuliskan baris riwayat yang dihitung hub. Kalau klien
-lebih cepat menutup baris yang sama, filter status membuat upaya DO tidak mengenai apa pun: satu laga
-tetap satu riwayat.
+Durable Object yang menulis hasil, bukan tab pemain. Urutannya begini: cari baris `matches` untuk kode
+kamar ini. Kalau statusnya masih `waiting`, naikkan dulu ke `playing`, baru ke `completed`. Dua langkah
+itu bukan hiasan: pemicu `002_match_protocol.sql:17` menolak `waiting -> completed` dengan "a match
+cannot finish before it starts", dan di jalur Worker tidak ada lagi momen "mulai" di database karena
+lobi hanya membuat baris `waiting`. Pemicu `005_match_results_are_history.sql` menulis baris riwayat
+saat transisi ke `completed`, yaitu angka yang dihitung hub. Kalau klien lebih cepat menutup baris yang
+sama, filter status membuat upaya DO tidak mengenai apa pun: satu laga tetap satu riwayat.
 
 Baris baru hanya dibuat kalau kamar tidak punya jejak di database, dan itu butuh dua permintaan karena
 `003_protect_finished_matches.sql` melarang baris lahir langsung sebagai `completed`.

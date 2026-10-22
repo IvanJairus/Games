@@ -519,13 +519,15 @@ untuk browser mana pun, karena anon key memang ikut terkirim ke klien.
 pemulihan dunia).
 
 1. `GET /rest/v1/matches?room_code=eq.<kode>&game_type=eq.<game>&order=created_at.desc&limit=1`.
-2. Ada baris dan belum `completed` → satu `PATCH` dengan filter `status=in.(waiting,playing)` dan body
-   `{status:'completed', winner_index}`. Ini jalur normal: lobi Slap Arena dan kamar Bomberman sudah
-   membuat barisnya lebih dulu.
-3. Baris sudah `completed` → keluar dengan `already`. Ini yang menjaga satu laga tetap satu riwayat
+2. Baris berstatus `waiting` → satu `PATCH` `status=eq.waiting` menaikkan barisnya ke `playing` dulu.
+   Pemicu `002_match_protocol.sql:17` menolak `waiting -> completed` dengan "a match cannot finish
+   before it starts", dan di jalur Worker tidak ada pihak lain yang pernah menulis momen mulai.
+3. `PATCH` dengan filter `status=in.(waiting,playing)` dan body `{status:'completed', winner_index}`.
+   Pemicu riwayat lalu menulis baris `match_results`.
+4. Baris sudah `completed` → keluar dengan `already`. Ini yang menjaga satu laga tetap satu riwayat
    ketika klien master menutup baris lebih cepat lewat `finishOnlineMatch`.
-4. Tidak ada baris sama sekali → `POST` lahir sebagai `waiting` lalu `PATCH` ke `completed`, dua
-   permintaan, karena pemicu `003` melarang baris lahir langsung sebagai `completed`.
+5. Tidak ada baris sama sekali → `POST` lahir sebagai `waiting`, lalu langkah 2 dan 3, karena pemicu
+   `003` melarang baris lahir langsung sebagai `completed`.
 
 `winner_index` selalu dilucuti terhadap `max_players` baris yang dituju; pemicu protokol menolak indeks
 di luar rentang kursi, dan DO tidak boleh membuat satu laga gagal tercatat karena angkanya tidak masuk.
@@ -553,9 +555,20 @@ setelah deploy tanpa mengubah kode.
 
 ### 15.4 Status bukti
 
-- Suite worker lokal: 44 lulus dari 44 (n = 1 rangkaian, 22 Oktober), termasuk tiga tes hasil laga
+- Suite worker lokal: 45 lulus dari 45 (n = 1 rangkaian, 22-23 Oktober), termasuk empat tes hasil laga
   terhadap PostgREST tiruan di port 8791.
-- Penjaga dilihat merah lebih dulu dengan dua cara: terhadap worker tanpa fitur (fase tidak pernah
-  `finished`) dan terhadap build berfitur tanpa kedua env (gagal di "harus ada insert, dapat []").
-- Belum terukur: satu tulisan nyata ke proyek Supabase produksi. Itu butuh `SUPABASE_SERVICE_KEY`
-  dipasang di Worker tayang, dan kunci itu dipegang user.
+- Penjaga dilihat merah lebih dulu dengan tiga cara: terhadap worker tanpa fitur (fase tidak pernah
+  `finished`), terhadap build berfitur tanpa kedua env (gagal di "harus ada insert, dapat []"), dan
+  terhadap build `#109` dengan tes langkah `playing` (2 dari 4 tes hasil laga gagal di sana).
+- Secret terpasang 22 Oktober setelah satu percobaan pertama salah nama: `wrangler secret list`
+  menunjukkan dua entri bernama nilai (219 dan 40 karakter), bukan `SUPABASE_URL` dan
+  `SUPABASE_SERVICE_KEY`. Bentuk aman: `printf '%s' '<nilai>' | npx wrangler secret put <NAMA>`.
+- Dua cacat ditemukan oleh pengukuran production, bukan oleh suite lokal, dan keduanya tidak bisa
+  tertangkap di `wrangler dev --local`:
+  1. kerja yang dilepas lewat `ctx.waitUntil()` ikut membeku ketika tab terakhir menutup pada detik
+     yang sama (PR #109: jalur `advanceClock()` sekarang di-await, marker `room_result.written`
+     menandai upaya yang berhenti di tengah);
+  2. pemicu `002` menolak `waiting -> completed`, jadi DO harus mencatat `playing` lebih dulu
+     (PR #110).
+- Belum terukur: satu tulisan nyata yang lengkap sampai baris `match_results`. Diukur setelah deploy
+  #110 dan dicatat di PR-nya.
