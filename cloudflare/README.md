@@ -123,11 +123,13 @@ npx wrangler deploy
 ```
 
 Worker aktif di `https://ij-game-rooms.filemonivanjairus.workers.dev` dengan `TEST_MODE = "0"`.
-Versi tayang sekarang `4a3e3e16-4ac3-4221-9268-2c67c767b05d` (tiket + tick 30 Hz + metrik + adapter
-Slap Arena + adapter Bomberman), di-deploy 21 Oktober dari `main` setelah PR #97.
+Versi tayang sekarang `e5bfb33d-5c93-42e0-833f-295322b3f6b0` (tiket + tick 30 Hz + metrik + adapter
+Slap Arena + adapter Bomberman + penulis hasil laga), di-deploy 22 Oktober dari `main` setelah PR #107.
+`SUPABASE_URL` dan `SUPABASE_SERVICE_KEY` belum dipasang di versi itu, jadi cabang penulis hasil
+masih padam: kamar berjalan seperti biasa dan tidak ada permintaan keluar dari DO.
 
-Bundlenya 96,86 KiB / gzip 26,86 KiB (naik dari 47,25 / 13,45 KiB karena sim, bot, `gameApi`, dan
-`predict` ikut ter-bundle). Deploy memakai Worker yang sama dengan Slap Arena:
+Bundlenya 110,69 KiB / gzip 30,84 KiB, startup 6 ms. Sebelum hasil laga ikut ter-bundle angkanya
+96,86 KiB / gzip 26,86 KiB. Deploy memakai Worker yang sama dengan Slap Arena:
 
 ```bash
 cd cloudflare
@@ -151,6 +153,8 @@ berasal dari deploy adapter; baris mint dan handshake dari deploy tiket:
 | Bundle Worker | 47,25 KiB naik dari 17,37 KiB (gzip 13,45 KiB dari 5,38 KiB), startup 3 ms |
 | Konfigurasi produksi setelah revert | `/health` 200, mint 200, `?probe=1` menolak 426, koneksi bertiket 101, dua kursi Slap Arena sampai fase `COUNTDOWN` |
 | Bomberman produksi, 2 kursi, dua konteks Chrome (`ij-games.vercel.app`) | 10 lulus dari 10: lobby membuat room, mint 200, WebSocket ke Worker, fase `battle`, gerak terkonfirmasi, 123 frame / 30,3 per detik, 0 pageerror |
+| Slap Arena produksi pada versi `e5bfb33d`, dua konteks Chrome (`www.ivanjairus.xyz`) | 11 lulus dari 11, n = 1: mint 200 di kedua tab, 122 dan 121 frame `state`, dua kursi di dunia, fase `BATTLE`, 0 pageerror |
+| Kadensi siaran production saat laga berjalan, tab tamu | 455 frame / 15,0 s = 30,3 state per detik, 455 tick unik, gap median 33 / p90 36 / p99 40 / max 48 ms, 0 gap di atas 100 ms, 28,7 kB per detik turun (n = 1 rangkaian) |
 
 Angka latensi ini satu sampel dari satu laptop, dan catatan `macos-environment` berlaku: jaringan
 kantor tidak layak untuk mengukur latensi. `applied` dan `held` sudah terukur dari sisi klien, tapi
