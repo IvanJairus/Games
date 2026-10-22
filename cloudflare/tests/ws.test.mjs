@@ -1,5 +1,6 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { createServer } from 'node:http';
 import { WebSocket } from 'ws';
 
 const BASE = process.env.ROOM_BASE || 'http://localhost:8787';
@@ -10,7 +11,39 @@ const room = (n) => `R${RUN}${n}`;
 
 /** Semua socket dicatat supaya runner bisa keluar bersih tanpa menunggu socket mati sendiri. */
 const opened = [];
+/**
+ * PostgREST tiruan untuk jalur hasil laga. Worker dijalankan dengan
+ * `--var SUPABASE_URL:http://127.0.0.1:8791 --var SUPABASE_SERVICE_KEY:tes`, jadi tes mengukur
+ * bentuk permintaan yang benar-benar keluar dari DO, bukan asumsi.
+ */
+const RESULTS_PORT = Number(process.env.RESULTS_PORT || 8791);
+const resultCalls = [];
+/** Baris yang dikembalikan mock untuk GET /matches; tiap tes mengaturnya lebih dulu. */
+let mockGetRows = [];
+const CREATED_ID = '11111111-1111-1111-1111-111111111111';
+const resultServer = createServer((req, res) => {
+  let raw = '';
+  req.on('data', (c) => {
+    raw += c;
+  });
+  req.on('end', () => {
+    let body = null;
+    try {
+      body = raw ? JSON.parse(raw) : null;
+    } catch {
+      body = { unparsable: raw.slice(0, 80) };
+    }
+    resultCalls.push({ method: req.method, url: req.url ?? '', body });
+    const rows = req.method === 'GET' ? mockGetRows : [{ id: CREATED_ID }];
+    res.writeHead(req.method === 'POST' ? 201 : 200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify(rows));
+  });
+});
+resultServer.listen(RESULTS_PORT, '127.0.0.1');
+resultServer.unref();
+
 after(() => {
+  resultServer.close();
   for (const ws of opened) {
     try {
       ws.terminate();
@@ -752,4 +785,60 @@ test('pemain yang menyambung ulang memakai kursi yang sama dan mengambil alih bo
   const applied = await b2.recvState((s) => (s.applied?.[wb.seat] ?? 0) >= 1);
   assert.equal(applied.applied[wb.seat], 1, 'kursi yang diambil alih harus menerima input lagi');
   a.ws.terminate(); b2.ws.terminate();
+});
+
+// ---- hasil laga ditulis DO -------------------------------------------------
+
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const shape = (calls) => JSON.stringify(calls.map((c) => `${c.method} ${c.url}`));
+
+test('laga yang selesai menulis baris matches lalu menaikkannya ke completed', async () => {
+  mockGetRows = [];
+  const mark = resultCalls.length;
+  const { a, code } = await table('RS');
+  a.ws.send(JSON.stringify({ t: 'finish' }));
+  await a.recvPhase('finished');
+  await wait(1500);
+
+  const calls = resultCalls.slice(mark);
+  const created = calls.find((c) => c.method === 'POST' && c.url.includes('/rest/v1/matches'));
+  assert.ok(created, `harus ada insert, dapat ${shape(calls)}`);
+  assert.equal(created.body.room_code, code);
+  assert.equal(created.body.game_type, 'selftest');
+  // Baris harus lahir sebagai waiting: pemicu di 003 menolak status lain saat insert.
+  assert.equal(created.body.status, 'waiting');
+  assert.equal(typeof created.body.max_players, 'number');
+
+  const done = calls.find((c) => c.method === 'PATCH' && c.url.includes('/rest/v1/matches'));
+  assert.ok(done, `harus ada update ke completed, dapat ${shape(calls)}`);
+  assert.equal(done.body.status, 'completed');
+  // selfTest tidak punya pemenang, dan pemicu menolak indeks di luar jumlah kursi.
+  assert.equal(done.body.winner_index, null);
+  assert.ok(done.url.includes('id=eq.11111111'), 'update harus menargetkan baris yang baru dibuat');
+  assert.equal(calls.filter((c) => c.method === 'POST').length, 1, 'satu laga satu baris');
+});
+
+test('baris yang sudah dibuat lobi dituntaskan DO, tidak ditambahkan yang baru', async () => {
+  mockGetRows = [{ id: 'm-lobi-1', max_players: 2, status: 'waiting' }];
+  const mark = resultCalls.length;
+  const { a } = await table('RU');
+  a.ws.send(JSON.stringify({ t: 'finish' }));
+  await a.recvPhase('finished');
+  await wait(1500);
+
+  const calls = resultCalls.slice(mark);
+  assert.equal(calls.filter((c) => c.method === 'POST').length, 0, `baris lobi tidak boleh diduplikasi, dapat ${shape(calls)}`);
+  const done = calls.find((c) => c.method === 'PATCH');
+  assert.ok(done, `harus ada update ke baris lobi, dapat ${shape(calls)}`);
+  assert.ok(done.url.includes('id=eq.m-lobi-1'), `update harus menargetkan id lobi, dapat ${done.url}`);
+  assert.equal(done.body.status, 'completed');
+});
+
+test('kamar yang masih bermain tidak menulis hasil sama sekali', async () => {
+  mockGetRows = [];
+  const mark = resultCalls.length;
+  const { a } = await table('RT');
+  a.ws.send(JSON.stringify({ t: 'setvx', vx: 5 }));
+  await wait(2000);
+  assert.equal(resultCalls.slice(mark).length, 0, 'tidak boleh ada permintaan hasil selama laga berjalan');
 });

@@ -60,5 +60,7 @@ export function bombermanGame(config: BombermanRoomConfig): GameAdapter {
     master: () => masterOf(room),
     drainFx: () => drainFx(room),
     finished: () => isFinished(room),
+    // Engine Bomberman sudah menyimpan pemenang sebagai nomor kursi, jadi tidak ada peta ulang.
+    winnerSeat: () => room.sim?.state.winner ?? null,
   };
 }
