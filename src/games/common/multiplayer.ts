@@ -255,7 +255,7 @@ export async function submitOnlineMove(params: {
   nextState: unknown;
   nextTurn: number;
   winnerIndex?: number | null;
-  newStatus?: 'playing' | 'completed';
+  newStatus?: 'playing' | 'completed' | 'abandoned';
   moveSummary?: Record<string, unknown>;
   expectTurn?: boolean;
   statusGuard?: MatchStatus;
