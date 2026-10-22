@@ -1,3 +1,39 @@
+## 2026-10-22 - Battleship online: tombol keluar tidak lagi mengunci pemain di halaman room
+
+Dua tab nyata di production menunjukkan pemain yang menekan keluar di tengah pertandingan tetap
+berada di halaman room, sementara lawannya melihat papan dikunci tanpa hasil.
+
+### Kenapa
+
+- `RoomHeader` dipasang sebagai `onBack={exitRoom}`, jadi objek event klik React masuk ke posisi
+  argumen `to`. `navigate(event)` lewat ke `resolveTo` milik React Router dan mati di
+  `JSON.stringify` dengan "Converting circular structure to JSON" karena target tombol ikut
+  terserialisasi. Navigasi tidak pernah terjadi, padahal kursi sudah dilepas, sehingga pemain
+  terjebak sebagai penonton di room miliknya sendiri.
+- Aksi `ABANDON` mengirim `winner_index` tanpa memindahkan status. Pemicu protokol di
+  `supabase/migrations/002_match_protocol.sql` menolak kombinasi itu dengan "winner_index cannot be
+  set while the match is still playing", jadi penyerahan kemenangan selalu gagal dan banner merah
+  muncul tepat sesudah konfirmasi keluar.
+
+### Diubah
+
+- `src/games/battleship/pages/BattleshipMatch.tsx`: kedua pemanggilan `RoomHeader` memakai
+  `onBack={() => void exitRoom()}` dan `ABANDON` membawa `status: 'abandoned'`.
+- `src/games/common/multiplayer.ts`: `newStatus` menerima `'abandoned'`.
+- `tests/ui/battleship-exit.test.tsx` baru: dua tes, keduanya merah sebelum perbaikan dan hijau
+  sesudahnya.
+
+### Diverifikasi
+
+- `npx vitest run tests/ui/battleship-exit.test.tsx`: merah dulu (`TypeError` dari `navigate` dan
+  `newStatus` kosong), lalu 2 lulus.
+- Suite penuh `npm run test`: 507 lulus, 2 di-skip, `tsc -b` bersih.
+- Reproduksi sebelum perbaikan di `https://www.ivanjairus.xyz/games` dengan dua konteks Chromium
+  nyata: tab host tetap di `/battleship/m/4B8MTP` setelah dialog konfirmasi diterima, dengan satu
+  respons 400 dari Supabase dan `TypeError: Converting circular structure to JSON` (n = 2 percobaan,
+  keduanya sama).
+- Jalur sesudah perbaikan belum diukur di browser nyata karena butuh deployment lebih dulu.
+
 ## 2026-10-21 - Bomberman online: prediksi langkah lokal dilepas
 
 Setelah dua perbaikan pada `MovementPredictor` tetap menyisakan gerak yang terasa mundur lalu maju,
