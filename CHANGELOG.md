@@ -1,3 +1,26 @@
+## 2026-10-22 - Cloudflare: catatan deploy versi penulis hasil laga dan bukti production
+
+### Diubah
+
+- `cloudflare/README.md`: versi tayang diganti ke `e5bfb33d-5c93-42e0-833f-295322b3f6b0` (deploy
+  22 Oktober dari `main` setelah PR #107), bundle 110,69 KiB / gzip 30,84 KiB, startup 6 ms, plus
+  catatan bahwa `SUPABASE_URL` dan `SUPABASE_SERVICE_KEY` belum dipasang di versi itu sehingga cabang
+  penulis hasil masih padam.
+- Dua baris terukur baru: probe dua tab terhadap production pada versi baru, dan kadensi siaran di
+  tab tamu saat laga berjalan.
+
+### Diverifikasi
+
+- `npx wrangler deploy` dijalankan dari worktree detached pada `7d3400d`; `/health` 200.
+- `node scripts/gameplay-cloudflare.mjs https://www.ivanjairus.xyz/games/`: 11 lulus dari 11 (n = 1),
+  dua kursi di dunia, fase `BATTLE`, 0 pageerror di kedua tab.
+- Kadensi tamu diukur terpisah: 455 frame / 15,0 s, 455 tick unik, gap median 33 ms, 0 gap di atas
+  100 ms (n = 1 rangkaian, jaringan kantor).
+
+### Belum terukur
+
+- Satu tulisan hasil laga nyata ke Supabase produksi: butuh kedua secret dipasang lebih dulu.
+
 ## 2026-10-22 - Cloudflare: hasil laga ditulis Durable Object dengan kunci service
 
 Langkah 3b dari rencana migrasi. Keputusan user: hasil laga ditulis sisi server dan kuncinya
