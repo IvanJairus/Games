@@ -125,12 +125,13 @@ npx wrangler deploy
 ```
 
 Worker aktif di `https://ij-game-rooms.filemonivanjairus.workers.dev` dengan `TEST_MODE = "0"`.
-Versi tayang sekarang `e5bfb33d-5c93-42e0-833f-295322b3f6b0` (tiket + tick 30 Hz + metrik + adapter
-Slap Arena + adapter Bomberman + penulis hasil laga), di-deploy 22 Oktober dari `main` setelah PR #107.
-`SUPABASE_URL` dan `SUPABASE_SERVICE_KEY` belum dipasang di versi itu, jadi cabang penulis hasil
-masih padam: kamar berjalan seperti biasa dan tidak ada permintaan keluar dari DO.
+Versi tayang sekarang `eb01eefe-0e23-4881-8d96-2535014385bb` (tiket + tick 30 Hz + metrik + adapter
+Slap Arena + adapter Bomberman + penulis hasil laga yang di-await dan mencatat `playing` sebelum
+`completed`), di-deploy 22 Oktober 17:14 UTC dari `main` setelah PR #110. Kedua secret sudah dipasang,
+jadi cabang penulis hasil aktif: satu laga scripted benar-benar mendarat sampai `match_results`, dan
+dua cacat yang hanya muncul di runtime Cloudflare sudah ditutup lewat PR #109 dan #110.
 
-Bundlenya 110,69 KiB / gzip 30,84 KiB, startup 6 ms. Sebelum hasil laga ikut ter-bundle angkanya
+Bundlenya 112,53 KiB / gzip 31,55 KiB, startup 6 ms. Sebelum hasil laga ikut ter-bundle angkanya
 96,86 KiB / gzip 26,86 KiB. Deploy memakai Worker yang sama dengan Slap Arena:
 
 ```bash
