@@ -809,12 +809,15 @@ test('laga yang selesai menulis baris matches lalu menaikkannya ke completed', a
   assert.equal(created.body.status, 'waiting');
   assert.equal(typeof created.body.max_players, 'number');
 
-  const done = calls.find((c) => c.method === 'PATCH' && c.url.includes('/rest/v1/matches'));
-  assert.ok(done, `harus ada update ke completed, dapat ${shape(calls)}`);
-  assert.equal(done.body.status, 'completed');
+  const done = calls.find((c) => c.method === 'PATCH' && c.url.includes('status=eq.waiting'));
+  assert.ok(done, `harus ada catatan playing lebih dulu, dapat ${shape(calls)}`);
+  assert.equal(done.body.status, 'playing');
+  const closed = calls.find((c) => c.method === 'PATCH' && c.body?.status === 'completed');
+  assert.ok(closed, `harus ada update ke completed, dapat ${shape(calls)}`);
+  assert.equal(closed.body.status, 'completed');
   // selfTest tidak punya pemenang, dan pemicu menolak indeks di luar jumlah kursi.
-  assert.equal(done.body.winner_index, null);
-  assert.ok(done.url.includes('id=eq.11111111'), 'update harus menargetkan baris yang baru dibuat');
+  assert.equal(closed.body.winner_index, null);
+  assert.ok(closed.url.includes('id=eq.11111111'), 'update harus menargetkan baris yang baru dibuat');
   assert.equal(calls.filter((c) => c.method === 'POST').length, 1, 'satu laga satu baris');
 });
 
@@ -828,10 +831,27 @@ test('baris yang sudah dibuat lobi dituntaskan DO, tidak ditambahkan yang baru',
 
   const calls = resultCalls.slice(mark);
   assert.equal(calls.filter((c) => c.method === 'POST').length, 0, `baris lobi tidak boleh diduplikasi, dapat ${shape(calls)}`);
-  const done = calls.find((c) => c.method === 'PATCH');
-  assert.ok(done, `harus ada update ke baris lobi, dapat ${shape(calls)}`);
-  assert.ok(done.url.includes('id=eq.m-lobi-1'), `update harus menargetkan id lobi, dapat ${done.url}`);
-  assert.equal(done.body.status, 'completed');
+  const started = calls.find((c) => c.method === 'PATCH' && c.url.includes('status=eq.waiting'));
+  assert.ok(started, `baris waiting harus dicatat playing dulu, dapat ${shape(calls)}`);
+  const closed = calls.find((c) => c.method === 'PATCH' && c.body?.status === 'completed');
+  assert.ok(closed, `harus ada update ke completed, dapat ${shape(calls)}`);
+  assert.ok(closed.url.includes('id=eq.m-lobi-1'), `update harus menargetkan id lobi, dapat ${closed.url}`);
+});
+
+test('baris yang sudah playing tidak di-start ulang oleh DO', async () => {
+  mockGetRows = [{ id: 'm-main-1', max_players: 4, status: 'playing' }];
+  const mark = resultCalls.length;
+  const { a } = await table('RV');
+  a.ws.send(JSON.stringify({ t: 'finish' }));
+  await a.recvPhase('finished');
+  await wait(1500);
+
+  const calls = resultCalls.slice(mark);
+  assert.equal(calls.filter((c) => c.method === 'PATCH' && c.url.includes('status=eq.waiting')).length, 0,
+    `tidak boleh ada PATCH start untuk baris playing, dapat ${shape(calls)}`);
+  const closed = calls.find((c) => c.method === 'PATCH' && c.body?.status === 'completed');
+  assert.ok(closed, `harus ada satu update completed, dapat ${shape(calls)}`);
+  assert.equal(calls.filter((c) => c.method === 'PATCH').length, 1);
 });
 
 test('kamar yang masih bermain tidak menulis hasil sama sekali', async () => {

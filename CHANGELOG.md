@@ -1,3 +1,34 @@
+## 2026-10-22 - Cloudflare: DO mencatat `playing` sebelum `completed`
+
+Lanjutan langsung dari #109. Setelah penulisan di-await, pengukuran production tetap gagal dengan
+bentuk yang sama: baris `matches` tertinggal di `waiting` dan `match_results` kosong.
+
+### Kenapa
+
+- PATCH-nya benar-benar dikirim dan ditolak database: `P0001: a match cannot finish before it starts`.
+  Pemicu di `supabase/migrations/002_match_protocol.sql:17` melarang transisi `waiting -> completed`.
+- Di jalur Broadcast momen "mulai" ditulis klien lewat `startOnlineMatch`. Di jalur Worker tidak ada
+  lagi yang menulisnya, jadi lifecycle itu harus dicatat sendiri oleh DO: `waiting -> playing ->
+  completed`. Baris yang memang sudah `playing` (Bomberman, saat klien menutup lebih dulu) tetap
+  hanya dapat satu PATCH.
+
+### Diubah
+
+- `cloudflare/src/results.ts`: `start()` menaikkan baris `waiting` ke `playing` dengan filter
+  `status=eq.waiting` sebelum `close()`; baris hasil `POST` ikut jalur yang sama.
+- `cloudflare/tests/ws.test.mjs`: satu tes baru mengunci bahwa baris `playing` tidak di-start ulang,
+  dan dua tes yang ada sekarang menuntut langkah `playing` lebih dulu.
+- `cloudflare/README.md` dan `docs/cloudflare-migration.md` 15.1/15.4: urutan permintaan dan dua cacat
+  yang hanya bisa muncul di runtime Cloudflare, bukan di `wrangler dev --local`.
+
+### Diverifikasi
+
+- Merah dulu: terhadap build #109, 2 dari 4 tes hasil laga gagal ("harus ada catatan playing lebih
+  dulu") sementara tes "playing tidak di-start ulang" sudah hijau. Bentuk kegagalan itu yang menunjuk
+  ke langkah yang hilang, bukan ke asumsi.
+- Hijau: suite worker lokal 45 lulus dari 45 (n = 1 rangkaian), `npx tsc --noEmit` bersih.
+- Production: diukur setelah deploy, hasilnya dicatat di PR.
+
 ## 2026-10-22 - Cloudflare: hasil laga di-await, bukan dilepas sebagai kerja latar
 
 Fitur penulis hasil baru dinyalakan dan langsung ketahuan pincang: baris `matches` dibuat DO tapi

@@ -57,7 +57,9 @@ export class MatchRecorder {
     if (row?.id) {
       if (row.status === 'completed') return 'already';
       const seats = typeof row.max_players === 'number' && row.max_players > 0 ? row.max_players : match.seats;
-      return (await this.close(table, headers, row.id, seats, match.winnerSeat)) ? 'written' : 'rejected';
+      return (await this.close(table, headers, row.id, seats, match.winnerSeat, row.status === 'waiting'))
+        ? 'written'
+        : 'rejected';
     }
 
     const created = await this.send('POST', `${table}?select=id`, headers, {
@@ -70,7 +72,27 @@ export class MatchRecorder {
     });
     const newId = (created.rows[0] as MatchRow | undefined)?.id;
     if (!created.ok || !newId) return 'rejected';
-    return (await this.close(table, headers, newId, match.seats, match.winnerSeat)) ? 'written' : 'rejected';
+    return (await this.close(table, headers, newId, match.seats, match.winnerSeat, true)) ? 'written' : 'rejected';
+  }
+
+  /**
+   * Laga yang lahir di jalur Worker tidak pernah punya momen "mulai" di database: lobi membuat baris
+   * `waiting` dan tidak ada klien yang memindahkannya. Pemicu `002_match_protocol.sql:17` menolak
+   * `waiting -> completed` dengan "a match cannot finish before it starts", jadi DO mencatat dulu
+   * bahwa laganya memang pernah berjalan, baru menutupnya.
+   */
+  private async start(
+    table: string,
+    headers: Record<string, string>,
+    id: string
+  ): Promise<boolean> {
+    const up = await this.send(
+      'PATCH',
+      `${table}?id=eq.${encodeURIComponent(id)}&status=eq.waiting&select=id`,
+      headers,
+      { status: 'playing' }
+    );
+    return up.ok && up.rows.length > 0;
   }
 
   /** `winner_index` di luar rentang kursi ditolak pemicu, jadi angkanya dilucuti lebih dulu. */
@@ -79,8 +101,10 @@ export class MatchRecorder {
     headers: Record<string, string>,
     id: string,
     seats: number,
-    winnerSeat: number | null
+    winnerSeat: number | null,
+    fromWaiting: boolean
   ): Promise<boolean> {
+    if (fromWaiting && !(await this.start(table, headers, id))) return false;
     const winner =
       typeof winnerSeat === 'number' && winnerSeat >= 0 && winnerSeat < seats ? winnerSeat : null;
     const done = await this.send(
