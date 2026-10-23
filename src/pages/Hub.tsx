@@ -9,7 +9,7 @@ const preloadLobby = (game: GameMetadata) => {
   game.preload().catch(() => {});
 };
 
-const MABAR_URL = 'https://mabar.ivanjairus.xyz/';
+const MABAR_URL = 'https://www.ivanjairus.xyz/mabar/';
 
 const MabarThumbnail: React.FC = () => (
   <svg viewBox="0 0 320 180" style={{ width: '100%', height: '100%' }} aria-hidden="true">
@@ -321,7 +321,7 @@ export const Hub: React.FC = () => {
               pesta lain dengan hukuman tiap ronde.
             </p>
             <div className="party-card-meta">
-              <span>mabar.ivanjairus.xyz</span>
+              <span>ivanjairus.xyz/mabar</span>
               <span>tanpa install</span>
               <span>solo · satu HP</span>
               <span style={{ marginLeft: 'auto', color: 'var(--ink-dim)' }}>mainkan →</span>

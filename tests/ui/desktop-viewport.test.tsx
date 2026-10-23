@@ -26,7 +26,7 @@ describe('Desktop Viewport Automation Suite (1024px)', () => {
     expect(screen.getByTestId('game-card-tic-tac-toe')).toBeInTheDocument();
     expect(screen.getByText(/WallGo · Race to the Golden Core/)).toBeInTheDocument();
     expect(screen.getByText(/Tic Tac Toe · Mode No-Draw/)).toBeInTheDocument();
-    expect(screen.getByTestId('game-card-mabar')).toHaveAttribute('href', 'https://mabar.ivanjairus.xyz/');
+    expect(screen.getByTestId('game-card-mabar')).toHaveAttribute('href', 'https://www.ivanjairus.xyz/mabar/');
   });
 
   it('starts a Wall Game on desktop and interacts with tiles and wall placement', () => {
