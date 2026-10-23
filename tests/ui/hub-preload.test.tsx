@@ -58,7 +58,7 @@ describe('Hub lobby preload on card intent', () => {
 
     expect(spy).toHaveBeenCalledTimes(1);
     expect(cardOf(target.id)).toBeInTheDocument();
-    expect(screen.getByText('Mini-Games & Arena Strategi.')).toBeInTheDocument();
+    expect(screen.getByText('Mini-Games, Arena Strategi & Party.')).toBeInTheDocument();
   });
 
   it('still renders a card for every registered game', () => {

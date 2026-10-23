@@ -30,7 +30,7 @@ const Layout: React.FC = () => {
       >
         <span>ivanjairus.xyz/games/</span>
         <span>·</span>
-        <span>papan strategi taktis · game hub lokal & online</span>
+        <span>papan strategi taktis & party · game hub lokal & online</span>
         <span>·</span>
         <span>dilayani oleh ij-gateway</span>
       </footer>

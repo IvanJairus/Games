@@ -215,6 +215,84 @@ dialog::backdrop {
   }
 }
 
+/* Mabar party card on the Games hub */
+.party-card {
+  display: grid;
+  grid-template-columns: minmax(220px, 300px) 1fr;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r4);
+  background: #ffffff;
+  overflow: hidden;
+  text-decoration: none;
+  color: inherit;
+  box-shadow: 0 4px 12px rgba(28, 25, 23, 0.05);
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+.party-card:hover {
+  border-color: var(--red);
+  transform: translateY(-1px);
+}
+.party-card-art {
+  background: #f4ebdd;
+  border-right: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+}
+.party-card-art svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.party-card-body {
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  justify-content: center;
+  min-width: 0;
+}
+.party-card-body p {
+  color: var(--ink-dim);
+  font-size: 13.5px;
+  line-height: 1.55;
+  margin: 0;
+  max-width: 56ch;
+}
+.party-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  font: 11px/1.4 var(--mono);
+  color: var(--ink-faint);
+  letter-spacing: 0.04em;
+}
+.party-card-meta span:first-child {
+  color: var(--gold);
+}
+
+@media (max-width: 680px) {
+  .party-card {
+    grid-template-columns: 1fr;
+  }
+  .party-card-art {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    padding: 14px;
+  }
+  .party-card-art svg {
+    max-height: 180px;
+  }
+  .party-card-body {
+    padding: 18px;
+  }
+}
+
 /* Battleship: nautical-chart surface, brass for damage, red only for real state. */
 .bs-shell {
   max-width: 1000px;

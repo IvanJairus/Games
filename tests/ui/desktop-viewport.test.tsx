@@ -21,11 +21,12 @@ describe('Desktop Viewport Automation Suite (1024px)', () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByText('Mini-Games & Arena Strategi.')).toBeInTheDocument();
+    expect(screen.getByText('Mini-Games, Arena Strategi & Party.')).toBeInTheDocument();
     expect(screen.getByTestId('game-card-wall-game')).toBeInTheDocument();
     expect(screen.getByTestId('game-card-tic-tac-toe')).toBeInTheDocument();
     expect(screen.getByText(/WallGo · Race to the Golden Core/)).toBeInTheDocument();
     expect(screen.getByText(/Tic Tac Toe · Mode No-Draw/)).toBeInTheDocument();
+    expect(screen.getByTestId('game-card-mabar')).toHaveAttribute('href', 'https://mabar.ivanjairus.xyz/');
   });
 
   it('starts a Wall Game on desktop and interacts with tiles and wall placement', () => {
