@@ -292,7 +292,7 @@ export const Hub: React.FC = () => {
           className="party-card"
           href={MABAR_URL}
           data-testid="game-card-mabar"
-          aria-label="Buka Mabar, party game 15 game untuk 2 sampai 6 pemain"
+          aria-label="Buka Mabar, party game 16 game untuk 2 sampai 6 pemain"
         >
           <div className="party-card-art">
             <MabarThumbnail />
@@ -313,7 +313,7 @@ export const Hub: React.FC = () => {
                   padding: '4px 7px',
                 }}
               >
-                15 game
+                16 game
               </span>
             </div>
             <p>
